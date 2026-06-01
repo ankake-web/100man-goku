@@ -1,0 +1,1105 @@
+// ============================================================
+// src/renderer/ui.ts — F-03: 手番UIパネル
+// ============================================================
+
+import type { GameState, Action, PlayerId, ResourceType, Player, ResourceHand } from '../types';
+import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
+import { calcVP, calcPublicVP } from '../engine/scoring';
+import { hasEnoughResources } from '../engine/actions';
+import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
+import type { BuildMode } from './events';
+
+// ============================================================
+// 型定義（main.ts・events.ts 共有）
+// ============================================================
+
+export type UIPhase =
+  | { type: 'idle' }
+  | { type: 'discard'; playerId: PlayerId; selected: ResourceHand }
+  | { type: 'bankTrade'; give: ResourceType | null; receive: ResourceType | null }
+  | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
+  | { type: 'monopoly'; resource: ResourceType | null }
+  | { type: 'robberTarget'; tileId: string; opponents: PlayerId[] }
+  | { type: 'playerTradeOffer'; give: ResourceHand; receive: ResourceHand; targetPids: PlayerId[] };
+
+// ============================================================
+// 定数
+// ============================================================
+
+const PLAYER_COLORS: Record<string, string> = {
+  player1: '#e03030',
+  player2: '#3060e0',
+  player3: '#f0f0f0',
+  player4: '#f0a020',
+};
+
+const RESOURCE_EMOJI: Record<ResourceType, string> = {
+  wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
+};
+
+const RESOURCE_NAMES: Record<ResourceType, string> = {
+  wood: '木材', brick: 'レンガ', wool: '羊毛', grain: '麦', ore: '鉄鉱',
+};
+
+const DEV_CARD_NAMES: Record<string, string> = {
+  knight:          '⚔ 騎士',
+  road_building:   '🛤 道路建設',
+  year_of_plenty:  '🌾 年の豊穣',
+  monopoly:        '🏛 独占',
+};
+
+// F-06: カードパネル用コンパクト名
+const DEV_CARD_CHIP_NAMES: Record<string, string> = {
+  knight:          '⚔騎士',
+  road_building:   '🛤道路建設',
+  year_of_plenty:  '🌾年の豊穣',
+  monopoly:        '🏛独占',
+  victory_point:   '★VP',
+};
+
+// ============================================================
+// フェーズ説明テキスト
+// ============================================================
+
+function phaseText(state: GameState): string {
+  if (state.phase === 'GAME_OVER') {
+    const w = state.players[state.winner ?? ''];
+    return w ? `🎉 ゲーム終了！${w.name} の勝利！` : 'ゲーム終了！';
+  }
+  if (state.phase === 'SETUP_FORWARD') {
+    return state.setupSubPhase === 'PLACE_SETTLEMENT'
+      ? 'セットアップ前半：開拓地を置く場所をクリック'
+      : 'セットアップ前半：道を置く辺をクリック';
+  }
+  if (state.phase === 'SETUP_BACKWARD') {
+    return state.setupSubPhase === 'PLACE_SETTLEMENT'
+      ? 'セットアップ後半：開拓地を置く場所をクリック'
+      : 'セットアップ後半：道を置く辺をクリック';
+  }
+  switch (state.turnPhase) {
+    case 'PRE_ROLL':    return 'ダイスを振ってください（または発展カードを使用）';
+    case 'ROBBER':      return '強盗：移動先のタイルをクリック';
+    case 'DISCARD':     return '手札8枚以上：半数を捨ててください';
+    case 'TRADE_BUILD': return '交易・建設フェーズ';
+    case 'END':         return 'ターン終了処理中';
+    default:            return '';
+  }
+}
+
+// ============================================================
+// DOM ヘルパー
+// ============================================================
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+
+function makeBtn(
+  label: string,
+  cls: string,
+  disabled: boolean,
+  onClick: () => void,
+): HTMLButtonElement {
+  const btn = el('button', `action-btn ${cls}`);
+  btn.textContent = label;
+  btn.disabled = disabled;
+  if (!disabled) btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function modeBtn(
+  label: string,
+  mode: Exclude<BuildMode, 'idle'>,
+  canAfford: boolean,
+  current: BuildMode,
+  setBuildMode: (m: BuildMode) => void,
+): HTMLButtonElement {
+  const isActive = current === mode;
+  const disabled = !canAfford && !isActive;
+  const cls = isActive ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled';
+  return makeBtn(label, cls, disabled, () => setBuildMode(isActive ? 'idle' : mode));
+}
+
+// ============================================================
+// 発展カード：使用可能カード一覧
+// ============================================================
+
+function getPlayableDevCards(
+  player: Player,
+  globalTurn: number,
+): { type: string; count: number }[] {
+  const counts: Record<string, number> = {};
+  for (const card of player.devCards) {
+    if (card.type === 'victory_point') continue;
+    if (card.purchasedOnTurn >= globalTurn) continue;
+    counts[card.type] = (counts[card.type] ?? 0) + 1;
+  }
+  return Object.entries(counts).map(([type, count]) => ({ type, count }));
+}
+
+// ============================================================
+// DISCARD UI（手札捨て）
+// ============================================================
+
+function buildDiscardUI(
+  state: GameState,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+
+  const discardPid = state.playerOrder.find(p => {
+    const h = state.players[p]!.hand;
+    return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
+  });
+  if (!discardPid) return div;
+
+  const player = state.players[discardPid]!;
+  const total = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
+  const target = Math.floor(total / 2);
+
+  const selected: ResourceHand =
+    uiPhase.type === 'discard' && uiPhase.playerId === discardPid
+      ? uiPhase.selected
+      : { wood: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+
+  const chosen = RESOURCE_TYPES.reduce((s, r) => s + selected[r], 0);
+
+  const color = PLAYER_COLORS[discardPid] ?? '#aaa';
+  const header = el('div', 'modal-header');
+  const dot = el('span', 'color-dot');
+  dot.style.background = color;
+  header.appendChild(dot);
+  header.append(` ${player.name}：${target}枚を捨ててください（${chosen}/${target}枚選択中）`);
+  div.appendChild(header);
+
+  const resRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    if (player.hand[r] === 0) continue;
+
+    const cell = el('div', 'modal-res-cell');
+    const minus = makeBtn('−', 'btn-small', selected[r] <= 0, () => {
+      setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] - 1 } });
+    });
+    const info = el('span', 'modal-res-info');
+    info.textContent = `${RESOURCE_EMOJI[r]} ${player.hand[r]}枚 → 捨:${selected[r]}`;
+    const plus = makeBtn('+', 'btn-small', selected[r] >= player.hand[r] || chosen >= target, () => {
+      setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] + 1 } });
+    });
+
+    cell.appendChild(minus);
+    cell.appendChild(info);
+    cell.appendChild(plus);
+    resRow.appendChild(cell);
+  }
+  div.appendChild(resRow);
+
+  div.appendChild(makeBtn(
+    `✓ 捨てる（${chosen}/${target}枚）`,
+    chosen === target ? 'btn-primary' : 'btn-disabled',
+    chosen !== target,
+    () => dispatch({ type: 'DISCARD_RESOURCES', playerId: discardPid, resources: selected }),
+  ));
+
+  return div;
+}
+
+// ============================================================
+// Robber Target Selection UI（複数ターゲット選択）
+// ============================================================
+
+function buildRobberTargetUI(
+  state: GameState,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+  const header = el('div', 'modal-header');
+  header.textContent = '強盗：盗む相手を選んでください';
+  div.appendChild(header);
+
+  if (uiPhase.type !== 'robberTarget') return div;
+
+  const row = el('div', 'modal-res-row');
+  for (const opponentPid of uiPhase.opponents) {
+    const opponent = state.players[opponentPid];
+    if (!opponent) continue;
+    const color = PLAYER_COLORS[opponentPid] ?? '#aaa';
+    const totalCards = RESOURCE_TYPES.reduce((s, r) => s + opponent.hand[r], 0);
+    const btn = makeBtn(
+      `${opponent.name}（手札${totalCards}枚）`,
+      'btn-build',
+      false,
+      () => dispatch({ type: 'MOVE_ROBBER', tileId: uiPhase.tileId, stealFromPlayerId: opponentPid }),
+    );
+    btn.style.borderLeft = `4px solid ${color}`;
+    row.appendChild(btn);
+  }
+  div.appendChild(row);
+
+  div.appendChild(makeBtn('盗まない', 'btn-end', false,
+    () => dispatch({ type: 'MOVE_ROBBER', tileId: uiPhase.tileId, stealFromPlayerId: null }),
+  ));
+
+  return div;
+}
+
+// ============================================================
+// Bank Trade UI（バンク交易）
+// ============================================================
+
+function buildBankTradeUI(
+  state: GameState,
+  pid: PlayerId,
+  player: Player,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+
+  const give    = uiPhase.type === 'bankTrade' ? uiPhase.give : null;
+  const receive = uiPhase.type === 'bankTrade' ? uiPhase.receive : null;
+
+  const header = el('div', 'modal-header');
+  header.textContent = '💱 バンク交易';
+  div.appendChild(header);
+
+  const giveLabel = el('div', 'modal-section-label');
+  giveLabel.textContent = '渡す資源：';
+  div.appendChild(giveLabel);
+
+  const giveRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    const rate = getEffectiveTradeRate(state, pid, r);
+    const canAfford = player.hand[r] >= rate;
+    const btn = makeBtn(
+      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]} ×${player.hand[r]} (${rate}:1)`,
+      give === r ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled',
+      !canAfford,
+      () => setUIPhase({ type: 'bankTrade', give: give === r ? null : r, receive }),
+    );
+    giveRow.appendChild(btn);
+  }
+  div.appendChild(giveRow);
+
+  if (give !== null) {
+    const receiveLabel = el('div', 'modal-section-label');
+    receiveLabel.textContent = '受け取る資源：';
+    div.appendChild(receiveLabel);
+
+    const receiveRow = el('div', 'modal-res-row');
+    for (const r of RESOURCE_TYPES) {
+      if (r === give) continue;
+      const inBank = state.bank[r] > 0;
+      const btn = makeBtn(
+        `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}`,
+        receive === r ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled',
+        !inBank,
+        () => setUIPhase({ type: 'bankTrade', give, receive: receive === r ? null : r }),
+      );
+      receiveRow.appendChild(btn);
+    }
+    div.appendChild(receiveRow);
+
+    if (receive !== null) {
+      const rate = getEffectiveTradeRate(state, pid, give);
+      const valid = canBankTrade(state, pid, give, receive);
+      div.appendChild(makeBtn(
+        `✓ ${rate}枚の${RESOURCE_EMOJI[give]} → 1枚の${RESOURCE_EMOJI[receive]}`,
+        valid ? 'btn-primary' : 'btn-disabled',
+        !valid,
+        () => dispatch({ type: 'BANK_TRADE', give, receive }),
+      ));
+    }
+  }
+
+  div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  return div;
+}
+
+// ============================================================
+// Year of Plenty UI（年の豊穣）
+// ============================================================
+
+function buildYearOfPlentyUI(
+  state: GameState,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+
+  const slots: (ResourceType | null)[] =
+    uiPhase.type === 'yearOfPlenty' ? uiPhase.slots : [null, null];
+
+  const header = el('div', 'modal-header');
+  header.textContent = '🌾 年の豊穣：資源2枚を受け取る';
+  div.appendChild(header);
+
+  const status = el('div', 'modal-section-label');
+  const s0 = slots[0] ? RESOURCE_EMOJI[slots[0]] : '？';
+  const s1 = slots[1] ? RESOURCE_EMOJI[slots[1]] : '？';
+  status.textContent = `選択中：${s0} ・ ${s1}`;
+  div.appendChild(status);
+
+  const resRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    const inBank = state.bank[r] > 0;
+    const count = slots.filter(s => s === r).length;
+    const btn = makeBtn(
+      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}${count > 0 ? ` ×${count}` : ''}`,
+      count > 0 ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled',
+      !inBank,
+      () => {
+        const next = [...slots] as (ResourceType | null)[];
+        const empty = next.findIndex(s => s === null);
+        if (empty !== -1) {
+          next[empty] = r;
+        } else {
+          // 両スロット埋まっている場合：1つシフトして追加
+          next[0] = next[1] ?? null;
+          next[1] = r;
+        }
+        setUIPhase({ type: 'yearOfPlenty', slots: next });
+      },
+    );
+    resRow.appendChild(btn);
+  }
+  div.appendChild(resRow);
+
+  const bothFilled = slots[0] !== null && slots[1] !== null;
+  div.appendChild(makeBtn(
+    '✓ 受け取る',
+    bothFilled ? 'btn-primary' : 'btn-disabled',
+    !bothFilled,
+    () => {
+      if (slots[0] && slots[1]) dispatch({ type: 'PLAY_YEAR_OF_PLENTY', resources: [slots[0], slots[1]] });
+    },
+  ));
+  div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  return div;
+}
+
+// ============================================================
+// Monopoly UI（独占）
+// ============================================================
+
+function buildMonopolyUI(
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+
+  const resource = uiPhase.type === 'monopoly' ? uiPhase.resource : null;
+
+  const header = el('div', 'modal-header');
+  header.textContent = '🏛 独占：資源1種を宣言';
+  div.appendChild(header);
+
+  const resRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    const btn = makeBtn(
+      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}`,
+      resource === r ? 'btn-active' : 'btn-build',
+      false,
+      () => setUIPhase({ type: 'monopoly', resource: r }),
+    );
+    resRow.appendChild(btn);
+  }
+  div.appendChild(resRow);
+
+  div.appendChild(makeBtn(
+    '✓ 独占実行',
+    resource !== null ? 'btn-primary' : 'btn-disabled',
+    resource === null,
+    () => { if (resource) dispatch({ type: 'PLAY_MONOPOLY', resource }); },
+  ));
+  div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  return div;
+}
+
+// ============================================================
+// ============================================================
+// F-07: VP 内訳ヘルパー
+// ============================================================
+
+interface VPBreakdown {
+  settlements: number;
+  cities: number;
+  lr: boolean;
+  la: boolean;
+  vpCards: number;
+}
+
+function calcVPBreakdown(state: GameState, pid: PlayerId): VPBreakdown {
+  const player = state.players[pid];
+  let settlements = 0, cities = 0;
+  for (const v of Object.values(state.vertices)) {
+    if (v.building?.playerId !== pid) continue;
+    if (v.building.type === 'settlement') settlements++;
+    else cities++;
+  }
+  return {
+    settlements,
+    cities,
+    lr: player?.hasLongestRoad ?? false,
+    la: player?.hasLargestArmy ?? false,
+    vpCards: player?.devCards.filter(c => c.type === 'victory_point').length ?? 0,
+  };
+}
+
+// ============================================================
+// F-05: プレイヤー間交易ヘルパー
+// ============================================================
+
+function makeZeroHand(): ResourceHand {
+  return { wood: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+}
+
+function formatResources(partial: Partial<ResourceHand>): string {
+  const parts: string[] = [];
+  for (const r of RESOURCE_TYPES) {
+    const n = partial[r] ?? 0;
+    if (n > 0) parts.push(`${RESOURCE_EMOJI[r]}×${n}`);
+  }
+  return parts.length > 0 ? parts.join(' ') : '（なし）';
+}
+
+// ============================================================
+// F-05: 交易オファー作成UI
+// ============================================================
+
+function buildPlayerTradeOfferUI(
+  player: Player,
+  pid: PlayerId,
+  state: GameState,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+
+  const give       = uiPhase.type === 'playerTradeOffer' ? uiPhase.give       : makeZeroHand();
+  const receive    = uiPhase.type === 'playerTradeOffer' ? uiPhase.receive    : makeZeroHand();
+  const opponents  = state.playerOrder.filter(p => p !== pid) as PlayerId[];
+  const targetPids = uiPhase.type === 'playerTradeOffer'
+    ? uiPhase.targetPids
+    : opponents; // デフォルト全員
+
+  const header = el('div', 'modal-header');
+  header.textContent = '🤝 プレイヤー間交易：オファー作成';
+  div.appendChild(header);
+
+  // ---- 交易相手選択 ----
+  const targetLabel = el('div', 'modal-section-label');
+  targetLabel.textContent = '交易相手：';
+  div.appendChild(targetLabel);
+  const targetRow = el('div', 'trade-target-row');
+  for (const opp of opponents) {
+    const oppPlayer = state.players[opp];
+    if (!oppPlayer) continue;
+    const btn = el('button', `trade-target-btn${targetPids.includes(opp) ? ' selected' : ''}`);
+    btn.textContent = oppPlayer.name;
+    btn.addEventListener('click', () => {
+      const next = targetPids.includes(opp)
+        ? targetPids.filter(p => p !== opp)
+        : [...targetPids, opp];
+      setUIPhase({ type: 'playerTradeOffer', give, receive, targetPids: next });
+    });
+    targetRow.appendChild(btn);
+  }
+  div.appendChild(targetRow);
+
+  // 渡す資源
+  const giveLabel = el('div', 'modal-section-label');
+  giveLabel.textContent = '渡す資源：';
+  div.appendChild(giveLabel);
+
+  const giveRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    const cell = el('div', 'modal-res-cell');
+    cell.appendChild(makeBtn('−', 'btn-small', give[r] <= 0, () =>
+      setUIPhase({ type: 'playerTradeOffer', give: { ...give, [r]: give[r] - 1 }, receive, targetPids }),
+    ));
+    const info = el('span', 'modal-res-info');
+    info.textContent = `${RESOURCE_EMOJI[r]} 手${player.hand[r]} 渡${give[r]}`;
+    cell.appendChild(info);
+    cell.appendChild(makeBtn('+', 'btn-small', give[r] >= player.hand[r], () =>
+      setUIPhase({ type: 'playerTradeOffer', give: { ...give, [r]: give[r] + 1 }, receive, targetPids }),
+    ));
+    giveRow.appendChild(cell);
+  }
+  div.appendChild(giveRow);
+
+  // 受け取る資源
+  const recvLabel = el('div', 'modal-section-label');
+  recvLabel.textContent = '受け取る資源：';
+  div.appendChild(recvLabel);
+
+  const recvRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    const cell = el('div', 'modal-res-cell');
+    cell.appendChild(makeBtn('−', 'btn-small', receive[r] <= 0, () =>
+      setUIPhase({ type: 'playerTradeOffer', give, receive: { ...receive, [r]: receive[r] - 1 }, targetPids }),
+    ));
+    const info = el('span', 'modal-res-info');
+    info.textContent = `${RESOURCE_EMOJI[r]} 要求${receive[r]}`;
+    cell.appendChild(info);
+    cell.appendChild(makeBtn('+', 'btn-small', false, () =>
+      setUIPhase({ type: 'playerTradeOffer', give, receive: { ...receive, [r]: receive[r] + 1 }, targetPids }),
+    ));
+    recvRow.appendChild(cell);
+  }
+  div.appendChild(recvRow);
+
+  const giveTotal = RESOURCE_TYPES.reduce((s, r) => s + give[r], 0);
+  const recvTotal = RESOURCE_TYPES.reduce((s, r) => s + receive[r], 0);
+  const canSend = giveTotal > 0 && recvTotal > 0;
+
+  const canSendWithTarget = canSend && targetPids.length > 0;
+  div.appendChild(makeBtn('📤 オファー送信', canSendWithTarget ? 'btn-primary' : 'btn-disabled', !canSendWithTarget, () => {
+    const giveP: Partial<ResourceHand> = {};
+    const recvP: Partial<ResourceHand> = {};
+    for (const r of RESOURCE_TYPES) {
+      if (give[r] > 0) giveP[r] = give[r];
+      if (receive[r] > 0) recvP[r] = receive[r];
+    }
+    dispatch({ type: 'OFFER_TRADE', offer: { give: giveP, receive: recvP }, targetPlayerIds: targetPids });
+  }));
+  div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  return div;
+}
+
+// ============================================================
+// F-05: ペンディング交易UI（応答・確認）
+// ============================================================
+
+function buildPendingTradeUI(
+  state: GameState,
+  pid: PlayerId,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+  const trade = state.pendingTrade!;
+  const initiator = state.players[trade.initiatorId];
+  const isCpuInitiated = initiator?.type === 'ai';
+
+  const header = el('div', 'modal-header');
+  if (isCpuInitiated) {
+    header.textContent = `🤝 ${initiator?.name ?? trade.initiatorId} から交易提案`;
+  } else {
+    header.textContent = '🤝 プレイヤー間交易';
+  }
+  div.appendChild(header);
+
+  if (isCpuInitiated) {
+    // CPU起案：「CPUが渡す / CPUが欲しい」を明示
+    const giveRow = el('div', 'cpu-trade-row');
+    const giveLbl = el('span', 'cpu-trade-lbl');
+    giveLbl.textContent = `${initiator?.name ?? 'CPU'} が渡す：`;
+    giveRow.appendChild(giveLbl);
+    giveRow.append(formatResources(trade.offer.give));
+    div.appendChild(giveRow);
+
+    const recvRow = el('div', 'cpu-trade-row');
+    const recvLbl = el('span', 'cpu-trade-lbl');
+    recvLbl.textContent = `${initiator?.name ?? 'CPU'} が欲しい：`;
+    recvRow.appendChild(recvLbl);
+    recvRow.append(formatResources(trade.offer.receive));
+    div.appendChild(recvRow);
+  } else {
+    // 人間起案：従来通りの表示
+    const offerBox = el('div', 'trade-offer-box');
+    const who = el('strong');
+    who.textContent = `${initiator?.name ?? trade.initiatorId}`;
+    offerBox.appendChild(who);
+    offerBox.append(' の提案: ');
+    offerBox.append(formatResources(trade.offer.give));
+    const arrow = el('span', 'trade-arrow');
+    arrow.textContent = ' → ';
+    offerBox.appendChild(arrow);
+    offerBox.append(formatResources(trade.offer.receive));
+    div.appendChild(offerBox);
+  }
+
+  // TRADE_OFFER: 応答待ち
+  if (trade.state === 'TRADE_OFFER') {
+    const pending = trade.targetPlayerIds.find(t => !trade.responses[t]);
+    if (pending) {
+      const targetPlayer = state.players[pending];
+      if (targetPlayer?.type === 'ai') {
+        // CPU は自動応答するので待機表示のみ
+        const label = el('div', 'modal-section-label');
+        label.textContent = `⏳ ${targetPlayer.name} が検討中...`;
+        div.appendChild(label);
+      } else {
+        // 人間が応答する場合
+        const humanPlayer = targetPlayer;
+        const canAfford = RESOURCE_TYPES.every(r =>
+          (humanPlayer?.hand[r] ?? 0) >= (trade.offer.receive[r] ?? 0),
+        );
+        if (!canAfford) {
+          // 不足している資源を明示
+          const lacking = RESOURCE_TYPES.filter(r => (humanPlayer?.hand[r] ?? 0) < (trade.offer.receive[r] ?? 0));
+          const lackMsg = el('div', 'trade-lack-msg');
+          lackMsg.textContent = `⚠ ${lacking.map(r => RESOURCE_NAMES[r]).join('・')}が不足しています`;
+          div.appendChild(lackMsg);
+        }
+        const btnRow = el('div', 'trade-response-btns');
+        btnRow.appendChild(makeBtn('✓ 承認', canAfford ? 'btn-primary' : 'btn-disabled', !canAfford, () =>
+          dispatch({ type: 'RESPOND_TRADE', response: { playerId: pending, status: 'ACCEPT' } }),
+        ));
+        btnRow.appendChild(makeBtn('✗ 拒否', 'btn-end', false, () =>
+          dispatch({ type: 'RESPOND_TRADE', response: { playerId: pending, status: 'REJECT' } }),
+        ));
+        div.appendChild(btnRow);
+      }
+    }
+
+    // 人間が起案した場合のみキャンセルボタンを表示
+    if (!isCpuInitiated && pid === trade.initiatorId) {
+      div.appendChild(makeBtn('↩ 取り消す', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+    }
+  }
+
+  // TRADE_RESPONSE: 結果表示・確定（人間起案のみ手動確認）
+  if (trade.state === 'TRADE_RESPONSE') {
+    for (const [tPid, resp] of Object.entries(trade.responses)) {
+      const pName = state.players[tPid]?.name ?? tPid;
+      const statusEl = el('div', 'modal-section-label');
+      if (resp.status === 'ACCEPT') {
+        statusEl.textContent = `✓ ${pName} が承諾`;
+        statusEl.style.color = '#7aee40';
+      } else {
+        statusEl.textContent = `✗ ${pName} が拒否`;
+        statusEl.style.color = '#ff6060';
+      }
+      div.appendChild(statusEl);
+    }
+
+    if (!isCpuInitiated) {
+      // 人間起案: 手動で取引相手を選んで確定
+      const acceptors = trade.targetPlayerIds.filter(t => trade.responses[t]?.status === 'ACCEPT') as PlayerId[];
+      if (acceptors.length > 0 && pid === trade.initiatorId) {
+        const row = el('div', 'trade-response-btns');
+        for (const a of acceptors) {
+          row.appendChild(makeBtn(
+            `${state.players[a]?.name} と取引実行`, 'btn-primary', false,
+            () => dispatch({ type: 'CONFIRM_TRADE', responderId: a }),
+          ));
+        }
+        div.appendChild(row);
+      }
+      div.appendChild(makeBtn('↩ キャンセル', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+    } else {
+      // CPU起案: 自動処理中の待機表示
+      const waiting = el('div', 'modal-section-label');
+      waiting.textContent = '⏳ 処理中...';
+      div.appendChild(waiting);
+    }
+  }
+
+  // TRADE_CANCELLED: 失敗
+  if (trade.state === 'TRADE_CANCELLED') {
+    const err = el('div', 'modal-section-label');
+    err.textContent = '取引失敗：実行前に手持ちが変化しました';
+    err.style.color = '#ff8060';
+    div.appendChild(err);
+    div.appendChild(makeBtn('閉じる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+  }
+
+  return div;
+}
+
+// ============================================================
+// 発展カードボタン共通ヘルパー（PRE_ROLL / TRADE_BUILD 両方で使用）
+// ============================================================
+
+function appendDevCardButtons(
+  div: HTMLElement,
+  state: GameState,
+  player: Player,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): void {
+  // 街道建設カード処理中は表示しない
+  if (state.roadBuildingRoadsRemaining > 0) return;
+
+  const playable = getPlayableDevCards(player, state.globalTurnNumber);
+  if (playable.length === 0) return;
+
+  const devAlreadyPlayed = state.devCardPlayedThisTurn;
+  for (const { type, count } of playable) {
+    const label = `${DEV_CARD_NAMES[type] ?? type}${count > 1 ? ` ×${count}` : ''}`;
+    div.appendChild(makeBtn(
+      label,
+      devAlreadyPlayed ? 'btn-disabled' : 'btn-build',
+      devAlreadyPlayed,
+      () => {
+        if (type === 'knight')         dispatch({ type: 'PLAY_KNIGHT' });
+        if (type === 'road_building')  dispatch({ type: 'PLAY_ROAD_BUILDING' });
+        if (type === 'year_of_plenty') setUIPhase({ type: 'yearOfPlenty', slots: [null, null] });
+        if (type === 'monopoly')       setUIPhase({ type: 'monopoly', resource: null });
+      },
+    ));
+  }
+}
+
+// ============================================================
+// アクションボタン群
+// ============================================================
+
+function buildActionButtons(
+  state: GameState,
+  player: Player,
+  pid: PlayerId,
+  buildMode: BuildMode,
+  setBuildMode: (m: BuildMode) => void,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement | null {
+  if (state.phase !== 'MAIN') return null;
+  const div = el('div', 'action-buttons');
+
+  // ---- DISCARD ----
+  if (state.turnPhase === 'DISCARD') {
+    div.appendChild(buildDiscardUI(state, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+
+  // ---- F-05: ペンディング交易 ----
+  if (state.pendingTrade !== null) {
+    div.appendChild(buildPendingTradeUI(state, pid, dispatch));
+    return div;
+  }
+
+  // ---- セカンダリUI（オーバーレイ）----
+  if (uiPhase.type === 'robberTarget') {
+    div.appendChild(buildRobberTargetUI(state, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+  if (uiPhase.type === 'bankTrade') {
+    div.appendChild(buildBankTradeUI(state, pid, player, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+  if (uiPhase.type === 'yearOfPlenty') {
+    div.appendChild(buildYearOfPlentyUI(state, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+  if (uiPhase.type === 'monopoly') {
+    div.appendChild(buildMonopolyUI(uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+  if (uiPhase.type === 'playerTradeOffer') {
+    div.appendChild(buildPlayerTradeOfferUI(player, pid, state, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+
+  // ---- PRE_ROLL ----
+  if (state.turnPhase === 'PRE_ROLL') {
+    div.appendChild(makeBtn('🎲 ダイスを振る', 'btn-primary', false, () => dispatch({ type: 'ROLL_DICE' })));
+    appendDevCardButtons(div, state, player, setUIPhase, dispatch);
+    if (calcVP(state, pid) >= VP_TABLE.target) {
+      div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
+    }
+    return div;
+  }
+
+  if (state.turnPhase !== 'TRADE_BUILD') return null;
+
+  // ---- 街道建設カード使用中 ----
+  if (state.roadBuildingRoadsRemaining > 0) {
+    const info = el('div', 'turn-phase-text');
+    info.textContent = `🛤 街道建設カード使用中（残り ${state.roadBuildingRoadsRemaining} 本）`;
+    div.appendChild(info);
+    div.appendChild(modeBtn('🛤 道を置く', 'road', player.remainingRoads > 0, buildMode, setBuildMode));
+    div.appendChild(makeBtn('✓ 道路建設を完了', 'btn-end', false, () => dispatch({ type: 'FINISH_ROAD_BUILDING' })));
+    return div;
+  }
+
+  // ---- TRADE_BUILD ----
+  const canRoad  = player.remainingRoads > 0 && hasEnoughResources(player.hand, BUILD_COSTS.road);
+  const canSettl = player.remainingSettlements > 0 && hasEnoughResources(player.hand, BUILD_COSTS.settlement);
+  const canCity  = player.remainingCities > 0 && hasEnoughResources(player.hand, BUILD_COSTS.city);
+  const canDev   = state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card);
+
+  div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
+  div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
+  div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
+  div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
+    () => dispatch({ type: 'BUY_DEV_CARD' })));
+  div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
+    () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
+
+  // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
+  if (state.playerOrder.length > 1) {
+    div.appendChild(makeBtn('🤝 プレイヤー間交易', 'btn-build', false,
+      () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
+  }
+
+  // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
+  appendDevCardButtons(div, state, player, setUIPhase, dispatch);
+
+  if (calcVP(state, pid) >= VP_TABLE.target) {
+    div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
+  }
+
+  div.appendChild(makeBtn('↩ ターン終了', 'btn-end', false, () => dispatch({ type: 'END_TURN' })));
+  return div;
+}
+
+// ============================================================
+// メイン描画
+// ============================================================
+
+export function renderUI(
+  container: HTMLDivElement,
+  state: GameState,
+  buildMode: BuildMode,
+  setBuildMode: (mode: BuildMode) => void,
+  uiPhase: UIPhase,
+  setUIPhase: (phase: UIPhase) => void,
+  dispatch: (action: Action) => void,
+): void {
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  const pid = state.playerOrder[state.currentPlayerIndex]!;
+  const player = state.players[pid]!;
+  const color = PLAYER_COLORS[pid] ?? '#aaa';
+
+  const turnPanel = el('div', 'turn-panel');
+
+  const infoRow = el('div', 'turn-info-row');
+  const dot = el('span', 'color-dot');
+  dot.style.background = color;
+  infoRow.appendChild(dot);
+  const nameEl = el('span', 'turn-player-name');
+  nameEl.textContent = player.name;
+  infoRow.appendChild(nameEl);
+  const vpEl = el('span', 'turn-vp');
+  // CPU の内部VP（VPカード込み）は他プレイヤーには非公開
+  vpEl.textContent = `★ ${player.type === 'human' ? calcVP(state, pid) : calcPublicVP(state, pid)}点`;
+  infoRow.appendChild(vpEl);
+  turnPanel.appendChild(infoRow);
+
+  // 手番順表示（現在の手番を強調）。プレイヤーの手札内容は出さない。
+  const orderBar = el('div', 'turn-order-bar');
+  const orderLbl = el('span', 'turn-order-label');
+  orderLbl.textContent = '手番順';
+  orderBar.appendChild(orderLbl);
+  state.playerOrder.forEach((opId, i) => {
+    const op = state.players[opId];
+    if (!op) return;
+    const chip = el('span', `turn-order-chip${opId === pid ? ' current' : ''}`);
+    const cdot = el('span', 'turn-order-dot');
+    cdot.style.background = PLAYER_COLORS[opId] ?? '#aaa';
+    chip.appendChild(cdot);
+    const cname = el('span', 'turn-order-name');
+    cname.textContent = op.name;
+    chip.appendChild(cname);
+    orderBar.appendChild(chip);
+    if (i < state.playerOrder.length - 1) {
+      const sep = el('span', 'turn-order-sep');
+      sep.textContent = '→';
+      orderBar.appendChild(sep);
+    }
+  });
+  turnPanel.appendChild(orderBar);
+
+  const phaseEl = el('div', 'turn-phase-text');
+  phaseEl.textContent = phaseText(state);
+  turnPanel.appendChild(phaseEl);
+
+  if (state.lastDiceRoll) {
+    const [d1, d2] = state.lastDiceRoll;
+    const diceEl = el('div', 'dice-result');
+    diceEl.textContent = `🎲 ${d1}+${d2}=${d1 + d2}`;
+    turnPanel.appendChild(diceEl);
+  }
+
+  const btns = buildActionButtons(
+    state, player, pid, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
+  );
+  if (btns) turnPanel.appendChild(btns);
+
+  // CPU起案交易がある場合はターンパネルに pending trade を表示
+  // （buildActionButtons の pendingTrade チェックは pid=CPU で動くが念のため明示）
+
+  container.appendChild(turnPanel);
+
+  // 直近の交易ログを表示（最新1件、TRADE_PLAYER のみ）
+  const lastTradeLog = [...state.log].reverse().find(e => e.type === 'TRADE_PLAYER');
+  if (lastTradeLog) {
+    const logEl = el('div', 'game-log-bar');
+    logEl.textContent = lastTradeLog.message;
+    container.appendChild(logEl);
+  }
+
+  const allPanels = el('div', 'player-panels');
+  for (const pId of state.playerOrder) {
+    const p = state.players[pId];
+    if (!p) continue;
+    allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid));
+  }
+  container.appendChild(allPanels);
+}
+
+// ============================================================
+// プレイヤーパネル
+// ============================================================
+
+function buildPlayerPanel(
+  player: Player,
+  pId: PlayerId,
+  state: GameState,
+  isActive: boolean,
+): HTMLDivElement {
+  // GAME_OVER時の勝者はVPカード・内訳のみ開示。資源・他発展カードは非公開のまま。
+  const isWinner = state.phase === 'GAME_OVER' && pId === state.winner;
+  const isSelf = player.type === 'human';
+
+  const div = el('div', `player-panel${isActive ? ' active' : ''}`);
+  div.dataset.pid = pId;  // リソースアニメーション用
+  const color = PLAYER_COLORS[pId] ?? '#aaa';
+  if (isActive) {
+    div.style.borderColor = color;
+    div.style.boxShadow = `0 0 10px ${color}55`;
+  }
+
+  // 順位バッジ: 公開VPを基準にする（VP カードは非公開のため）
+  const vpByPlayer = state.playerOrder.map(p => ({ pid: p, vp: calcPublicVP(state, p as PlayerId) }));
+  vpByPlayer.sort((a, b) => b.vp - a.vp);
+  const rank = vpByPlayer.findIndex(x => x.pid === pId) + 1;
+  const rankLabel = rank === 1 ? '👑' : `${rank}位`;
+
+  const h3 = el('h3');
+  // 1行目: カラードット + プレイヤー名
+  const nameRow = el('span', 'panel-name-row');
+  const dot = el('span', 'color-dot');
+  dot.style.background = color;
+  nameRow.appendChild(dot);
+  const nameSpan = el('span', 'panel-name');
+  nameSpan.textContent = player.name;
+  nameRow.appendChild(nameSpan);
+  h3.appendChild(nameRow);
+  // 2行目: VP + 順位バッジ
+  const statRow = el('span', 'panel-stat-row');
+  const vpSpan = el('span', 'panel-vp');
+  // 自分: 内部VP（VPカード込み）、他プレイヤー: 公開VPのみ
+  vpSpan.textContent = `★${isSelf ? calcVP(state, pId) : calcPublicVP(state, pId)}`;
+  statRow.appendChild(vpSpan);
+  const rankEl = el('span', `rank-badge${rank === 1 ? ' rank-1' : ''}`);
+  rankEl.textContent = rankLabel;
+  statRow.appendChild(rankEl);
+  h3.appendChild(statRow);
+  div.appendChild(h3);
+
+  // VP 内訳
+  const bd = calcVPBreakdown(state, pId);
+  // GAME_OVER時は勝者のVPカード枚数も開示する（他プレイヤーは非公開のまま）
+  const showVpCards = (isSelf || isWinner) && bd.vpCards > 0;
+  const hasAny = bd.settlements > 0 || bd.cities > 0 || bd.lr || bd.la || showVpCards;
+  if (hasAny) {
+    const vpRow = el('div', 'vp-breakdown');
+    if (bd.settlements > 0) {
+      const item = el('span', 'vp-item');
+      item.textContent = `🏠×${bd.settlements}`;
+      item.title = `開拓地 ${bd.settlements}VP`;
+      vpRow.appendChild(item);
+    }
+    if (bd.cities > 0) {
+      const item = el('span', 'vp-item');
+      item.textContent = `🏙×${bd.cities}`;
+      item.title = `都市 ${bd.cities * 2}VP`;
+      vpRow.appendChild(item);
+    }
+    if (bd.lr) {
+      const item = el('span', 'vp-item bonus');
+      item.textContent = '🛤最長+2';
+      vpRow.appendChild(item);
+    }
+    if (bd.la) {
+      const item = el('span', 'vp-item bonus');
+      item.textContent = '⚔最大+2';
+      vpRow.appendChild(item);
+    }
+    if (showVpCards) {
+      const item = el('span', 'vp-item');
+      item.textContent = `★×${bd.vpCards}`;
+      item.title = `VPカード ${bd.vpCards}VP`;
+      vpRow.appendChild(item);
+    }
+    div.appendChild(vpRow);
+  }
+
+  // 資源手札UI
+  const handTotal = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
+  if (isSelf) {
+    // 自分: 資源種別ごとのカード表示
+    const resRow = el('div', 'res-card-row');
+    for (const r of RESOURCE_TYPES) {
+      const count = player.hand[r];
+      const card = el('div', `res-card res-${r}${count === 0 ? ' zero' : ''}`);
+      const emoji = el('span', 'res-card-emoji');
+      emoji.textContent = RESOURCE_EMOJI[r];
+      const cnt = el('span', 'res-card-count');
+      cnt.textContent = String(count);
+      card.appendChild(emoji);
+      card.appendChild(cnt);
+      resRow.appendChild(card);
+    }
+    div.appendChild(resRow);
+    const totalEl = el('div', 'hand-total');
+    totalEl.textContent = `計 ${handTotal}枚`;
+    div.appendChild(totalEl);
+  } else {
+    // 他プレイヤー: 合計枚数のみ
+    const totalEl = el('div', 'hand-total');
+    totalEl.textContent = `🃏 手札 ${handTotal}枚`;
+    totalEl.style.fontSize = '0.85rem';
+    totalEl.style.marginTop = '4px';
+    div.appendChild(totalEl);
+  }
+
+  // 発展カードUI
+  if (player.devCards.length > 0) {
+    const devPanel = el('div', 'dev-card-panel');
+    if (isSelf) {
+      // 自分: 種別・使用可否を表示
+      const groups: Record<string, { total: number; playable: number }> = {};
+      for (const card of player.devCards) {
+        if (!groups[card.type]) groups[card.type] = { total: 0, playable: 0 };
+        groups[card.type]!.total++;
+        if (card.purchasedOnTurn < state.globalTurnNumber) groups[card.type]!.playable++;
+      }
+      for (const [type, { total, playable }] of Object.entries(groups)) {
+        const isVP = type === 'victory_point';
+        const chipCls = isVP ? 'vp' : playable > 0 ? 'playable' : 'new-card';
+        const chip = el('span', `dev-card-chip ${chipCls}`);
+        chip.textContent = `${DEV_CARD_CHIP_NAMES[type] ?? type}${total > 1 ? ` ×${total}` : ''}`;
+        chip.title = isVP ? 'VP カード（常時効果）'
+          : playable > 0 ? '使用可能（PRE_ROLLに使用）'
+          : '今ターン購入（次ターンから使用可）';
+        devPanel.appendChild(chip);
+      }
+    } else {
+      // 他プレイヤー: 枚数のみ（種類・VPカード枚数は非表示）
+      const chip = el('span', 'dev-card-chip hidden');
+      chip.textContent = `🃏 ×${player.devCards.length}`;
+      devPanel.appendChild(chip);
+    }
+    div.appendChild(devPanel);
+  }
+
+  return div;
+}

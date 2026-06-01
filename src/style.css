@@ -1,0 +1,1019 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #1a3a5c;
+  font-family: 'Segoe UI', sans-serif;
+  color: #fff;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+h1 {
+  margin: 16px 0 8px;
+  font-size: 1.6rem;
+  letter-spacing: 0.1em;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px;
+  width: 100%;
+}
+
+#board {
+  display: block;
+  filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+}
+
+/* ---- タイル ---- */
+.hex-tile {
+  stroke: #5a3a1a;
+  stroke-width: 2;
+  cursor: default;
+  transition: filter 0.15s;
+}
+.hex-tile:hover { filter: brightness(1.15); }
+
+.hex-tile.forest   { fill: #2d6a2d; }
+.hex-tile.field    { fill: #c8a830; }
+.hex-tile.pasture  { fill: #6dbf4a; }
+.hex-tile.hill     { fill: #b85c2a; }
+.hex-tile.mountain { fill: #888888; }
+.hex-tile.desert   { fill: #d4b870; }
+
+/* ---- 数字トークン ---- */
+.token-circle {
+  fill: #f5e8c0;
+  stroke: #8b6914;
+  stroke-width: 1.5;
+}
+.token-number {
+  font-size: 15px;
+  font-weight: bold;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: #2a1a00;
+  pointer-events: none;
+}
+.token-number.red { fill: #cc2200; }
+.token-dots {
+  font-size: 8px;
+  text-anchor: middle;
+  dominant-baseline: auto;
+  fill: #666;
+  pointer-events: none;
+}
+.token-dots.red { fill: #cc2200; }
+
+/* ---- 強盗 ---- */
+.robber {
+  fill: #111;
+  stroke: #fff;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+/* ---- 港 ---- */
+.harbor-line {
+  stroke-dasharray: 5 3;
+  opacity: 0.95;
+}
+.harbor-label {
+  font-size: 11px;
+  font-weight: bold;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  letter-spacing: -0.3px;
+}
+/* 港頂点マーカー */
+.harbor-dot {
+  fill: rgba(255,255,255,0.6);
+  stroke: none;
+  pointer-events: none;
+}
+
+/* ---- 頂点（開拓地/都市の建設候補点） ---- */
+.vertex-dot {
+  fill: rgba(255,255,255,0.25);
+  stroke: rgba(255,255,255,0.6);
+  stroke-width: 1;
+  cursor: pointer;
+  transition: r 0.1s, fill 0.1s;
+}
+.vertex-dot:hover {
+  fill: rgba(255,255,255,0.7);
+  r: 7;
+}
+
+/* ---- 辺（道の建設候補） ---- */
+.edge-line {
+  stroke: rgba(255,255,255,0.2);
+  stroke-width: 6;
+  stroke-linecap: round;
+  cursor: pointer;
+  transition: stroke 0.1s;
+}
+.edge-line:hover { stroke: rgba(255,255,255,0.55); }
+
+/* ---- 有効配置ハイライト ---- */
+.vertex-dot.valid {
+  fill: rgba(80, 255, 140, 0.75);
+  stroke: #00ff88;
+  stroke-width: 2;
+  cursor: pointer;
+  animation: pulse-vertex 1.2s ease-in-out infinite;
+}
+.vertex-dot.valid:hover {
+  fill: rgba(80, 255, 140, 1);
+}
+@keyframes pulse-vertex {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+.edge-line.valid {
+  stroke: rgba(80, 255, 140, 0.75);
+  stroke-width: 8;
+  cursor: pointer;
+  animation: pulse-edge 1.2s ease-in-out infinite;
+}
+.edge-line.valid:hover {
+  stroke: rgba(80, 255, 140, 1);
+}
+@keyframes pulse-edge {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+.hex-tile.valid-robber {
+  cursor: pointer;
+  filter: brightness(1.35);
+  stroke: #ffdd44;
+  stroke-width: 3;
+}
+.hex-tile.valid-robber:hover {
+  filter: brightness(1.6);
+}
+
+/* ---- UI レイアウト ---- */
+#ui {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding-bottom: 28px;
+  width: 100%;
+  max-width: 900px;
+}
+
+/* ---- 手番パネル ---- */
+.turn-panel {
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 14px 20px;
+  min-width: 280px;
+  max-width: 420px;
+  flex: 1;
+}
+
+.turn-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.color-dot {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.55);
+  flex-shrink: 0;
+}
+
+.turn-player-name {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.turn-vp {
+  margin-left: auto;
+  color: #ffd700;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.turn-phase-text {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.75);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.dice-result {
+  font-size: 1.15rem;
+  color: #ffd700;
+  font-weight: bold;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+/* ---- アクションボタン ---- */
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.action-btn {
+  padding: 6px 13px;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: bold;
+  transition: background 0.12s, box-shadow 0.12s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: #4a90d9;
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { background: #5ba8f5; }
+
+.btn-build {
+  background: #2e6630;
+  color: #d0ffd0;
+}
+.btn-build:hover:not(:disabled) { background: #3d8a40; }
+
+.btn-active {
+  background: #7aee40;
+  color: #1a3300;
+  box-shadow: 0 0 8px #7aee4088;
+}
+.btn-active:hover:not(:disabled) { background: #90ff55; }
+
+.btn-end {
+  background: #6a4020;
+  color: #ffe0b0;
+}
+.btn-end:hover:not(:disabled) { background: #8a5828; }
+
+.btn-disabled {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.32);
+  cursor: not-allowed;
+}
+
+/* ---- プレイヤーパネル群 ---- */
+.player-panels {
+  display: flex;
+  gap: 8px;
+  flex: 2;
+  min-width: 0;     /* flex子要素が収縮できるように */
+  align-items: stretch;
+}
+
+.player-panel {
+  background: rgba(0,0,0,0.42);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 10px 10px;
+  flex: 1;
+  min-width: 0;     /* 内容幅より小さくなれる */
+  font-size: 0.83rem;
+  overflow: hidden;
+}
+
+@media (max-width: 700px) {
+  .player-panels { flex-wrap: wrap; }
+  .player-panel  { flex: 1 1 45%; }
+}
+.player-panel.active {
+  border-width: 2px;
+}
+.player-panel h3 {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.92rem;
+  margin-bottom: 7px;
+  border-bottom: 1px solid rgba(255,255,255,0.18);
+  padding-bottom: 5px;
+}
+.panel-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.panel-name {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+  line-height: 1.3;
+}
+.panel-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+.panel-vp {
+  color: #ffd700;
+  font-size: 0.85rem;
+}
+
+/* ---- リソース ---- */
+.resource-row {
+  display: flex;
+  gap: 5px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.res-cell {
+  font-size: 0.82rem;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+  padding: 2px 5px;
+  min-width: 28px;
+  text-align: center;
+}
+
+.dev-count {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.7);
+  margin-top: 4px;
+}
+
+/* ---- F-04: 資源カードスタイル ---- */
+.res-card-row {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin: 5px 0 1px;
+}
+.res-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 5px;
+  border-radius: 5px;
+  min-width: 32px;
+  border: 1px solid rgba(255,255,255,0.12);
+  transition: opacity 0.15s;
+}
+.res-card.zero {
+  opacity: 0.22;
+  border-color: transparent;
+}
+.res-wood  { background: rgba(45,  106,  45, 0.45); }
+.res-brick { background: rgba(184,  92,  42, 0.45); }
+.res-wool  { background: rgba(109, 191,  74, 0.35); }
+.res-grain { background: rgba(200, 168,  48, 0.45); }
+.res-ore   { background: rgba(136, 136, 136, 0.50); }
+.res-card-emoji { font-size: 1.0rem; line-height: 1.2; }
+.res-card-count { font-size: 0.92rem; font-weight: bold; line-height: 1; }
+.hand-total {
+  font-size: 0.67rem;
+  color: rgba(255,255,255,0.38);
+  text-align: right;
+  margin-bottom: 3px;
+}
+
+/* ---- F-05: 交易ダイアログ ---- */
+.trade-offer-box {
+  background: rgba(255,255,255,0.07);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  margin: 4px 0;
+}
+.trade-arrow { color: #ffd700; margin: 0 4px; }
+.trade-response-btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+/* ---- F-06: 発展カードUI ---- */
+.dev-card-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.dev-card-chip {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: default;
+}
+.dev-card-chip.playable {
+  background: rgba(120, 230, 80, 0.28);
+  color: #9fe060;
+  border: 1px solid rgba(120,230,80,0.35);
+}
+.dev-card-chip.new-card {
+  background: rgba(255, 225, 80, 0.14);
+  color: rgba(255,225,80,0.6);
+  border: 1px solid rgba(255,225,80,0.22);
+}
+.dev-card-chip.vp {
+  background: rgba(255, 215, 0, 0.22);
+  color: #ffd700;
+  border: 1px solid rgba(255,215,0,0.28);
+}
+.dev-card-chip.hidden {
+  background: rgba(255,255,255,0.09);
+  color: rgba(255,255,255,0.45);
+}
+
+/* ---- F-07: VP 内訳・スコアボード ---- */
+.rank-badge {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.4);
+  margin-left: 4px;
+}
+.rank-badge.rank-1 { color: #ffd700; font-size: 0.85rem; }
+
+.vp-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.vp-item {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.45);
+  cursor: default;
+}
+.vp-item.bonus { color: #ffd700; }
+
+/* ---- モーダルパネル（捨て・交易・発展カード選択） ---- */
+.modal-panel {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #ffd700;
+  margin-bottom: 4px;
+}
+
+.modal-section-label {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 4px;
+}
+
+.modal-res-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal-res-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.modal-res-info {
+  font-size: 0.82rem;
+  min-width: 90px;
+  text-align: center;
+}
+
+/* ---- 小さいボタン（+/−） ---- */
+.btn-small {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: bold;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  transition: background 0.1s;
+  min-width: 26px;
+}
+.btn-small:hover:not(:disabled) { background: rgba(255, 255, 255, 0.35); }
+.btn-small:disabled {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.25);
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   ゲーム内ナビゲーションバー
+   ============================================================ */
+
+#game-nav {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 8px 0 4px;
+  flex-wrap: wrap;
+}
+
+.btn-nav {
+  padding: 6px 18px;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.4);
+  color: rgba(255,255,255,0.8);
+  font-size: 0.83rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+}
+.btn-nav:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
+
+.btn-nav-primary {
+  background: linear-gradient(135deg, #4a90d9, #2a6db0);
+  border-color: transparent;
+  color: #fff;
+}
+.btn-nav-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-nav-bgm {
+  font-size: 0.78rem;
+  padding: 6px 12px;
+}
+
+.bgm-volume {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.25);
+  outline: none;
+  cursor: pointer;
+  align-self: center;
+}
+.bgm-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #4a90d9;
+  cursor: pointer;
+}
+
+/* ============================================================
+   ホーム画面
+   ============================================================ */
+
+.home-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  padding: 24px 16px;
+}
+
+.home-title {
+  font-size: 2.8rem;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+  text-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  margin-bottom: 32px;
+}
+
+.home-card {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  padding: 28px 36px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+/* ---- タブ ---- */
+.home-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.home-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255,255,255,0.55);
+  font-size: 0.92rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.home-tab.active {
+  background: #4a90d9;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(74,144,217,0.4);
+}
+
+.home-tab:not(.active):hover {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.85);
+}
+
+/* ---- フォームフィールド ---- */
+.home-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.home-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.home-label {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.65);
+  font-weight: bold;
+  letter-spacing: 0.04em;
+}
+
+.home-input {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.96rem;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.home-input:focus {
+  border-color: #4a90d9;
+  background: rgba(255,255,255,0.14);
+}
+
+/* ---- ラジオグループ ---- */
+.home-radio-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.home-radio-option {
+  position: relative;
+}
+
+.home-radio-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.home-radio-option label {
+  display: block;
+  padding: 7px 18px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  white-space: nowrap;
+}
+
+.home-radio-option input[type="radio"]:checked + label {
+  background: #4a90d9;
+  border-color: #4a90d9;
+  color: #fff;
+  font-weight: bold;
+}
+
+.home-radio-option label:hover {
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
+}
+
+/* ---- 開始ボタン ---- */
+.home-start-btn {
+  margin-top: 8px;
+  padding: 13px 0;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4a90d9, #2a6db0);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: bold;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 16px rgba(74,144,217,0.35);
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+.home-start-btn:hover {
+  filter: brightness(1.12);
+  box-shadow: 0 6px 20px rgba(74,144,217,0.5);
+}
+
+/* ---- オンライン対戦スタブ ---- */
+.home-online-btns {
+  display: flex;
+  gap: 12px;
+}
+
+.home-online-btn {
+  flex: 1;
+  padding: 12px 0;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.65);
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.13s;
+}
+.home-online-btn:hover {
+  background: rgba(255,255,255,0.13);
+  color: #fff;
+}
+
+.home-coming-soon {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.38);
+  line-height: 1.6;
+}
+
+.home-coming-soon-msg {
+  display: none;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: rgba(255,200,50,0.12);
+  border: 1px solid rgba(255,200,50,0.25);
+  border-radius: 8px;
+  color: #ffd700;
+  font-size: 0.83rem;
+  text-align: center;
+}
+
+/* ---- 交易相手選択 ---- */
+.trade-target-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.trade-target-btn {
+  padding: 4px 10px;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.7);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.trade-target-btn.selected {
+  background: rgba(74,144,217,0.4);
+  border-color: #4a90d9;
+  color: #fff;
+  font-weight: bold;
+}
+.trade-target-btn:hover { filter: brightness(1.2); }
+
+/* ---- リソース獲得アニメーション: 起点 → パネルへ飛ぶ ---- */
+@keyframes resFlyTo {
+  0%   { opacity: 0;   transform: translate(-50%,-50%) scale(0.5); }
+  15%  { opacity: 1;   transform: translate(-50%,-50%) scale(1.2); }
+  85%  { opacity: 0.9; transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.9); }
+  100% { opacity: 0;   transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.6); }
+}
+.res-fly {
+  position: fixed;
+  font-size: 1.4rem;
+  pointer-events: none;
+  z-index: 9999;
+  --tx: 0px;
+  --ty: 0px;
+  filter: drop-shadow(0 0 4px rgba(255,255,200,0.8));
+}
+.res-fly.fly-in {
+  animation: resFlyTo 0.75s cubic-bezier(0.25,0.8,0.5,1) forwards;
+}
+
+/* ---- ターンパネル: プレイヤー名折り返し抑制 ---- */
+.player-panel h3 .turn-player-name,
+.player-panel .turn-player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80px;
+}
+
+/* ---- サウンドテストパネル ---- */
+.sound-test-panel {
+  margin-top: 14px;
+  width: 100%;
+  max-width: 640px;
+}
+.sound-test-title {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.75);
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  list-style: none;
+  user-select: none;
+}
+.sound-test-title:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.sound-test-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 8px 6px;
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.7);
+}
+.sound-test-se-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px 10px;
+}
+.st-btn {
+  padding: 4px 12px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.85);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.st-btn:hover { background: rgba(255,255,255,0.18); }
+.st-slider {
+  -webkit-appearance: none;
+  width: 70px; height: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.2);
+  cursor: pointer;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.st-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: #4a90d9;
+}
+.st-se-btn {
+  padding: 5px 11px;
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.8);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.st-se-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.st-se-btn:active { background: rgba(74,144,217,0.4); }
+
+/* ---- CPU交易提案UI ---- */
+.cpu-trade-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  padding: 3px 0;
+}
+.cpu-trade-lbl {
+  color: rgba(255,255,255,0.65);
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+.trade-lack-msg {
+  font-size: 0.78rem;
+  color: #ff8060;
+  margin: 4px 0;
+}
+
+/* ---- 交易ログバー ---- */
+.game-log-bar {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.55);
+  padding: 4px 8px;
+  margin: 0 0 6px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  border-left: 3px solid rgba(255,255,255,0.15);
+}
+
+/* ---- ホーム: プレイヤー順 指定UI ---- */
+.home-order-spec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.home-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.home-order-slot {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.6);
+  min-width: 48px;
+}
+.home-order-select {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.35);
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+/* ---- ゲーム中: 手番順バー ---- */
+.turn-order-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 2px;
+  font-size: 0.72rem;
+}
+.turn-order-label {
+  color: rgba(255,255,255,0.45);
+  margin-right: 4px;
+}
+.turn-order-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.6);
+}
+.turn-order-chip.current {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  font-weight: bold;
+}
+.turn-order-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.turn-order-sep {
+  color: rgba(255,255,255,0.3);
+}
+

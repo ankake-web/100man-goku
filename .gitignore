@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Editor / OS
+.DS_Store
+*.log
+
+# Claude Code local/plugin settings (machine-specific, not shared)
+.claude/
+
+# Compiled test artifacts (sources are TypeScript in tests/)
+tests/*.js
