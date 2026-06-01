@@ -19,6 +19,7 @@ import { attachBoardEvents } from './renderer/events';
 import type { BuildMode } from './renderer/events';
 import { chooseAction } from './engine/ai';
 import type { AiOpts } from './engine/ai';
+import { buildActionLog, MAX_LOG_ENTRIES, RES_EMOJI } from './engine/log';
 
 // ============================================================
 // ホーム画面設定
@@ -978,10 +979,6 @@ function scheduleAiTurn(): void {
   }
 }
 
-const RES_EMOJI: Record<ResourceType, string> = {
-  wood:'🌲', brick:'🧱', wool:'🐑', grain:'🌾', ore:'⛰',
-};
-
 /**
  * 資源獲得アニメーション
  * origin: 画面座標（起点タイル中心など）。省略時はボードの中央。
@@ -1143,22 +1140,10 @@ function dispatch(action: Action): void {
       cpuPlayerTradeOfferedThisTurn = false;
     }
 
-    // CPU起案交易のログ追記
-    if (action.type === 'CONFIRM_TRADE') {
-      const trade = prevState.pendingTrade;
-      if (trade && prevState.players[trade.initiatorId]?.type === 'ai') {
-        const cpuName = prevState.players[trade.initiatorId]?.name ?? trade.initiatorId;
-        const msg = `${cpuName} とあなたの交易が成立`;
-        state = { ...state, log: [...state.log, { turn: state.globalTurnNumber, playerId: trade.initiatorId, type: 'TRADE_PLAYER' as const, message: msg }] };
-      }
-    }
-    if (action.type === 'CANCEL_TRADE') {
-      const trade = prevState.pendingTrade;
-      if (trade && prevState.players[trade.initiatorId]?.type === 'ai' && trade.state === 'TRADE_RESPONSE') {
-        const cpuName = prevState.players[trade.initiatorId]?.name ?? trade.initiatorId;
-        const msg = `あなたは ${cpuName} の交易提案を拒否`;
-        state = { ...state, log: [...state.log, { turn: state.globalTurnNumber, playerId: trade.initiatorId, type: 'TRADE_PLAYER' as const, message: msg }] };
-      }
+    // ログ追記（公開情報のみ）。直近 MAX_LOG_ENTRIES 件に制限。
+    const newLogs = buildActionLog(prevState, action, state);
+    if (newLogs.length > 0) {
+      state = { ...state, log: [...state.log, ...newLogs].slice(-MAX_LOG_ENTRIES) };
     }
 
     if (RESET_UIPHASE_ACTIONS.has(action.type)) {

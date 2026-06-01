@@ -16,6 +16,14 @@ const NUMBER_PROB: Record<number, number> = {
   8: 5, 9: 4, 10: 3, 11: 2, 12: 1,
 };
 
+// CPU→人間 交易提案を「試みる」確率（建設不能ターンに1回だけ判定）。
+// 実際に提案が出るのは findCpuTradeOpportunity が機会を返したときのみ。
+// テンポ悪化を避けるため控えめに設定。弱CPUは提案しない（0扱い）。
+const CPU_TRADE_OFFER_CHANCE = {
+  normal: 0.22,
+  strong: 0.28,
+} as const;
+
 // ============================================================
 // ユーティリティ
 // ============================================================
@@ -354,8 +362,8 @@ function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade
     }
   }
 
-  // バンク交易より先に人間への交易提案を試みる
-  if (!skipPlayerTrade && Math.random() < 0.45) {
+  // バンク交易より先に人間への交易提案を試みる（テンポ重視で控えめな頻度）
+  if (!skipPlayerTrade && Math.random() < CPU_TRADE_OFFER_CHANCE.normal) {
     const opp = findCpuTradeOpportunity(state, pid);
     if (opp) {
       const giveHand: Partial<ResourceHand> = { [opp.give]: 1 };
@@ -393,8 +401,8 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
     return { type: 'BUILD_SETTLEMENT', vertexId: best };
   }
 
-  // 3. 人間への交易提案（バンク交易より優先）
-  if (!skipPlayerTrade && Math.random() < 0.5) {
+  // 3. 人間への交易提案（バンク交易より優先・テンポ重視で控えめ）
+  if (!skipPlayerTrade && Math.random() < CPU_TRADE_OFFER_CHANCE.strong) {
     const opp = findCpuTradeOpportunity(state, pid);
     if (opp) {
       const giveHand: Partial<ResourceHand> = { [opp.give]: 1 };

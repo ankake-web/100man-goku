@@ -942,16 +942,42 @@ h1 {
   margin: 4px 0;
 }
 
-/* ---- 交易ログバー ---- */
-.game-log-bar {
-  font-size: 0.78rem;
-  color: rgba(255,255,255,0.55);
-  padding: 4px 8px;
+/* ---- ログ履歴パネル ---- */
+.game-log-panel {
   margin: 0 0 6px;
-  background: rgba(255,255,255,0.05);
+  background: rgba(0,0,0,0.25);
   border-radius: 6px;
   border-left: 3px solid rgba(255,255,255,0.15);
 }
+.game-log-summary {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.6);
+  padding: 5px 8px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.game-log-summary:hover { color: #fff; }
+.game-log-list {
+  max-height: 130px;
+  overflow-y: auto;
+  padding: 2px 8px 6px;
+}
+.game-log-row {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.6);
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.game-log-row.log-victory   { color: #ffd700; font-weight: bold; }
+.game-log-row.log-bonus_change { color: #7ac0ff; }
+.game-log-row.log-trade_player { color: #9be37a; }
+.game-log-row.log-robber    { color: #ff9b7a; }
+.game-log-row.log-resource_gain { color: rgba(255,255,255,0.75); }
 
 /* ---- ホーム: プレイヤー順 指定UI ---- */
 .home-order-spec {

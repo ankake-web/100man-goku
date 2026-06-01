@@ -33,6 +33,9 @@ const PLAYER_COLORS: Record<string, string> = {
   player4: '#f0a020',
 };
 
+// ログ履歴パネルの開閉状態（再描画をまたいで保持）
+let logPanelOpen = true;
+
 const RESOURCE_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
 };
@@ -66,23 +69,44 @@ function phaseText(state: GameState): string {
     const w = state.players[state.winner ?? ''];
     return w ? `🎉 ゲーム終了！${w.name} の勝利！` : 'ゲーム終了！';
   }
-  if (state.phase === 'SETUP_FORWARD') {
+
+  // 現在手番のプレイヤーが CPU かどうかで文言を切り替える
+  // （CPU手番中は人間向けの「クリックしてください」を出さない）
+  const currentPid = state.playerOrder[state.currentPlayerIndex] ?? '';
+  const current = state.players[currentPid];
+  const isCpuTurn = current?.type === 'ai';
+  const cpuName = current?.name ?? 'CPU';
+
+  if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
+    const half = state.phase === 'SETUP_FORWARD' ? '前半' : '後半';
+    if (isCpuTurn) return `セットアップ${half}：${cpuName} が配置中…`;
     return state.setupSubPhase === 'PLACE_SETTLEMENT'
-      ? 'セットアップ前半：開拓地を置く場所をクリック'
-      : 'セットアップ前半：道を置く辺をクリック';
+      ? `セットアップ${half}：開拓地を置く場所をクリック`
+      : `セットアップ${half}：道を置く辺をクリック`;
   }
-  if (state.phase === 'SETUP_BACKWARD') {
-    return state.setupSubPhase === 'PLACE_SETTLEMENT'
-      ? 'セットアップ後半：開拓地を置く場所をクリック'
-      : 'セットアップ後半：道を置く辺をクリック';
-  }
+
   switch (state.turnPhase) {
-    case 'PRE_ROLL':    return 'ダイスを振ってください（または発展カードを使用）';
-    case 'ROBBER':      return '強盗：移動先のタイルをクリック';
-    case 'DISCARD':     return '手札8枚以上：半数を捨ててください';
-    case 'TRADE_BUILD': return '交易・建設フェーズ';
-    case 'END':         return 'ターン終了処理中';
-    default:            return '';
+    case 'PRE_ROLL':
+      return isCpuTurn ? `${cpuName} の手番…` : 'ダイスを振ってください（または発展カードを使用）';
+    case 'ROBBER':
+      return isCpuTurn ? `${cpuName} が盗賊を移動中…` : '強盗：移動先のタイルをクリック';
+    case 'DISCARD': {
+      // 捨て札は手番者とは限らない（手札8枚以上の全員が対象）。
+      // 実際に今捨てるべきプレイヤーを特定して文言を出し分ける。
+      const discardPid = state.playerOrder.find(p => {
+        const h = state.players[p]!.hand;
+        return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
+      });
+      const dp = discardPid ? state.players[discardPid] : null;
+      if (dp?.type === 'ai') return `${dp.name} が手札を捨てています…`;
+      return '手札8枚以上：半数を捨ててください';
+    }
+    case 'TRADE_BUILD':
+      return isCpuTurn ? `${cpuName} の交易・建設…` : '交易・建設フェーズ';
+    case 'END':
+      return 'ターン終了処理中';
+    default:
+      return '';
   }
 }
 
@@ -937,12 +961,22 @@ export function renderUI(
 
   container.appendChild(turnPanel);
 
-  // 直近の交易ログを表示（最新1件、TRADE_PLAYER のみ）
-  const lastTradeLog = [...state.log].reverse().find(e => e.type === 'TRADE_PLAYER');
-  if (lastTradeLog) {
-    const logEl = el('div', 'game-log-bar');
-    logEl.textContent = lastTradeLog.message;
-    container.appendChild(logEl);
+  // ログ履歴パネル（折りたたみ可能・最新が上）。公開情報のみ（生成側で秘匿済み）。
+  if (state.log.length > 0) {
+    const logPanel = el('details', 'game-log-panel');
+    logPanel.open = logPanelOpen;
+    logPanel.addEventListener('toggle', () => { logPanelOpen = logPanel.open; });
+    const sum = el('summary', 'game-log-summary');
+    sum.textContent = '📜 ログ履歴';
+    logPanel.appendChild(sum);
+    const list = el('div', 'game-log-list');
+    for (const e of [...state.log].slice(-15).reverse()) {
+      const row = el('div', `game-log-row log-${e.type.toLowerCase()}`);
+      row.textContent = e.message;
+      list.appendChild(row);
+    }
+    logPanel.appendChild(list);
+    container.appendChild(logPanel);
   }
 
   const allPanels = el('div', 'player-panels');
