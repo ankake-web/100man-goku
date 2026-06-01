@@ -32,6 +32,12 @@ h1 {
 
 #board {
   display: block;
+  /* viewBox="0 0 800 700" と合わせて狭幅で縮小。width属性が優先幅、
+     max-width:100% で画面に収め、height:auto で縦横比を維持する。
+     クリック判定は座標計算ではなくデリゲーション（closest('[data-*]')）なので
+     縮小しても判定は壊れない。 */
+  max-width: 100%;
+  height: auto;
   filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
 }
 
