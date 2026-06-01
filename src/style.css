@@ -944,6 +944,13 @@ h1 {
 
 /* ---- ログ履歴パネル ---- */
 .game-log-panel {
+  /* #ui は flex-wrap 行。ログは常に自分の行で全幅にし、
+     turn-panel / player-panels と横並びで詰め込まれて崩れるのを防ぐ。
+     min-width:0 は nowrap な行があっても収縮できるようにする（ellipsis を効かせる）。 */
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   margin: 0 0 6px;
   background: rgba(0,0,0,0.25);
   border-radius: 6px;

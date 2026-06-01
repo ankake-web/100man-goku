@@ -3,7 +3,7 @@
 // ============================================================
 
 import './style.css';
-import type { GameState, Action, PlayerId, AiDifficulty, ResourceType } from './types';
+import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import { buildBoardGeometry } from './engine/board';
 import { createRandomBoard, resolvePlayerOrder } from './engine/setup';
 import type { PlayerOrderMode } from './engine/setup';
@@ -592,6 +592,23 @@ let gameGeneration = 0;
 // このターンにCPUがプレイヤー間交易を提案済みか（連続提案防止）
 let cpuPlayerTradeOfferedThisTurn = false;
 
+// 直近に実際に出た「CPU交易提案」のシグネチャ（1件だけ保持）。
+// 完全一致する次のCPU提案だけを抑制する（ターンをまたいでも有効）。
+// 人間→CPU提案・銀行交易には影響しない（CPU起案のみ記録）。
+let lastCpuOfferSignature: string | null = null;
+
+/**
+ * CPU交易提案のシグネチャ（cpuPid + give内訳 + receive内訳）。
+ * キー順に依存しないよう資源をソートして直列化する。
+ */
+function cpuOfferSignature(cpuPid: string, offer: TradeOffer): string {
+  const ser = (h: Partial<ResourceHand>): string =>
+    RESOURCE_TYPES.filter(r => (h[r] ?? 0) > 0)
+      .map(r => `${r}:${h[r]}`)
+      .join(',');
+  return `${cpuPid}|give=${ser(offer.give)}|recv=${ser(offer.receive)}`;
+}
+
 // ============================================================
 // 再描画
 // ============================================================
@@ -973,7 +990,12 @@ function scheduleAiTurn(): void {
     const aiOpts: AiOpts = { skipPlayerTrade: cpuPlayerTradeOfferedThisTurn };
     setTimeout(() => {
       if (gen !== gameGeneration) return;
-      const action = chooseAction(state, pid, aiOpts);
+      let action = chooseAction(state, pid, aiOpts);
+      // 直近と完全一致するCPU交易提案は抑制し、交易抜きで選び直す。
+      if (action?.type === 'OFFER_TRADE'
+          && cpuOfferSignature(pid, action.offer) === lastCpuOfferSignature) {
+        action = chooseAction(state, pid, { ...aiOpts, skipPlayerTrade: true });
+      }
       if (action) dispatch(action);
     }, aiDelayMs());
   }
@@ -1128,11 +1150,12 @@ function dispatch(action: Action): void {
       buildMode = 'road';
     }
 
-    // CPUがプレイヤー間交易を提案した場合：連続提案フラグをセット
+    // CPUがプレイヤー間交易を提案した場合：連続提案フラグ＋シグネチャを記録
     if (action.type === 'OFFER_TRADE') {
       const initPid = prevState.playerOrder[prevState.currentPlayerIndex]!;
       if (prevState.players[initPid]?.type === 'ai') {
         cpuPlayerTradeOfferedThisTurn = true;
+        lastCpuOfferSignature = cpuOfferSignature(initPid, action.offer);
       }
     }
     // ターン終了時：連続提案フラグをリセット
@@ -1194,6 +1217,8 @@ function startGame(cfg: HomeConfig): void {
   state = initGameState(cfg);
   buildMode = 'idle';
   uiPhase = { type: 'idle' };
+  cpuPlayerTradeOfferedThisTurn = false;
+  lastCpuOfferSignature = null;
 
   // 画面切り替え
   homeDiv.style.display = 'none';
