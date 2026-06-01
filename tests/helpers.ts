@@ -16,7 +16,6 @@ export function makePlayer(id: PlayerId, partial: Partial<Player> = {}): Player 
     name: id,
     color: 'red',
     type: 'human',
-    aiDifficulty: undefined,
     hand: makeHand(),
     devCards: [],
     remainingRoads: 15,

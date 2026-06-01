@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { applyAction, buildDevDeck } from '../src/engine/game';
 import { makeHand, BUILD_COSTS, LARGEST_ARMY_MIN } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
-import type { GameState, EdgeId, VertexId, DevCard } from '../src/types';
+import type { GameState, EdgeId, VertexId, DevCard, PlayerId } from '../src/types';
 
 // ============================================================
 // テストユーティリティ

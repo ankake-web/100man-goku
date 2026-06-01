@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --project tsconfig.src.json",
+    "typecheck:test": "tsc --project tsconfig.test.json --noEmit"
   },
   "devDependencies": {
     "playwright": "^1.60.0",

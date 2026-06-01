@@ -1,14 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "lib": ["ES2020", "DOM"],
-    "skipLibCheck": true,
-    "noEmit": true
-  },
+  // アプリ本体（src のみ）の型チェック。
+  //   npx tsc --project tsconfig.src.json
+  // ベース設定を継承し、対象を src に限定する。
+  "extends": "./tsconfig.json",
   "include": ["src"]
 }

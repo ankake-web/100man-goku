@@ -65,7 +65,7 @@ describe('buildActionLog: 秘匿仕様', () => {
     const next = prev;
     const entries = buildActionLog(prev, {
       type: 'MOVE_ROBBER',
-      tileId: Object.keys(prev.tiles)[0],
+      tileId: Object.keys(prev.tiles)[0]!,
       stealFromPlayerId: 'player2',
     }, next);
 
@@ -82,7 +82,7 @@ describe('buildActionLog: 秘匿仕様', () => {
     const next = prev;
     const entries = buildActionLog(prev, {
       type: 'MOVE_ROBBER',
-      tileId: Object.keys(prev.tiles)[0],
+      tileId: Object.keys(prev.tiles)[0]!,
       stealFromPlayerId: 'player2',
     }, next);
     expectNoResourceEmoji(joinMessages(entries));
@@ -150,7 +150,7 @@ describe('buildActionLog: 秘匿仕様', () => {
       phase: 'GAME_OVER',
       winner: 'player1',
     };
-    const entries = buildActionLog(prev, { type: 'BUILD_CITY', vertexId: Object.keys(prev.vertices)[0] }, next);
+    const entries = buildActionLog(prev, { type: 'BUILD_CITY', vertexId: Object.keys(prev.vertices)[0]! }, next);
     const victory = entries.find(e => e.type === 'VICTORY');
     expect(victory).toBeDefined();
     const text = victory!.message;

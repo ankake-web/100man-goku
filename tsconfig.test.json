@@ -1,0 +1,7 @@
+{
+  // テストも含めた型チェック（src + tests）。
+  //   npx tsc --project tsconfig.test.json --noEmit
+  // ベースには rootDir を持たせていないため tests を含めても TS6059 は出ない。
+  "extends": "./tsconfig.json",
+  "include": ["src", "tests"]
+}

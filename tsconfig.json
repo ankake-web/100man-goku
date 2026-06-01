@@ -1,4 +1,10 @@
 {
+  // ベース設定（共有コンパイラオプション）。
+  // 役割:
+  //   - 全 tsconfig（src / test）の継承元。
+  //   - bare `tsc`（build スクリプトの型チェックゲート）が使う設定。
+  //     実際のビルド出力は vite が担当するため noEmit。
+  // tests を include に含めない（rootDir 由来の TS6059 を避ける）。
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
@@ -7,9 +13,8 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "lib": ["ES2020", "DOM"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmit": true
   },
-  "include": ["src", "tests"]
+  "include": ["src"]
 }
