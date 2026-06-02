@@ -140,21 +140,22 @@ function renderTile(
     g.appendChild(dots);
   }
 
-  // 強盗コマ
+  // 強盗コマ（どろぼう風アイコン）
   if (tile.hasRobber) {
-    const r = svgEl('circle');
-    r.classList.add('robber');
-    setAttrs(r, { cx, cy, r: 11 });
-    g.appendChild(r);
-
-    const label = svgEl('text');
-    setAttrs(label, {
-      x: cx, y: cy,
-      'font-size': 13, 'text-anchor': 'middle', 'dominant-baseline': 'central',
-      fill: '#fff', 'pointer-events': 'none',
+    const rg = svgEl('g');
+    rg.classList.add('robber');
+    const bg = svgEl('circle');
+    setAttrs(bg, { cx, cy, r: 15, fill: 'rgba(18,18,24,0.88)', stroke: '#000', 'stroke-width': 1.5 });
+    rg.appendChild(bg);
+    const icon = svgEl('text');
+    setAttrs(icon, {
+      x: cx, y: cy + 1,
+      'font-size': 20, 'text-anchor': 'middle', 'dominant-baseline': 'central',
+      'pointer-events': 'none',
     });
-    label.textContent = '盗';
-    g.appendChild(label);
+    icon.textContent = '🦹';
+    rg.appendChild(icon);
+    g.appendChild(rg);
   }
 
   return g;
@@ -231,7 +232,7 @@ function renderEdges(
   const g = svgEl('g');
   const roadColor: Record<string, string> = {
     player1: '#e03030', player2: '#3060e0',
-    player3: '#f0f0f0', player4: '#f0a020',
+    player3: '#a855f7', player4: '#f0a020',
   };
 
   for (const edge of Object.values(state.edges)) {
@@ -279,7 +280,7 @@ function renderVertices(
   const g = svgEl('g');
   const buildingColor: Record<string, string> = {
     player1: '#e03030', player2: '#3060e0',
-    player3: '#f0f0f0', player4: '#f0a020',
+    player3: '#a855f7', player4: '#f0a020',
   };
 
   for (const vertex of Object.values(state.vertices)) {
@@ -370,7 +371,10 @@ export function renderBoard(
   }
   svgEl_.appendChild(tileGroup);
 
-  // --- 港 ---
+  // --- 辺（道）。港ラベルより先に描いて、港表示を道より前面にする ---
+  svgEl_.appendChild(renderEdges(state, ox, oy, opts));
+
+  // --- 港（道より後＝前面に描画して、2:1/3:1 や資源アイコンを読めるようにする） ---
   const harborGroup = svgEl('g');
   harborGroup.setAttribute('class', 'harbors');
   for (const harbor of state.harbors) {
@@ -378,9 +382,6 @@ export function renderBoard(
   }
   svgEl_.appendChild(harborGroup);
 
-  // --- 辺 ---
-  svgEl_.appendChild(renderEdges(state, ox, oy, opts));
-
-  // --- 頂点 ---
+  // --- 頂点（建物。最前面） ---
   svgEl_.appendChild(renderVertices(state, ox, oy, opts));
 }

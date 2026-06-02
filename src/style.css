@@ -530,6 +530,30 @@ h1 {
 }
 .vp-item.bonus { color: #ffd700; }
 
+/* ---- パネル内 称号現在値＋残コマ数 ---- */
+.panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font-size: 0.66rem;
+  color: rgba(255,255,255,0.5);
+}
+.panel-meta-item.held { color: #ffd700; font-weight: bold; }
+.panel-meta-sep { color: rgba(255,255,255,0.25); }
+
+/* ---- ターンパネル: 称号状況＋発展山札 ---- */
+.turn-titles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.6);
+}
+.turn-title-item { white-space: nowrap; }
+
 /* ---- モーダルパネル（捨て・交易・発展カード選択） ---- */
 .modal-panel {
   background: rgba(0, 0, 0, 0.7);
@@ -977,20 +1001,49 @@ h1 {
   animation: resFlyTo 1.3s cubic-bezier(0.25,0.8,0.5,1) forwards;
 }
 
+/* ---- 盗賊の移動演出（スライド＋着地ハイライト） ---- */
+.robber-fly {
+  position: fixed;
+  font-size: 28px;
+  line-height: 1;
+  z-index: 60;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 4px 5px rgba(0,0,0,0.6));
+  transition: transform 0.52s cubic-bezier(0.34, 0.2, 0.2, 1);
+}
+.robber-fly.go {
+  transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty)));
+}
+/* スライド中は盤面の静的コマを隠す（二重表示防止） */
+.robber-sliding .robber { opacity: 0; }
+/* 着地ハイライト（光るパルス。SVGなので transform は使わず filter で表現） */
+.robber-landed { animation: robberLand 0.65s ease-out; }
+@keyframes robberLand {
+  0%   { filter: drop-shadow(0 0 0 rgba(255,220,80,0)); }
+  35%  { filter: drop-shadow(0 0 13px rgba(255,220,80,1)); }
+  100% { filter: drop-shadow(0 0 0 rgba(255,220,80,0)); }
+}
+
 /* ---- ダイスのロール演出（擬似3D: 転がる→減速→確定） ---- */
+/* 盤面エリア全体を覆って中央配置（幅が変わっても常に中央） */
 .dice-roll-overlay {
   position: absolute;
-  top: 44%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   z-index: 50;
   pointer-events: none;
   perspective: 700px;            /* 立体的に見せる */
+}
+.dice-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
 }
 .dice-die {
   width: 76px;
@@ -1028,14 +1081,14 @@ h1 {
     inset 0 3px 5px rgba(255,255,255,0.95);
 }
 .dice-sum {
-  flex-basis: 100%;
   text-align: center;
-  font-size: 1.7rem;
+  font-size: 1.8rem;
   font-weight: bold;
   color: #ffd700;
   text-shadow: 0 2px 8px rgba(0,0,0,0.9);
-  animation: dicePop 0.4s ease-out;
+  min-height: 1.9rem;   /* 確定前から高さを確保し中央がガタつかない */
 }
+.dice-sum.show { animation: dicePop 0.45s cubic-bezier(0.2,1.5,0.5,1); }
 @keyframes diceTumble {
   0%   { transform: rotateZ(0)      rotateX(0)     scale(1.18); }
   25%  { transform: rotateZ(230deg) rotateX(20deg) scale(1.12); }

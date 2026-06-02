@@ -4,7 +4,8 @@
 
 import type { GameState, Action, PlayerId, ResourceType, Player, ResourceHand } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
-import { calcVP, calcPublicVP } from '../engine/scoring';
+import { calcVP, calcPublicVP, calcLongestRoad } from '../engine/scoring';
+import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
 import type { BuildMode } from './events';
@@ -29,7 +30,7 @@ export type UIPhase =
 const PLAYER_COLORS: Record<string, string> = {
   player1: '#e03030',
   player2: '#3060e0',
-  player3: '#f0f0f0',
+  player3: '#a855f7',
   player4: '#f0a020',
 };
 
@@ -977,6 +978,21 @@ export function renderUI(
     turnPanel.appendChild(diceEl);
   }
 
+  // 称号状況（保持者名＋現在値）＋発展カード山札残数（すべて公開情報）
+  const titles = el('div', 'turn-titles');
+  const lrHolder = state.longestRoadHolder ? state.players[state.longestRoadHolder] : null;
+  const laHolder = state.largestArmyHolder ? state.players[state.largestArmyHolder] : null;
+  const t1 = el('span', 'turn-title-item');
+  t1.textContent = lrHolder
+    ? `🛤最長 ${lrHolder.name}(${calcLongestRoad(state, state.longestRoadHolder as PlayerId)})`
+    : '🛤最長 未獲得';
+  const t2 = el('span', 'turn-title-item');
+  t2.textContent = laHolder ? `⚔最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : '⚔最大騎士 未獲得';
+  const t3 = el('span', 'turn-title-item');
+  t3.textContent = `🃏山札 ${state.devDeck.length}`;
+  titles.append(t1, t2, t3);
+  turnPanel.appendChild(titles);
+
   const btns = buildActionButtons(
     state, player, pid, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
   );
@@ -1121,6 +1137,30 @@ function buildPlayerPanel(
     }
     div.appendChild(vpRow);
   }
+
+  // 称号の現在値＋残コマ数（公開情報。未使用発展カードや手札内訳は出さない）
+  const meta = el('div', 'panel-meta');
+  const lrLen = calcLongestRoad(state, pId);
+  const lrItem = el('span', `panel-meta-item${player.hasLongestRoad ? ' held' : ''}`);
+  lrItem.textContent = `🛤${lrLen}`;
+  lrItem.title = player.hasLongestRoad
+    ? `最長交易路 保持中（${lrLen}本）`
+    : `最長道路 ${lrLen}本（獲得は${LONGEST_ROAD_MIN}本以上）`;
+  meta.appendChild(lrItem);
+  const knItem = el('span', `panel-meta-item${player.hasLargestArmy ? ' held' : ''}`);
+  knItem.textContent = `⚔${player.knightsPlayed}`;
+  knItem.title = player.hasLargestArmy
+    ? `最大騎士力 保持中（騎士${player.knightsPlayed}回）`
+    : `騎士使用 ${player.knightsPlayed}回（獲得は${LARGEST_ARMY_MIN}回以上）`;
+  meta.appendChild(knItem);
+  const sep = el('span', 'panel-meta-sep');
+  sep.textContent = '·';
+  meta.appendChild(sep);
+  const pieces = el('span', 'panel-meta-item');
+  pieces.textContent = `道${player.remainingRoads} 家${player.remainingSettlements} 都${player.remainingCities}`;
+  pieces.title = '残り 道 / 開拓地 / 都市';
+  meta.appendChild(pieces);
+  div.appendChild(meta);
 
   // 資源手札UI
   const handTotal = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);

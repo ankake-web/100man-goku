@@ -40,7 +40,7 @@ interface HomeConfig {
 }
 
 const PLAYER_IDS: PlayerId[]   = ['player1', 'player2', 'player3', 'player4'];
-const PLAYER_COLORS            = ['red', 'blue', 'white', 'orange'] as const;
+const PLAYER_COLORS            = ['red', 'blue', 'purple', 'orange'] as const;
 const CPU_NAMES                = ['CPU α', 'CPU β', 'CPU γ'];
 
 // ============================================================
@@ -598,6 +598,11 @@ let diceAnimating = false;
 // 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
 let gameMenuOpen = false;
 
+// 人間向け: 他プレイヤーからの交易提案を自動拒否する設定（既定OFF）
+let autoRejectTrades = false;
+// 人間ターゲットの交易応答タイマー（自動拒否・20秒タイムアウト用）
+let humanTradeTimer: ReturnType<typeof setTimeout> | null = null;
+
 // 直近に実際に出た「CPU交易提案」のシグネチャ（1件だけ保持）。
 // 完全一致する次のCPU提案だけを抑制する（ターンをまたいでも有効）。
 // 人間→CPU提案・銀行交易には影響しない（CPU起案のみ記録）。
@@ -740,6 +745,18 @@ function updateGameNav(): void {
     seBtn.textContent = _seEnabled ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   });
   dd.appendChild(seBtn);
+
+  // 交易の自動拒否（人間向け。ONなら他プレイヤーからの提案を自動で拒否）
+  const autoRejBtn = document.createElement('button');
+  autoRejBtn.className = 'game-menu-btn';
+  autoRejBtn.textContent = autoRejectTrades ? '🚫 交易を自動拒否 ON' : '🤝 交易を自動拒否 OFF';
+  autoRejBtn.addEventListener('click', () => {
+    autoRejectTrades = !autoRejectTrades;
+    autoRejBtn.textContent = autoRejectTrades ? '🚫 交易を自動拒否 ON' : '🤝 交易を自動拒否 OFF';
+    // ONにした瞬間、保留中の提案があれば適用する
+    if (autoRejectTrades) scheduleHumanTradeAutoReject();
+  });
+  dd.appendChild(autoRejBtn);
 
   // ホームに戻る（誤クリック防止のため最下部・確認ダイアログ付き。ゲーム中のみ）
   if (state.phase !== 'GAME_OVER') {
@@ -1016,6 +1033,44 @@ function scheduleCpuInitiatorConfirm(): void {
   }, aiDelayMs());
 }
 
+/**
+ * 人間がターゲットの交易提案に対する自動拒否/タイムアウト拒否をスケジュールする。
+ * - 自動拒否ON → すぐ拒否
+ * - 提案された資源を持っていない → 約2秒で拒否
+ * - 20秒無反応 → タイムアウト拒否
+ * 人間が手動で応答すれば（responses に入る）発火しない。
+ */
+function scheduleHumanTradeAutoReject(): void {
+  if (humanTradeTimer) { clearTimeout(humanTradeTimer); humanTradeTimer = null; }
+  if (!state) return;
+  const trade = state.pendingTrade;
+  if (!trade || trade.state !== 'TRADE_OFFER') return;
+  if (state.players[trade.initiatorId]?.type !== 'ai') return; // CPU起案のみ対象
+  const humanTarget = trade.targetPlayerIds.find(
+    t => !trade.responses[t] && state.players[t]?.type === 'human',
+  );
+  if (!humanTarget) return;
+
+  const human = state.players[humanTarget]!;
+  const canAfford = RESOURCE_TYPES.every(r => (human.hand[r] ?? 0) >= (trade.offer.receive[r] ?? 0));
+
+  let delay: number; let timeout = false;
+  if (autoRejectTrades) delay = 600;            // 自動拒否設定ON
+  else if (!canAfford) delay = 2000;            // 渡せる資源がない → 短時間で拒否
+  else { delay = 20000; timeout = true; }       // 20秒無反応で自動拒否
+
+  const gen = gameGeneration;
+  humanTradeTimer = setTimeout(() => {
+    humanTradeTimer = null;
+    if (gen !== gameGeneration) return;
+    const cur = state.pendingTrade;
+    if (!cur || cur.state !== 'TRADE_OFFER') return;
+    if (cur.responses[humanTarget]) return;     // 既に人間が応答済み
+    appendSystemLog(timeout ? '⏱ 20秒経過のため自動拒否' : `🤝 ${human.name} は交換を拒否`);
+    dispatch({ type: 'RESPOND_TRADE', response: { playerId: humanTarget, status: 'REJECT' } });
+  }, delay);
+}
+
 function scheduleAiTurn(): void {
   if (!state || state.phase === 'GAME_OVER') return;
 
@@ -1205,6 +1260,45 @@ function spawnResFlyer(
   }, delay);
 }
 
+/** タイルの画面中心座標を返す */
+function tileScreenCenter(tileId: string): { x: number; y: number } | null {
+  const boardEl = document.getElementById('board');
+  const g = boardEl?.querySelector(`[data-tile-id="${tileId}"]`) as SVGGElement | null;
+  if (!g) return null;
+  const r = g.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+/** 盗賊が移動元→移動先へスライドする演出。移動先で着地ハイライト。 */
+function animateRobberMove(fromTileId: string, toTileId: string): void {
+  if (lastConfig?.cpuSpeed === 'instant' || fromTileId === toTileId) return;
+  const from = tileScreenCenter(fromTileId);
+  const to = tileScreenCenter(toTileId);
+  if (!from || !to) return;
+  const boardArea = document.getElementById('board-area');
+  boardArea?.classList.add('robber-sliding'); // スライド中は静的コマを隠す（二重表示防止）
+
+  const fly = document.createElement('div');
+  fly.className = 'robber-fly';
+  fly.textContent = '🦹';
+  fly.style.left = `${from.x}px`;
+  fly.style.top  = `${from.y}px`;
+  fly.style.setProperty('--tx', `${to.x - from.x}px`);
+  fly.style.setProperty('--ty', `${to.y - from.y}px`);
+  document.body.appendChild(fly);
+  requestAnimationFrame(() => requestAnimationFrame(() => fly.classList.add('go')));
+
+  setTimeout(() => {
+    fly.remove();
+    boardArea?.classList.remove('robber-sliding');
+    const robber = document.querySelector('#board .robber') as SVGGElement | null;
+    if (robber) {
+      robber.classList.add('robber-landed');
+      setTimeout(() => robber.classList.remove('robber-landed'), 650);
+    }
+  }, 560);
+}
+
 /** サイコロ産出タイルの画面座標を取得する */
 function getProducingTileOrigin(diceTotal: number): { x: number; y: number } | null {
   const boardEl = document.getElementById('board') as SVGSVGElement | null;
@@ -1313,10 +1407,14 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
   const host = document.getElementById('board-area') ?? document.body;
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
+  const row = document.createElement('div'); row.className = 'dice-row';
   const die1 = document.createElement('div'); die1.className = 'dice-die rolling';
   const die2 = document.createElement('div'); die2.className = 'dice-die rolling d2';
   setDiePips(die1, d1); setDiePips(die2, d2);
-  overlay.append(die1, die2);
+  row.append(die1, die2);
+  // 合計表示スロットを先に確保（確定時に中央がガタつかない）
+  const sum = document.createElement('div'); sum.className = 'dice-sum';
+  overlay.append(row, sum);
   host.appendChild(overlay);
   // 減速して回転が止まるトランブル演出（CSSアニメーション）
   die1.style.animationDuration = `${dur}ms`;
@@ -1341,10 +1439,8 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
     setDiePips(die1, d1); setDiePips(die2, d2);
     die1.classList.remove('rolling'); die2.classList.remove('rolling', 'd2');
     die1.classList.add('settled');    die2.classList.add('settled');
-    const sum = document.createElement('div');
-    sum.className = 'dice-sum';
     sum.textContent = `${d1} + ${d2} = ${d1 + d2}`;
-    overlay.appendChild(sum);
+    sum.classList.add('show');
     setTimeout(() => { overlay.remove(); onDone(); }, 480);
   };
   cycle();
@@ -1381,6 +1477,11 @@ function dispatch(action: Action): void {
     // リソース獲得アニメーション用のダイス目（ROLL_DICE のみ）
     const diceTotal = action.type === 'ROLL_DICE' && state.lastDiceRoll
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
+      : undefined;
+
+    // 盗賊スライド演出用に、移動前の盗賊タイルを控える
+    const robberFromTile = action.type === 'MOVE_ROBBER'
+      ? Object.values(prevState.tiles).find(t => t.hasRobber)?.id
       : undefined;
 
     if (
@@ -1433,11 +1534,15 @@ function dispatch(action: Action): void {
     const finish = (): void => {
       diceAnimating = false;
       redraw();
+      if (action.type === 'MOVE_ROBBER' && robberFromTile) {
+        animateRobberMove(robberFromTile, action.tileId);
+      }
       triggerResourceAnimation(prevState, state, action.type, diceTotal);
       // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
       if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
         scheduleCpuTradeResponse();
         scheduleCpuInitiatorConfirm();
+        scheduleHumanTradeAutoReject(); // 人間ターゲットの自動拒否/タイムアウト
       } else {
         scheduleAiTurn();
       }

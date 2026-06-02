@@ -79,7 +79,7 @@ export interface Harbor {
 // ---- プレイヤー ----
 
 export type PlayerId = 'player1' | 'player2' | 'player3' | 'player4';
-export type PlayerColor = 'red' | 'blue' | 'white' | 'orange';
+export type PlayerColor = 'red' | 'blue' | 'purple' | 'orange';
 export type PlayerType = 'human' | 'ai';
 export type AiDifficulty = 'weak' | 'normal' | 'strong';
 
