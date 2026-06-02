@@ -359,6 +359,25 @@ describe('respondTrade', () => {
     expect(r2.pendingTrade?.responses['player3']?.status).toBe('REJECT');
   });
 
+  it('複数ターゲット: 全員応答するまで TRADE_OFFER のまま、揃ったら TRADE_RESPONSE', () => {
+    const base = makeGameState({
+      players: {
+        player1: makePlayer('player1'),
+        player2: makePlayer('player2'),
+        player3: makePlayer('player3'),
+      },
+      playerOrder: ['player1', 'player2', 'player3'],
+    });
+    const withOffer = offerTrade(base, 'player1',
+      { give: { wood: 1 }, receive: { brick: 1 } }, ['player2', 'player3']);
+    // 1人目の応答後はまだ収集中
+    const r1 = respondTrade(withOffer, { playerId: 'player2', status: 'ACCEPT' });
+    expect(r1.pendingTrade?.state).toBe('TRADE_OFFER');
+    // 2人目（最後）の応答で確定
+    const r2 = respondTrade(r1, { playerId: 'player3', status: 'REJECT' });
+    expect(r2.pendingTrade?.state).toBe('TRADE_RESPONSE');
+  });
+
   it('returns unchanged state if no pendingTrade', () => {
     const state = makeGameState();
     const next = respondTrade(state, { playerId: 'player2', status: 'ACCEPT' });

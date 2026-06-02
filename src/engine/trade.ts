@@ -126,20 +126,22 @@ export function offerTrade(
 
 /**
  * 対象プレイヤーが交易オファーに応答する。
- * 応答は responses に追加され、state が TRADE_RESPONSE へ更新される。
+ * 応答は responses に追加される。全ターゲットが応答するまでは TRADE_OFFER の
+ * まま（残りのCPUの応答を集め続ける）、全員応答したら TRADE_RESPONSE へ遷移する。
  */
 export function respondTrade(state: GameState, response: PlayerResponse): GameState {
   if (!state.pendingTrade) return state;
 
+  const trade = state.pendingTrade;
+  const responses = { ...trade.responses, [response.playerId]: response };
+  const allResponded = trade.targetPlayerIds.every(t => responses[t] != null);
+
   return {
     ...state,
     pendingTrade: {
-      ...state.pendingTrade,
-      state: 'TRADE_RESPONSE',
-      responses: {
-        ...state.pendingTrade.responses,
-        [response.playerId]: response,
-      },
+      ...trade,
+      state: allResponded ? 'TRADE_RESPONSE' : 'TRADE_OFFER',
+      responses,
     },
   };
 }

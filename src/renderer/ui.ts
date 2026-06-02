@@ -36,6 +36,9 @@ const PLAYER_COLORS: Record<string, string> = {
 // ログ履歴パネルの開閉状態（再描画をまたいで保持）
 let logPanelOpen = true;
 
+// この幅以上でプレイヤーパネルを盤面の四隅に配置する（未満は盤面下に縦並び）
+const CORNER_LAYOUT_MIN_WIDTH = 1200;
+
 const RESOURCE_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
 };
@@ -663,25 +666,17 @@ function buildPendingTradeUI(
     div.appendChild(offerBox);
   }
 
-  // TRADE_OFFER: 応答待ち
-  if (trade.state === 'TRADE_OFFER') {
-    const pending = trade.targetPlayerIds.find(t => !trade.responses[t]);
-    if (pending) {
-      const targetPlayer = state.players[pending];
-      if (targetPlayer?.type === 'ai') {
-        // CPU は自動応答するので待機表示のみ
-        const label = el('div', 'modal-section-label');
-        label.textContent = `⏳ ${targetPlayer.name} が検討中...`;
-        div.appendChild(label);
-      } else {
-        // 人間が応答する場合
-        const humanPlayer = targetPlayer;
+  if (isCpuInitiated) {
+    // ---- CPU起案：人間（=ターゲット）が承認/拒否する ----
+    if (trade.state === 'TRADE_OFFER') {
+      const pending = trade.targetPlayerIds.find(t => !trade.responses[t]);
+      const humanPlayer = pending ? state.players[pending] : null;
+      if (pending && humanPlayer?.type === 'human') {
         const canAfford = RESOURCE_TYPES.every(r =>
-          (humanPlayer?.hand[r] ?? 0) >= (trade.offer.receive[r] ?? 0),
+          (humanPlayer.hand[r] ?? 0) >= (trade.offer.receive[r] ?? 0),
         );
         if (!canAfford) {
-          // 不足している資源を明示
-          const lacking = RESOURCE_TYPES.filter(r => (humanPlayer?.hand[r] ?? 0) < (trade.offer.receive[r] ?? 0));
+          const lacking = RESOURCE_TYPES.filter(r => (humanPlayer.hand[r] ?? 0) < (trade.offer.receive[r] ?? 0));
           const lackMsg = el('div', 'trade-lack-msg');
           lackMsg.textContent = `⚠ ${lacking.map(r => RESOURCE_NAMES[r]).join('・')}が不足しています`;
           div.appendChild(lackMsg);
@@ -695,48 +690,56 @@ function buildPendingTradeUI(
         ));
         div.appendChild(btnRow);
       }
-    }
-
-    // 人間が起案した場合のみキャンセルボタンを表示
-    if (!isCpuInitiated && pid === trade.initiatorId) {
-      div.appendChild(makeBtn('↩ 取り消す', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
-    }
-  }
-
-  // TRADE_RESPONSE: 結果表示・確定（人間起案のみ手動確認）
-  if (trade.state === 'TRADE_RESPONSE') {
-    for (const [tPid, resp] of Object.entries(trade.responses)) {
-      const pName = state.players[tPid]?.name ?? tPid;
-      const statusEl = el('div', 'modal-section-label');
-      if (resp.status === 'ACCEPT') {
-        statusEl.textContent = `✓ ${pName} が承諾`;
-        statusEl.style.color = '#7aee40';
-      } else {
-        statusEl.textContent = `✗ ${pName} が拒否`;
-        statusEl.style.color = '#ff6060';
-      }
-      div.appendChild(statusEl);
-    }
-
-    if (!isCpuInitiated) {
-      // 人間起案: 手動で取引相手を選んで確定
-      const acceptors = trade.targetPlayerIds.filter(t => trade.responses[t]?.status === 'ACCEPT') as PlayerId[];
-      if (acceptors.length > 0 && pid === trade.initiatorId) {
-        const row = el('div', 'trade-response-btns');
-        for (const a of acceptors) {
-          row.appendChild(makeBtn(
-            `${state.players[a]?.name} と取引実行`, 'btn-primary', false,
-            () => dispatch({ type: 'CONFIRM_TRADE', responderId: a }),
-          ));
-        }
-        div.appendChild(row);
-      }
-      div.appendChild(makeBtn('↩ キャンセル', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
-    } else {
-      // CPU起案: 自動処理中の待機表示
+    } else if (trade.state === 'TRADE_RESPONSE') {
       const waiting = el('div', 'modal-section-label');
       waiting.textContent = '⏳ 処理中...';
       div.appendChild(waiting);
+    }
+  } else if (trade.state === 'TRADE_OFFER' || trade.state === 'TRADE_RESPONSE') {
+    // ---- 人間起案：提案先(複数CPU)の応答状況を常に一覧表示（公開情報のみ） ----
+    const statusLbl = el('div', 'modal-section-label');
+    statusLbl.textContent = '提案先の返答：';
+    div.appendChild(statusLbl);
+    const list = el('div', 'trade-status-list');
+    for (const t of trade.targetPlayerIds) {
+      const name = state.players[t]?.name ?? t;
+      const resp = trade.responses[t];
+      const row = el('div', 'trade-status-row');
+      if (!resp) { row.textContent = `⏳ ${name}：検討中…`; row.style.color = 'rgba(255,255,255,0.7)'; }
+      else if (resp.status === 'ACCEPT') { row.textContent = `✓ ${name}：OK`; row.style.color = '#7aee40'; }
+      else { row.textContent = `✗ ${name}：拒否`; row.style.color = '#ff6060'; }
+      list.appendChild(row);
+    }
+    div.appendChild(list);
+
+    if (pid === trade.initiatorId) {
+      if (trade.state === 'TRADE_OFFER') {
+        // まだ収集中 → 取り消し可
+        div.appendChild(makeBtn('↩ 取り消す', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+      } else {
+        // 全員応答済み → 成立相手の選択 or 不成立
+        const acceptors = trade.targetPlayerIds.filter(t => trade.responses[t]?.status === 'ACCEPT') as PlayerId[];
+        if (acceptors.length === 0) {
+          const msg = el('div', 'modal-section-label');
+          msg.textContent = '😕 全員が拒否（不成立）';
+          msg.style.color = '#ff8060';
+          div.appendChild(msg);
+          div.appendChild(makeBtn('閉じる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+        } else {
+          const lbl = el('div', 'modal-section-label');
+          lbl.textContent = acceptors.length === 1 ? '✅ 成立させる：' : '✅ 成立相手を1人選択：';
+          div.appendChild(lbl);
+          const row = el('div', 'trade-response-btns');
+          for (const a of acceptors) {
+            row.appendChild(makeBtn(
+              `${state.players[a]?.name} と成立`, 'btn-primary', false,
+              () => dispatch({ type: 'CONFIRM_TRADE', responderId: a }),
+            ));
+          }
+          div.appendChild(row);
+          div.appendChild(makeBtn('↩ やめる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+        }
+      }
     }
   }
 
@@ -1005,7 +1008,20 @@ export function renderUI(
     if (!p) continue;
     allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid));
   }
-  container.appendChild(allPanels);
+
+  // 広い画面では盤面ラッパー(#board-area)の四隅にパネルを配置し、
+  // 資源エフェクトの行き先と盤面の対応を強める。
+  // 狭い画面では従来どおり #ui 内（盤面下の縦並び/折返し）にフォールバック。
+  const boardArea = document.getElementById('board-area');
+  // 前回描画でラッパーに残ったパネルを除去（モード切替・再描画対策）
+  boardArea?.querySelector('.player-panels')?.remove();
+  if (boardArea && window.innerWidth >= CORNER_LAYOUT_MIN_WIDTH) {
+    boardArea.classList.add('corner-panels');
+    boardArea.appendChild(allPanels);
+  } else {
+    boardArea?.classList.remove('corner-panels');
+    container.appendChild(allPanels);
+  }
 }
 
 // ============================================================

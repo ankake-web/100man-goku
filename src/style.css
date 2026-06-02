@@ -30,6 +30,15 @@ h1 {
   width: 100%;
 }
 
+/* 盤面ラッパー: 四隅パネルの位置決めコンテキスト。狭幅では盤面を中央寄せするだけ。 */
+#board-area {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 #board {
   display: block;
   /* viewBox="0 0 800 700" と合わせて狭幅で縮小。width属性が優先幅、
@@ -39,6 +48,30 @@ h1 {
   max-width: 100%;
   height: auto;
   filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+}
+
+/* ---- 広い画面: プレイヤーパネルを盤面の四隅に配置 ---- */
+@media (min-width: 1200px) {
+  #board-area.corner-panels {
+    max-width: 1180px;   /* 盤面800 + 左右パネル(約190)×2 */
+    margin: 0 auto;
+  }
+  #board-area.corner-panels > #board { max-width: 800px; }
+  /* .player-panels の箱を消し、各パネルを #board-area 基準で個別配置 */
+  #board-area.corner-panels > .player-panels { display: contents; }
+  #board-area.corner-panels .player-panel {
+    position: absolute;
+    width: 186px;
+    margin: 0;
+    z-index: 6;
+    max-height: 47%;
+    overflow-y: auto;
+  }
+  /* P1=左下 / CPU α(player2)=右上 / CPU β(player3)=右下 / CPU γ(player4)=左上 */
+  #board-area.corner-panels .player-panel[data-pid="player4"] { top: 0;    left: 0;  }
+  #board-area.corner-panels .player-panel[data-pid="player2"] { top: 0;    right: 0; }
+  #board-area.corner-panels .player-panel[data-pid="player1"] { bottom: 0; left: 0;  }
+  #board-area.corner-panels .player-panel[data-pid="player3"] { bottom: 0; right: 0; }
 }
 
 /* ---- タイル ---- */
@@ -413,6 +446,21 @@ h1 {
 }
 .trade-arrow { color: #ffd700; margin: 0 4px; }
 .trade-response-btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+/* ---- 交易: 提案先の返答一覧 ---- */
+.trade-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 6px;
+}
+.trade-status-row {
+  font-size: 0.82rem;
+  padding: 2px 6px;
+  border-left: 3px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.04);
+  border-radius: 4px;
+}
 
 /* ---- F-06: 発展カードUI ---- */
 .dev-card-panel {
