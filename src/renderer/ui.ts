@@ -1057,7 +1057,7 @@ function buildPlayerPanel(
   const isWinner = state.phase === 'GAME_OVER' && pId === state.winner;
   const isSelf = player.type === 'human';
 
-  const div = el('div', `player-panel${isActive ? ' active' : ''}`);
+  const div = el('div', `player-panel${isActive ? ' active' : ''}${isWinner ? ' winner-glow' : ''}`);
   div.dataset.pid = pId;  // リソースアニメーション用
   const color = PLAYER_COLORS[pId] ?? '#aaa';
   // プレイヤーカラーを反映（控えめ）：暗いベースに淡い着色＋濃い枠線。
