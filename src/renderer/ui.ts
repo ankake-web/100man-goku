@@ -797,6 +797,13 @@ function buildActionButtons(
 
   // ---- DISCARD ----
   if (state.turnPhase === 'DISCARD') {
+    // 捨て札UIは「人間が捨てる対象のとき」だけ表示する。
+    // CPUが対象の場合に出すと、CPUの手札内訳が漏れ・人間がCPU分を操作できてしまう。
+    const discardPid = state.playerOrder.find(p => {
+      const h = state.players[p]!.hand;
+      return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
+    });
+    if (!discardPid || state.players[discardPid]?.type !== 'human') return null;
     div.appendChild(buildDiscardUI(state, uiPhase, setUIPhase, dispatch));
     return div;
   }
@@ -828,6 +835,11 @@ function buildActionButtons(
     div.appendChild(buildPlayerTradeOfferUI(player, pid, state, uiPhase, setUIPhase, dispatch));
     return div;
   }
+
+  // ここから先は「現在の手番プレイヤー自身」の操作ボタン。
+  // CPUの手番ではダイス/建設/交易/ターン終了などを人間に出さない
+  // （CPUは内部ロジックで自動進行する）。
+  if (player.type !== 'human') return null;
 
   // ---- PRE_ROLL ----
   if (state.turnPhase === 'PRE_ROLL') {
