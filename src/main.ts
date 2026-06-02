@@ -592,6 +592,9 @@ let gameGeneration = 0;
 // このターンにCPUがプレイヤー間交易を提案済みか（連続提案防止）
 let cpuPlayerTradeOfferedThisTurn = false;
 
+// ダイスのロール演出中フラグ。演出中は新たなアクションを無視（多重ロール等を防止）。
+let diceAnimating = false;
+
 // 直近に実際に出た「CPU交易提案」のシグネチャ（1件だけ保持）。
 // 完全一致する次のCPU提案だけを抑制する（ターンをまたいでも有効）。
 // 人間→CPU提案・銀行交易には影響しない（CPU起案のみ記録）。
@@ -1011,8 +1014,8 @@ function scheduleAiTurn(): void {
  * origin: 画面座標（起点タイル中心など）。省略時はボードの中央。
  */
 // 1個のアイコンを起点→対象パネルへ飛ばす。
-// glyph: 表示するアイコン（人間=資源絵文字 / CPU=汎用アイコンで内訳を秘匿）。
-const RES_FLY_MS = 1150; // 現行(750)よりゆっくり。誰に入ったか追いやすく。
+const RES_FLY_MS = 1300;       // 飛行時間（ゆっくり）
+const RES_FLY_STAGGER = 300;   // アイコン1個ずつの間隔（0.3秒）
 function spawnResFlyer(
   glyph: string,
   panelEl: HTMLElement,
@@ -1075,6 +1078,12 @@ function triggerResourceAnimation(
   diceTotal?: number,
 ): void {
   if (lastConfig?.cpuSpeed === 'instant') return;
+  // 盗み取り(MOVE_ROBBER)の獲得は飛ばさない（奪った資源の種類を秘匿するため）。
+  if (actionType === 'MOVE_ROBBER') return;
+
+  // 全プレイヤー分のアイコンを、誰のものでも実資源アイコンで、1個ずつ順番に飛ばす。
+  // （ダイス産出は盤面を見れば分かる公開情報。誰に何が入ったか追えることを優先）
+  let delay = 0;
   for (const pid of newState.playerOrder) {
     const oldH = oldState.players[pid]?.hand;
     const newH = newState.players[pid]?.hand;
@@ -1088,40 +1097,73 @@ function triggerResourceAnimation(
     const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
     if (!panelEl) continue;
 
-    const isHuman = newState.players[pid]?.type === 'human';
+    // 起点座標（ダイス産出はそのタイル中心、それ以外は盤面中央）
+    const origin = (actionType === 'ROLL_DICE' && diceTotal !== undefined)
+      ? (getProducingTileOrigin(diceTotal) ?? getBoardCenter())
+      : getBoardCenter();
 
-    // 起点座標を決める
-    let origin: { x: number; y: number };
-    if (actionType === 'ROLL_DICE' && diceTotal !== undefined) {
-      origin = getProducingTileOrigin(diceTotal) ?? getBoardCenter();
-    } else {
-      origin = getBoardCenter();
-    }
-
-    // 飛ばすアイコン列を作る。
-    // 人間: 自分の情報なので資源絵文字（種類が分かる）。
-    // CPU : 内訳を漏らさないよう汎用アイコン（📦）を「枚数分」だけ飛ばす（種類は秘匿）。
+    // 実資源アイコンを枚数分（種類が分かる）。多すぎる場合は最大5個まで。
     const glyphs: string[] = [];
-    if (isHuman) {
-      for (const { r, n } of gains) {
-        for (let i = 0; i < Math.min(n, 4); i++) glyphs.push(RES_EMOJI[r]);
-      }
-    } else {
-      const total = gains.reduce((s, g) => s + g.n, 0);
-      for (let i = 0; i < Math.min(total, 4); i++) glyphs.push('📦');
+    for (const { r, n } of gains) {
+      for (let i = 0; i < Math.min(n, 5); i++) glyphs.push(RES_EMOJI[r]);
     }
 
-    let delay = 0;
     for (const glyph of glyphs) {
-      // 起点を少しランダムにバラけさせる
       const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
       spawnResFlyer(glyph, panelEl, jitter, delay);
-      delay += 140;
+      delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
     }
   }
 }
 
+// ダイスのロール演出。盤面中央で2つのサイコロがコロコロ変化し、最後に出目を確定表示する。
+// 演出時間は速度設定に応じて調整（最速は0=スキップ）。完了後に onDone を呼ぶ。
+const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+function diceRollMs(): number {
+  switch (lastConfig?.cpuSpeed) {
+    case 'instant': return 0;
+    case 'fast':    return 450;
+    case 'slow':    return 950;
+    default:        return 750; // normal
+  }
+}
+function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
+  const dur = diceRollMs();
+  if (dur <= 0 || d1 < 1 || d2 < 1) { onDone(); return; }
+
+  const host = document.getElementById('board-area') ?? document.body;
+  const overlay = document.createElement('div');
+  overlay.className = 'dice-roll-overlay';
+  const die1 = document.createElement('div'); die1.className = 'dice-die rolling';
+  const die2 = document.createElement('div'); die2.className = 'dice-die rolling';
+  die1.textContent = DICE_FACES[d1 - 1]!;
+  die2.textContent = DICE_FACES[d2 - 1]!;
+  overlay.append(die1, die2);
+  host.appendChild(overlay);
+
+  const iv = setInterval(() => {
+    die1.textContent = DICE_FACES[Math.floor(Math.random() * 6)]!;
+    die2.textContent = DICE_FACES[Math.floor(Math.random() * 6)]!;
+  }, 80);
+
+  setTimeout(() => {
+    clearInterval(iv);
+    die1.textContent = DICE_FACES[d1 - 1]!;
+    die2.textContent = DICE_FACES[d2 - 1]!;
+    die1.classList.remove('rolling'); die2.classList.remove('rolling');
+    die1.classList.add('settled');   die2.classList.add('settled');
+    const sum = document.createElement('div');
+    sum.className = 'dice-sum';
+    sum.textContent = `${d1} + ${d2} = ${d1 + d2}`;
+    overlay.appendChild(sum);
+    // 確定表示を少し見せてから片付ける
+    setTimeout(() => { overlay.remove(); onDone(); }, 600);
+  }, dur);
+}
+
 function dispatch(action: Action): void {
+  // ダイス演出中は操作を受け付けない（多重ロール・先走り操作を防止）
+  if (diceAnimating) return;
   try {
     const prevState = state;
     state = applyAction(state, action);
@@ -1147,11 +1189,10 @@ function dispatch(action: Action): void {
     }
     if (state.phase === 'GAME_OVER' && prevState.phase !== 'GAME_OVER') playSE('victory');
 
-    // リソース獲得アニメーション（ROLL_DICE の場合はダイス目を渡してタイル起点を使う）
+    // リソース獲得アニメーション用のダイス目（ROLL_DICE のみ）
     const diceTotal = action.type === 'ROLL_DICE' && state.lastDiceRoll
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
       : undefined;
-    triggerResourceAnimation(prevState, state, action.type, diceTotal);
 
     if (
       action.type === 'BUILD_ROAD' ||
@@ -1199,13 +1240,26 @@ function dispatch(action: Action): void {
       }
     }
 
-    redraw();
-    // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
-    if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
-      scheduleCpuTradeResponse();
-      scheduleCpuInitiatorConfirm();
+    // 再描画＋次の進行。ROLL_DICE はダイス演出を見せてから資源演出・進行へ。
+    const finish = (): void => {
+      diceAnimating = false;
+      redraw();
+      triggerResourceAnimation(prevState, state, action.type, diceTotal);
+      // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
+      if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
+        scheduleCpuTradeResponse();
+        scheduleCpuInitiatorConfirm();
+      } else {
+        scheduleAiTurn();
+      }
+    };
+
+    if (action.type === 'ROLL_DICE' && state.lastDiceRoll) {
+      diceAnimating = true;
+      const [d1, d2] = state.lastDiceRoll;
+      playDiceRoll(d1, d2, finish);
     } else {
-      scheduleAiTurn();
+      finish();
     }
   } catch (err) {
     console.error('applyAction error:', err);

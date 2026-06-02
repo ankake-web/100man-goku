@@ -213,7 +213,7 @@ h1 {
   justify-content: center;
   padding-bottom: 28px;
   width: 100%;
-  max-width: 900px;
+  max-width: 1000px;
 }
 
 /* ---- 手番パネル ---- */
@@ -223,8 +223,9 @@ h1 {
   border-radius: 12px;
   padding: 14px 20px;
   min-width: 280px;
-  max-width: 420px;
-  flex: 1;
+  /* 横長にして主要ボタンをスクロールなしで見せやすくする */
+  max-width: 580px;
+  flex: 1 1 460px;
 }
 
 .turn-info-row {
@@ -271,22 +272,30 @@ h1 {
 }
 
 /* ---- アクションボタン ---- */
+/* 自動折り返しグリッド: 横長パネルでは複数列、狭幅では自然に列数が減る。
+   各ボタンは等幅セルに広がり、文言は1行(nowrap)で押しやすくする。 */
 .action-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
 }
+/* セカンダリUI(交易/捨て札など)の内側コンテナや説明文は全幅で読みやすく */
+.action-buttons > .modal-panel,
+.action-buttons > .turn-phase-text { grid-column: 1 / -1; }
 
 .action-btn {
-  padding: 6px 13px;
+  padding: 9px 12px;
   border: none;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: bold;
   transition: background 0.12s, box-shadow 0.12s;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
 }
 
 .btn-primary {
@@ -895,8 +904,52 @@ h1 {
   filter: drop-shadow(0 0 4px rgba(255,255,200,0.8));
 }
 .res-fly.fly-in {
-  /* 現行より遅く（誰に資源が入ったかを追いやすくする） */
-  animation: resFlyTo 1.15s cubic-bezier(0.25,0.8,0.5,1) forwards;
+  /* ゆっくり飛ばして、誰に何が入ったか目で追えるようにする */
+  animation: resFlyTo 1.3s cubic-bezier(0.25,0.8,0.5,1) forwards;
+}
+
+/* ---- ダイスのロール演出（盤面中央でコロコロ→確定） ---- */
+.dice-roll-overlay {
+  position: absolute;
+  top: 44%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  z-index: 50;
+  pointer-events: none;
+}
+.dice-die {
+  font-size: 4.6rem;
+  line-height: 1;
+  color: #fff;
+  background: rgba(20,22,30,0.94);
+  border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 16px;
+  padding: 2px 12px 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.65);
+}
+.dice-die.rolling { animation: diceShake 0.18s linear infinite; }
+.dice-die.settled { animation: dicePop 0.32s ease-out; }
+.dice-sum {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.85);
+}
+@keyframes diceShake {
+  0%   { transform: translateY(0) rotate(-7deg); }
+  50%  { transform: translateY(-5px) rotate(7deg); }
+  100% { transform: translateY(0) rotate(-7deg); }
+}
+@keyframes dicePop {
+  0%   { transform: scale(1.45); }
+  100% { transform: scale(1); }
 }
 
 /* ---- ターンパネル: プレイヤー名折り返し抑制 ---- */
