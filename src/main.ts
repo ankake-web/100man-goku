@@ -1010,8 +1010,11 @@ function scheduleAiTurn(): void {
  * 資源獲得アニメーション
  * origin: 画面座標（起点タイル中心など）。省略時はボードの中央。
  */
+// 1個のアイコンを起点→対象パネルへ飛ばす。
+// glyph: 表示するアイコン（人間=資源絵文字 / CPU=汎用アイコンで内訳を秘匿）。
+const RES_FLY_MS = 1150; // 現行(750)よりゆっくり。誰に入ったか追いやすく。
 function spawnResFlyer(
-  r: ResourceType,
+  glyph: string,
   panelEl: HTMLElement,
   origin: { x: number; y: number },
   delay: number,
@@ -1019,19 +1022,19 @@ function spawnResFlyer(
   setTimeout(() => {
     const span = document.createElement('span');
     span.className = 'res-fly';
-    span.textContent = RES_EMOJI[r];
+    span.textContent = glyph;
     // 起点位置をセット（絶対座標）
     span.style.left = `${origin.x}px`;
     span.style.top  = `${origin.y}px`;
-    // 終点位置（プレイヤーパネル中央）をCSS変数でセット
+    // 終点位置（対象プレイヤーパネル中央）をCSS変数でセット
     const pr = panelEl.getBoundingClientRect();
     const tx = pr.left + pr.width / 2 - origin.x;
-    const ty = pr.top  + 20 - origin.y;
+    const ty = pr.top  + pr.height / 2 - origin.y;
     span.style.setProperty('--tx', `${tx}px`);
     span.style.setProperty('--ty', `${ty}px`);
     document.body.appendChild(span);
     requestAnimationFrame(() => requestAnimationFrame(() => { span.classList.add('fly-in'); }));
-    setTimeout(() => { span.remove(); playSE('resource'); }, 750);
+    setTimeout(() => { span.remove(); playSE('resource'); }, RES_FLY_MS);
   }, delay);
 }
 
@@ -1085,6 +1088,8 @@ function triggerResourceAnimation(
     const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
     if (!panelEl) continue;
 
+    const isHuman = newState.players[pid]?.type === 'human';
+
     // 起点座標を決める
     let origin: { x: number; y: number };
     if (actionType === 'ROLL_DICE' && diceTotal !== undefined) {
@@ -1093,15 +1098,25 @@ function triggerResourceAnimation(
       origin = getBoardCenter();
     }
 
-    let delay = 0;
-    for (const { r, n } of gains) {
-      const count = Math.min(n, 4);  // 多すぎる場合は最大4個
-      for (let i = 0; i < count; i++) {
-        // 起点を少しランダムにバラけさせる
-        const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-        spawnResFlyer(r, panelEl, jitter, delay);
-        delay += 110;
+    // 飛ばすアイコン列を作る。
+    // 人間: 自分の情報なので資源絵文字（種類が分かる）。
+    // CPU : 内訳を漏らさないよう汎用アイコン（📦）を「枚数分」だけ飛ばす（種類は秘匿）。
+    const glyphs: string[] = [];
+    if (isHuman) {
+      for (const { r, n } of gains) {
+        for (let i = 0; i < Math.min(n, 4); i++) glyphs.push(RES_EMOJI[r]);
       }
+    } else {
+      const total = gains.reduce((s, g) => s + g.n, 0);
+      for (let i = 0; i < Math.min(total, 4); i++) glyphs.push('📦');
+    }
+
+    let delay = 0;
+    for (const glyph of glyphs) {
+      // 起点を少しランダムにバラけさせる
+      const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
+      spawnResFlyer(glyph, panelEl, jitter, delay);
+      delay += 140;
     }
   }
 }

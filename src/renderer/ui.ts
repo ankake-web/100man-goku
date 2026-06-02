@@ -1025,9 +1025,15 @@ function buildPlayerPanel(
   const div = el('div', `player-panel${isActive ? ' active' : ''}`);
   div.dataset.pid = pId;  // リソースアニメーション用
   const color = PLAYER_COLORS[pId] ?? '#aaa';
+  // プレイヤーカラーを反映（控えめ）：暗いベースに淡い着色＋濃い枠線。
+  // 文字可読性を優先するため背景は約80%暗色で、色は淡く乗せる程度。
+  div.style.background = `linear-gradient(rgba(16,18,26,0.80), rgba(16,18,26,0.80)), ${color}`;
+  div.style.borderColor = `${color}aa`;
+  div.style.borderLeftWidth = '4px';
   if (isActive) {
+    // 現在手番は枠を濃く＋発光で明確に区別
     div.style.borderColor = color;
-    div.style.boxShadow = `0 0 10px ${color}55`;
+    div.style.boxShadow = `0 0 12px ${color}66`;
   }
 
   // 順位バッジ: 公開VPを基準にする（VP カードは非公開のため）
@@ -1037,6 +1043,7 @@ function buildPlayerPanel(
   const rankLabel = rank === 1 ? '👑' : `${rank}位`;
 
   const h3 = el('h3');
+  h3.style.borderBottomColor = `${color}88`;  // 見出し下線もプレイヤーカラー
   // 1行目: カラードット + プレイヤー名
   const nameRow = el('span', 'panel-name-row');
   const dot = el('span', 'color-dot');

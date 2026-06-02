@@ -847,7 +847,8 @@ h1 {
   filter: drop-shadow(0 0 4px rgba(255,255,200,0.8));
 }
 .res-fly.fly-in {
-  animation: resFlyTo 0.75s cubic-bezier(0.25,0.8,0.5,1) forwards;
+  /* 現行より遅く（誰に資源が入ったかを追いやすくする） */
+  animation: resFlyTo 1.15s cubic-bezier(0.25,0.8,0.5,1) forwards;
 }
 
 /* ---- ターンパネル: プレイヤー名折り返し抑制 ---- */
