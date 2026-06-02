@@ -900,7 +900,12 @@ const RESET_UIPHASE_ACTIONS = new Set([
   'OFFER_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE',
 ]);
 
-const CPU_SPEED_MS: Record<CpuSpeed, number> = { slow: 1200, normal: 500, fast: 200, instant: 30 };
+// CPU行動の待ち時間(ms)。初見でもCPUの動きを追える速度を基準に再調整。
+//  ゆっくり: 現行ゆっくり(1200)よりさらに遅く（じっくり観戦向け）
+//  普通(既定): 現行「ゆっくり」相当＝CPUの建設/交易/盗賊/捨て札を目で追える
+//  速い: 現行「普通〜速い」相当でテンポ重視
+//  最速: 動作確認用の最速
+const CPU_SPEED_MS: Record<CpuSpeed, number> = { slow: 2200, normal: 1200, fast: 350, instant: 30 };
 function aiDelayMs(): number {
   return CPU_SPEED_MS[lastConfig?.cpuSpeed ?? 'normal'];
 }

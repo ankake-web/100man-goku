@@ -587,9 +587,17 @@ function buildPlayerTradeOfferUI(
 
   const giveTotal = RESOURCE_TYPES.reduce((s, r) => s + give[r], 0);
   const recvTotal = RESOURCE_TYPES.reduce((s, r) => s + receive[r], 0);
-  const canSend = giveTotal > 0 && recvTotal > 0;
+  // 同一資源を渡しつつ受け取る交換は無意味なので送信不可にする
+  const hasOverlap = RESOURCE_TYPES.some(r => give[r] > 0 && receive[r] > 0);
+  const canSend = giveTotal > 0 && recvTotal > 0 && !hasOverlap;
 
   const canSendWithTarget = canSend && targetPids.length > 0;
+  if (hasOverlap) {
+    const warn = el('div', 'modal-section-label');
+    warn.textContent = '⚠ 同じ資源を渡して受け取ることはできません';
+    warn.style.color = '#ffb060';
+    div.appendChild(warn);
+  }
   div.appendChild(makeBtn('📤 オファー送信', canSendWithTarget ? 'btn-primary' : 'btn-disabled', !canSendWithTarget, () => {
     const giveP: Partial<ResourceHand> = {};
     const recvP: Partial<ResourceHand> = {};

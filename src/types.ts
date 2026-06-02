@@ -197,6 +197,10 @@ export interface GameState {
   // MAIN / GAME_OVER では null
   setupSubPhase: SetupSubPhase | null;
 
+  // セットアップで直前に置いた開拓地の頂点。直後の道はこの開拓地に接続せねばならない
+  // （標準ルール）。PLACE_ROAD 解決後は null に戻す。未設定時は従来の接続判定にフォールバック。
+  setupRoadAnchor?: VertexId | null;
+
   lastDiceRoll: [number, number] | null;
   // このターンにダイスを振ったか（騎士カードをダイス前に使用した場合の判別用）
   diceRolledThisTurn: boolean;

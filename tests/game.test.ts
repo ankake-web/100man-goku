@@ -925,6 +925,19 @@ describe('OFFER_TRADE エンジンバリデーション', () => {
     })).toThrow('both sides');
   });
 
+  it('同一資源の交換（give と receive が同じ品目）は不可', () => {
+    const s = makeGameState({
+      turnPhase: 'TRADE_BUILD',
+      players: {
+        player1: makePlayer('player1', { hand: makeHand({ wood: 2 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+    expect(() => applyAction(s, {
+      type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { wood: 1 } }, targetPlayerIds: ['player2'],
+    })).toThrow('same resource');
+  });
+
   it('一方的受取（give=0）は不可', () => {
     const s = makeGameState({ turnPhase: 'TRADE_BUILD' });
     expect(() => applyAction(s, {

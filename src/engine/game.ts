@@ -161,9 +161,9 @@ export function applyAction(
         next = { ...next, roadBuildingRoadsRemaining: next.roadBuildingRoadsRemaining - 1 };
       }
 
-      // SETUP フェーズのサブフェーズ進行
+      // SETUP フェーズのサブフェーズ進行（道を置いたので anchor は解除）
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
-        next = advanceSetup(next);
+        next = advanceSetup({ ...next, setupRoadAnchor: null });
       }
 
       return next;
@@ -212,7 +212,8 @@ export function applyAction(
       next = checkVictory(next, pid);
 
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
-        next = { ...next, setupSubPhase: 'PLACE_ROAD' };
+        // 直後の道はこの開拓地に接続する必要がある（標準ルール）
+        next = { ...next, setupSubPhase: 'PLACE_ROAD', setupRoadAnchor: vertexId };
       }
 
       return next;
@@ -445,6 +446,9 @@ export function applyAction(
       const recvTotal = RESOURCE_TYPES.reduce((s, r) => s + (action.offer.receive[r] ?? 0), 0);
       if (giveTotal === 0 || recvTotal === 0)
         throw new Error('OFFER_TRADE: both sides must offer at least 1 resource');
+      // 同一資源を渡しつつ受け取る交換は無意味なので禁止（give と receive の品目が重複しない）
+      if (RESOURCE_TYPES.some(r => (action.offer.give[r] ?? 0) > 0 && (action.offer.receive[r] ?? 0) > 0))
+        throw new Error('OFFER_TRADE: cannot give and receive the same resource');
       if (action.targetPlayerIds.length === 0)
         throw new Error('OFFER_TRADE: targetPlayerIds must not be empty');
       if (action.targetPlayerIds.includes(pid))

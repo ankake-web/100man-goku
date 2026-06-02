@@ -188,6 +188,40 @@ describe('canBuildRoad', () => {
     };
     expect(canBuildRoad(s, 'player1', eid0)).toBe(true);
   });
+
+  it('SETUP: setupRoadAnchor が設定されると、その開拓地に接続する道のみ有効', () => {
+    // player1 が2つの開拓地を持つ後半セットアップ状態を想定。
+    // anchor=vid0（直前に置いた開拓地）なので、vid0 隣接辺のみ有効、
+    // もう一方の開拓地(vidB)の隣接辺は無効でなければならない。
+    const vidB = Object.keys(state.vertices).find(v => {
+      if (v === vid0) return false;
+      // vid0 と辺を共有しない（隣接していない）頂点を選ぶ
+      const eAtB = state.vertices[v]!.adjacentEdgeIds[0];
+      if (!eAtB) return false;
+      return !state.edges[eAtB]!.vertexIds.includes(vid0 as VertexId);
+    })!;
+    const eidAnchor = getEdgeAtVertex(state, vid0);
+    const eidOther  = getEdgeAtVertex(state, vidB);
+
+    const s: GameState = {
+      ...state,
+      phase: 'SETUP_BACKWARD',
+      setupSubPhase: 'PLACE_ROAD',
+      setupRoadAnchor: vid0,
+      players: {
+        ...state.players,
+        player1: makePlayer('player1', { hand: makeHand() }),
+      },
+      vertices: {
+        ...state.vertices,
+        [vid0]: { ...state.vertices[vid0]!, building: { type: 'settlement', playerId: 'player1' } },
+        [vidB]: { ...state.vertices[vidB]!, building: { type: 'settlement', playerId: 'player1' } },
+      },
+    };
+
+    expect(canBuildRoad(s, 'player1', eidAnchor)).toBe(true);  // 直前の開拓地に接続 → OK
+    expect(canBuildRoad(s, 'player1', eidOther)).toBe(false);  // 別の開拓地に接続 → NG
+  });
 });
 
 describe('buildRoad', () => {

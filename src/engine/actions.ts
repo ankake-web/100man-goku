@@ -55,6 +55,12 @@ export function canBuildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeI
   const freeRoad = isSetupPhase(state) || state.roadBuildingRoadsRemaining > 0;
   if (!freeRoad && !hasEnoughResources(player.hand, BUILD_COSTS.road)) return false;
 
+  // セットアップ中は「直前に置いた開拓地」に接続する道のみ許可（標準ルール）。
+  // anchor 未設定（手組みの state 等）の場合は従来の接続判定にフォールバック。
+  if (isSetupPhase(state) && state.setupRoadAnchor) {
+    return edge.vertexIds.includes(state.setupRoadAnchor);
+  }
+
   return isEdgeConnected(edge, playerId, state.vertices, state.edges);
 }
 
