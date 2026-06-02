@@ -41,11 +41,15 @@ h1 {
 
 #board {
   display: block;
+  margin: 0 auto;
   /* viewBox="0 0 800 700" と合わせて狭幅で縮小。width属性が優先幅、
      max-width:100% で画面に収め、height:auto で縦横比を維持する。
      クリック判定は座標計算ではなくデリゲーション（closest('[data-*]')）なので
-     縮小しても判定は壊れない。 */
+     縮小しても判定は壊れない。
+     max-height で縦も抑え、操作パネルがスクロールなしで見えやすいようにする。 */
   max-width: 100%;
+  max-height: 66vh;
+  width: auto;
   height: auto;
   filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
 }
@@ -221,18 +225,18 @@ h1 {
   background: rgba(0,0,0,0.55);
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: 12px;
-  padding: 14px 20px;
+  padding: 10px 16px;
   min-width: 280px;
   /* 横長にして主要ボタンをスクロールなしで見せやすくする */
-  max-width: 580px;
-  flex: 1 1 460px;
+  max-width: 660px;
+  flex: 1 1 520px;
 }
 
 .turn-info-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .color-dot {
@@ -259,15 +263,15 @@ h1 {
 .turn-phase-text {
   font-size: 0.82rem;
   color: rgba(255,255,255,0.75);
-  margin-bottom: 8px;
-  line-height: 1.4;
+  margin-bottom: 4px;
+  line-height: 1.3;
 }
 
 .dice-result {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   color: #ffd700;
   font-weight: bold;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   letter-spacing: 0.05em;
 }
 
@@ -276,9 +280,9 @@ h1 {
    各ボタンは等幅セルに広がり、文言は1行(nowrap)で押しやすくする。 */
 .action-buttons {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 7px;
+  margin-top: 6px;
 }
 /* セカンダリUI(交易/捨て札など)の内側コンテナや説明文は全幅で読みやすく */
 .action-buttons > .modal-panel,
@@ -599,13 +603,78 @@ h1 {
    ゲーム内ナビゲーションバー
    ============================================================ */
 
+/* 補助操作は画面右上に固定配置し、メイン操作（操作パネル）を圧迫しない */
 #game-nav {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 100;
   display: flex;
-  gap: 10px;
-  justify-content: center;
-  padding: 8px 0 4px;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: flex-end;
   flex-wrap: wrap;
+  max-width: 70vw;
+  padding: 0;
 }
+
+/* ☰ メニュー（ホーム/BGM/SE/CPU速度をまとめる） */
+.game-menu-wrap { position: relative; }
+.menu-toggle {
+  padding: 7px 13px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.6);
+  color: rgba(255,255,255,0.85);
+  font-size: 0.82rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+.menu-toggle:hover { background: rgba(255,255,255,0.16); color: #fff; }
+.game-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-width: 210px;
+  background: rgba(18,20,28,0.97);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+  z-index: 101;
+}
+.game-menu-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.game-menu-label { font-size: 0.8rem; color: rgba(255,255,255,0.75); white-space: nowrap; }
+.game-menu-select {
+  flex: 1;
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 0.82rem;
+}
+.game-menu-btn {
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.85);
+  font-size: 0.82rem;
+  font-weight: bold;
+  cursor: pointer;
+  text-align: left;
+}
+.game-menu-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.game-menu-danger {
+  margin-top: 2px;
+  border-color: rgba(255,120,90,0.5);
+  color: #ffb6a0;
+  background: rgba(120,40,30,0.35);
+}
+.game-menu-danger:hover { background: rgba(150,50,40,0.55); color: #fff; }
 
 .btn-nav {
   padding: 6px 18px;
@@ -908,7 +977,7 @@ h1 {
   animation: resFlyTo 1.3s cubic-bezier(0.25,0.8,0.5,1) forwards;
 }
 
-/* ---- ダイスのロール演出（盤面中央でコロコロ→確定） ---- */
+/* ---- ダイスのロール演出（擬似3D: 転がる→減速→確定） ---- */
 .dice-roll-overlay {
   position: absolute;
   top: 44%;
@@ -918,37 +987,72 @@ h1 {
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
   z-index: 50;
   pointer-events: none;
+  perspective: 700px;            /* 立体的に見せる */
 }
 .dice-die {
-  font-size: 4.6rem;
-  line-height: 1;
-  color: #fff;
-  background: rgba(20,22,30,0.94);
-  border: 2px solid rgba(255,255,255,0.25);
+  width: 76px;
+  height: 76px;
+  box-sizing: border-box;
+  background: linear-gradient(145deg, #ffffff, #d4d7df);
   border-radius: 16px;
-  padding: 2px 12px 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.65);
+  padding: 9px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2px;
+  transform-style: preserve-3d;
+  box-shadow:
+    0 12px 22px rgba(0,0,0,0.55),
+    inset 0 3px 5px rgba(255,255,255,0.95),
+    inset 0 -5px 7px rgba(0,0,0,0.18);
 }
-.dice-die.rolling { animation: diceShake 0.18s linear infinite; }
-.dice-die.settled { animation: dicePop 0.32s ease-out; }
+.pip-cell { display: flex; align-items: center; justify-content: center; }
+.pip-cell.on::after {
+  content: '';
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4a4a4a, #0e0e0e);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.55);
+}
+.dice-die.rolling  { animation: diceTumble  1.7s ease-out forwards; }
+.dice-die.d2.rolling { animation: diceTumble2 1.7s ease-out forwards; }
+.dice-die.settled {
+  animation: dicePop 0.42s cubic-bezier(0.2,1.5,0.5,1);
+  box-shadow:
+    0 12px 22px rgba(0,0,0,0.55),
+    0 0 20px rgba(255,221,110,0.9),
+    inset 0 3px 5px rgba(255,255,255,0.95);
+}
 .dice-sum {
   flex-basis: 100%;
   text-align: center;
-  font-size: 1.6rem;
+  font-size: 1.7rem;
   font-weight: bold;
   color: #ffd700;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.85);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+  animation: dicePop 0.4s ease-out;
 }
-@keyframes diceShake {
-  0%   { transform: translateY(0) rotate(-7deg); }
-  50%  { transform: translateY(-5px) rotate(7deg); }
-  100% { transform: translateY(0) rotate(-7deg); }
+@keyframes diceTumble {
+  0%   { transform: rotateZ(0)      rotateX(0)     scale(1.18); }
+  25%  { transform: rotateZ(230deg) rotateX(20deg) scale(1.12); }
+  50%  { transform: rotateZ(450deg) rotateX(-16deg) scale(1.2); }
+  75%  { transform: rotateZ(620deg) rotateX(12deg) scale(1.07); }
+  100% { transform: rotateZ(720deg) rotateX(0)     scale(1); }
+}
+@keyframes diceTumble2 {
+  0%   { transform: rotateZ(0)       rotateY(0)     scale(1.16); }
+  25%  { transform: rotateZ(-205deg) rotateY(18deg) scale(1.2); }
+  50%  { transform: rotateZ(-430deg) rotateY(-14deg) scale(1.1); }
+  75%  { transform: rotateZ(-615deg) rotateY(10deg) scale(1.18); }
+  100% { transform: rotateZ(-720deg) rotateY(0)     scale(1); }
 }
 @keyframes dicePop {
   0%   { transform: scale(1.45); }
+  55%  { transform: scale(0.9); }
   100% { transform: scale(1); }
 }
 

@@ -82,30 +82,29 @@ function phaseText(state: GameState): string {
 
   if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
     const half = state.phase === 'SETUP_FORWARD' ? '前半' : '後半';
-    if (isCpuTurn) return `セットアップ${half}：${cpuName} が配置中…`;
+    if (isCpuTurn) return `セットアップ${half}：${cpuName} 配置中…`;
     return state.setupSubPhase === 'PLACE_SETTLEMENT'
-      ? `セットアップ${half}：開拓地を置く場所をクリック`
-      : `セットアップ${half}：道を置く辺をクリック`;
+      ? `セットアップ${half}：開拓地を置く`
+      : `セットアップ${half}：道を置く`;
   }
 
   switch (state.turnPhase) {
     case 'PRE_ROLL':
-      return isCpuTurn ? `${cpuName} の手番…` : 'ダイスを振ってください（または発展カードを使用）';
+      return isCpuTurn ? `${cpuName} の手番…` : 'ダイスを振る';
     case 'ROBBER':
-      return isCpuTurn ? `${cpuName} が盗賊を移動中…` : '強盗：移動先のタイルをクリック';
+      return isCpuTurn ? `${cpuName} が盗賊を移動中…` : '盗賊を動かすタイルをクリック';
     case 'DISCARD': {
       // 捨て札は手番者とは限らない（手札8枚以上の全員が対象）。
-      // 実際に今捨てるべきプレイヤーを特定して文言を出し分ける。
       const discardPid = state.playerOrder.find(p => {
         const h = state.players[p]!.hand;
         return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
       });
       const dp = discardPid ? state.players[discardPid] : null;
       if (dp?.type === 'ai') return `${dp.name} が手札を捨てています…`;
-      return '手札8枚以上：半数を捨ててください';
+      return '半数を捨ててください';
     }
     case 'TRADE_BUILD':
-      return isCpuTurn ? `${cpuName} の交易・建設…` : '交易・建設フェーズ';
+      return isCpuTurn ? `${cpuName} の交易・建設…` : '交易・建設';
     case 'END':
       return 'ターン終了処理中';
     default:

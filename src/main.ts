@@ -595,6 +595,9 @@ let cpuPlayerTradeOfferedThisTurn = false;
 // ダイスのロール演出中フラグ。演出中は新たなアクションを無視（多重ロール等を防止）。
 let diceAnimating = false;
 
+// 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
+let gameMenuOpen = false;
+
 // 直近に実際に出た「CPU交易提案」のシグネチャ（1件だけ保持）。
 // 完全一致する次のCPU提案だけを抑制する（ターンをまたいでも有効）。
 // 人間→CPU提案・銀行交易には影響しない（CPU起案のみ記録）。
@@ -646,72 +649,111 @@ function redraw(): void {
 // ゲームナビバー更新
 // ============================================================
 
+const CPU_SPEED_LABELS: Record<CpuSpeed, string> = {
+  slow: 'ゆっくり', normal: '普通', fast: '速い', instant: '最速',
+};
+
 function updateGameNav(): void {
   gameNav.innerHTML = '';
 
+  // ゲーム終了時のみ、主要アクション（再戦/ホーム）を見える位置に出す
   if (state.phase === 'GAME_OVER') {
-    // ゲーム終了: 再戦ボタン + ホームボタン
     if (lastConfig) {
       const rematchBtn = document.createElement('button');
       rematchBtn.className = 'btn-nav btn-nav-primary';
       rematchBtn.textContent = 'もう一度プレイ';
-      rematchBtn.addEventListener('click', () => {
-        if (lastConfig) startGame(lastConfig);
-      });
+      rematchBtn.addEventListener('click', () => { if (lastConfig) startGame(lastConfig); });
       gameNav.appendChild(rematchBtn);
     }
-
     const homeBtn = document.createElement('button');
     homeBtn.className = 'btn-nav';
     homeBtn.textContent = '設定を変えてホームへ';
     homeBtn.addEventListener('click', returnToHome);
     gameNav.appendChild(homeBtn);
-  } else {
-    // ゲーム中: ホームに戻るボタン
-    const homeBtn = document.createElement('button');
-    homeBtn.className = 'btn-nav';
-    homeBtn.textContent = 'ホームに戻る';
-    homeBtn.addEventListener('click', () => {
-      if (window.confirm('ホームに戻りますか？現在のゲームは終了します。')) {
-        returnToHome();
-      }
-    });
-    gameNav.appendChild(homeBtn);
   }
 
-  // BGM コントロール（ゲーム中 / GAME_OVER 共通）
+  // 右上の「☰ メニュー」（補助操作をまとめてメイン操作の邪魔をしない）
+  const menuBtn = document.createElement('button');
+  menuBtn.className = 'menu-toggle';
+  menuBtn.textContent = '☰ メニュー';
+  menuBtn.setAttribute('aria-label', 'メニュー');
+  const dd = document.createElement('div');
+  dd.className = 'game-menu';
+  dd.style.display = gameMenuOpen ? 'flex' : 'none';
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gameMenuOpen = !gameMenuOpen;
+    dd.style.display = gameMenuOpen ? 'flex' : 'none';
+  });
+  dd.addEventListener('click', (e) => e.stopPropagation());
+
+  // CPU 速度（ゲーム中に変更可能。次のCPU行動から反映）
+  if (lastConfig) {
+    const speedRow = document.createElement('div');
+    speedRow.className = 'game-menu-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'game-menu-label';
+    lbl.textContent = 'CPU速度';
+    const sel = document.createElement('select');
+    sel.className = 'game-menu-select';
+    (['slow', 'normal', 'fast', 'instant'] as CpuSpeed[]).forEach(sp => {
+      const opt = document.createElement('option');
+      opt.value = sp; opt.textContent = CPU_SPEED_LABELS[sp];
+      if (lastConfig!.cpuSpeed === sp) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => {
+      if (lastConfig) lastConfig = { ...lastConfig, cpuSpeed: sel.value as CpuSpeed };
+    });
+    speedRow.append(lbl, sel);
+    dd.appendChild(speedRow);
+  }
+
+  // BGM ON/OFF + 音量
+  const bgmRow = document.createElement('div');
+  bgmRow.className = 'game-menu-row';
   const bgmBtn = document.createElement('button');
-  bgmBtn.className = 'btn-nav btn-nav-bgm';
-  bgmBtn.textContent = _bgmEnabled ? '🔊 BGM' : '🔇 BGM';
-  bgmBtn.title = 'BGM ON/OFF';
+  bgmBtn.className = 'game-menu-btn';
+  bgmBtn.textContent = _bgmEnabled ? '🔊 BGM ON' : '🔇 BGM OFF';
   bgmBtn.addEventListener('click', () => {
     _bgmEnabled = !_bgmEnabled;
     if (_bgmEnabled) bgmStart(); else bgmStop();
-    bgmBtn.textContent = _bgmEnabled ? '🔊 BGM' : '🔇 BGM';
+    bgmBtn.textContent = _bgmEnabled ? '🔊 BGM ON' : '🔇 BGM OFF';
   });
-  gameNav.appendChild(bgmBtn);
-
   const volSlider = document.createElement('input');
-  volSlider.type = 'range';
-  volSlider.min = '0'; volSlider.max = '100';
+  volSlider.type = 'range'; volSlider.min = '0'; volSlider.max = '100';
   volSlider.value = String(Math.round(_bgmVolume * 100));
   volSlider.className = 'bgm-volume';
   volSlider.title = 'BGM 音量';
-  volSlider.addEventListener('input', () => {
-    bgmSetVolume(parseInt(volSlider.value) / 100);
-  });
-  gameNav.appendChild(volSlider);
+  volSlider.addEventListener('input', () => bgmSetVolume(parseInt(volSlider.value) / 100));
+  bgmRow.append(bgmBtn, volSlider);
+  dd.appendChild(bgmRow);
 
-  // SE ミュートボタン
+  // SE ON/OFF
   const seBtn = document.createElement('button');
-  seBtn.className = 'btn-nav btn-nav-bgm';
-  seBtn.textContent = _seEnabled ? '🔔 SE' : '🔕 SE';
-  seBtn.title = '効果音 ON/OFF';
+  seBtn.className = 'game-menu-btn';
+  seBtn.textContent = _seEnabled ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   seBtn.addEventListener('click', () => {
     _seEnabled = !_seEnabled;
-    seBtn.textContent = _seEnabled ? '🔔 SE' : '🔕 SE';
+    seBtn.textContent = _seEnabled ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   });
-  gameNav.appendChild(seBtn);
+  dd.appendChild(seBtn);
+
+  // ホームに戻る（誤クリック防止のため最下部・確認ダイアログ付き。ゲーム中のみ）
+  if (state.phase !== 'GAME_OVER') {
+    const homeBtn = document.createElement('button');
+    homeBtn.className = 'game-menu-btn game-menu-danger';
+    homeBtn.textContent = '🏠 ホームに戻る';
+    homeBtn.addEventListener('click', () => {
+      if (window.confirm('ホームに戻りますか？現在のゲームは終了します。')) returnToHome();
+    });
+    dd.appendChild(homeBtn);
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'game-menu-wrap';
+  wrap.append(menuBtn, dd);
+  gameNav.appendChild(wrap);
 }
 
 // ============================================================
@@ -1116,15 +1158,30 @@ function triggerResourceAnimation(
   }
 }
 
-// ダイスのロール演出。盤面中央で2つのサイコロがコロコロ変化し、最後に出目を確定表示する。
-// 演出時間は速度設定に応じて調整（最速は0=スキップ）。完了後に onDone を呼ぶ。
-const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+// ダイスのロール演出（擬似3D）。盤面中央で2つのサイコロが転がり、最初は速く→徐々に
+// 減速→最後に確定。出目はピップ（点）で描画する。完了後に onDone を呼ぶ。
+// 演出時間は速度設定に応じて調整（最速は0=スキップ）。ゲーム結果には一切影響しない。
+
+// 各目のピップ配置（3x3 グリッドのインデックス 0..8）
+const DICE_PIPS: Record<number, number[]> = {
+  1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
+};
+function setDiePips(face: HTMLElement, value: number): void {
+  face.textContent = ''; // 生成したピップ要素のみで構成（外部入力なし）
+  const on = DICE_PIPS[value] ?? [];
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('span');
+    cell.className = on.includes(i) ? 'pip-cell on' : 'pip-cell';
+    face.appendChild(cell);
+  }
+}
+// ロール演出の長さ（ms）。速度設定に連動。
 function diceRollMs(): number {
   switch (lastConfig?.cpuSpeed) {
     case 'instant': return 0;
-    case 'fast':    return 450;
-    case 'slow':    return 950;
-    default:        return 750; // normal
+    case 'fast':    return 750;
+    case 'slow':    return 2150;
+    default:        return 1700; // normal: しっかり「振っている感」を出す
   }
 }
 function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
@@ -1135,30 +1192,40 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
   const die1 = document.createElement('div'); die1.className = 'dice-die rolling';
-  const die2 = document.createElement('div'); die2.className = 'dice-die rolling';
-  die1.textContent = DICE_FACES[d1 - 1]!;
-  die2.textContent = DICE_FACES[d2 - 1]!;
+  const die2 = document.createElement('div'); die2.className = 'dice-die rolling d2';
+  setDiePips(die1, d1); setDiePips(die2, d2);
   overlay.append(die1, die2);
   host.appendChild(overlay);
+  // 減速して回転が止まるトランブル演出（CSSアニメーション）
+  die1.style.animationDuration = `${dur}ms`;
+  die2.style.animationDuration = `${dur}ms`;
 
-  const iv = setInterval(() => {
-    die1.textContent = DICE_FACES[Math.floor(Math.random() * 6)]!;
-    die2.textContent = DICE_FACES[Math.floor(Math.random() * 6)]!;
-  }, 80);
-
-  setTimeout(() => {
-    clearInterval(iv);
-    die1.textContent = DICE_FACES[d1 - 1]!;
-    die2.textContent = DICE_FACES[d2 - 1]!;
-    die1.classList.remove('rolling'); die2.classList.remove('rolling');
-    die1.classList.add('settled');   die2.classList.add('settled');
+  // 出目を切り替える間隔を徐々に伸ばして「減速して止まりそう」な溜めを作る
+  const start = Date.now();
+  let stopped = false;
+  const cycle = (): void => {
+    if (stopped) return;
+    const elapsed = Date.now() - start;
+    if (elapsed >= dur) { settle(); return; }
+    setDiePips(die1, 1 + Math.floor(Math.random() * 6));
+    setDiePips(die2, 1 + Math.floor(Math.random() * 6));
+    const p = elapsed / dur;
+    const interval = 55 + p * p * 300; // 55ms → ~355ms（後半ほどゆっくり）
+    setTimeout(cycle, interval);
+  };
+  const settle = (): void => {
+    if (stopped) return;
+    stopped = true;
+    setDiePips(die1, d1); setDiePips(die2, d2);
+    die1.classList.remove('rolling'); die2.classList.remove('rolling', 'd2');
+    die1.classList.add('settled');    die2.classList.add('settled');
     const sum = document.createElement('div');
     sum.className = 'dice-sum';
     sum.textContent = `${d1} + ${d2} = ${d1 + d2}`;
     overlay.appendChild(sum);
-    // 確定表示を少し見せてから片付ける
-    setTimeout(() => { overlay.remove(); onDone(); }, 600);
-  }, dur);
+    setTimeout(() => { overlay.remove(); onDone(); }, 480);
+  };
+  cycle();
 }
 
 function dispatch(action: Action): void {
@@ -1294,9 +1361,9 @@ function startGame(cfg: HomeConfig): void {
   cpuPlayerTradeOfferedThisTurn = false;
   lastCpuOfferSignature = null;
 
-  // 画面切り替え
+  // 画面切り替え（ゲーム中は大きなタイトルは出さず、盤面/操作の領域を広げる）
   homeDiv.style.display = 'none';
-  gameTitle.style.display = '';
+  gameTitle.style.display = 'none';
   appDiv.style.display = '';
 
   // ボードイベントは初回のみ登録（二重登録防止）
@@ -1337,6 +1404,17 @@ function returnToHome(): void {
 
 window.addEventListener('resize', () => {
   if (state) redraw();
+});
+
+// メニュー外クリックで閉じる
+document.addEventListener('click', (e) => {
+  if (!gameMenuOpen) return;
+  const target = e.target as Node;
+  if (!gameNav.contains(target)) {
+    gameMenuOpen = false;
+    const dd = gameNav.querySelector('.game-menu') as HTMLElement | null;
+    if (dd) dd.style.display = 'none';
+  }
 });
 
 renderHome(homeDiv, startGame);
