@@ -3,9 +3,10 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand } from '../types';
-import { RESOURCE_TYPES, BUILD_COSTS } from '../constants';
+import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
 import { canBuildRoad, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
+import { calcVP } from './scoring';
 
 // ============================================================
 // 確率テーブル（数字トークンの出目確率 /36）
@@ -180,7 +181,8 @@ function choosePreRollAction(state: GameState, pid: PlayerId): Action {
   const player = state.players[pid]!;
   const difficulty = getDifficulty(state, pid);
 
-  if (difficulty !== 'weak') {
+  // 1ターン1枚制限を尊重（devCardPlayedThisTurn を見ないと2枚目で例外→停止する）
+  if (difficulty !== 'weak' && !state.devCardPlayedThisTurn) {
     const knight = player.devCards.find(
       c => c.type === 'knight' && c.purchasedOnTurn < state.globalTurnNumber,
     );
@@ -332,8 +334,62 @@ function chooseTradeBuildWeak(state: GameState, pid: PlayerId): Action {
 
 // ---- 普通: 優先度に従って確実な選択 ----
 
+// cost を支払うのに不足している資源を、余剰資源のバンク交易で1枚補う手を返す。
+// 1手ずつなので、複数回呼ばれて徐々に必要資源を揃える（次ステップで建設）。
+function bankTradeToward(state: GameState, pid: PlayerId, cost: ResourceHand): Action | null {
+  const player = state.players[pid]!;
+  const need = RESOURCE_TYPES.find(r => player.hand[r] < (cost[r] ?? 0));
+  if (!need) return null; // 既に足りている
+  const giveCandidates = [...RESOURCE_TYPES].sort((a, b) =>
+    (player.hand[b] - (cost[b] ?? 0)) - (player.hand[a] - (cost[a] ?? 0)),
+  );
+  for (const give of giveCandidates) {
+    if (give === need) continue;
+    if (!canBankTrade(state, pid, give, need)) continue;
+    const rate = getEffectiveTradeRate(state, pid, give);
+    // cost に必要な give の枚数を割らない範囲でのみ放出する
+    if (player.hand[give] - rate < (cost[give] ?? 0)) continue;
+    return { type: 'BANK_TRADE', give, receive: need };
+  }
+  return null;
+}
+
+// 勝利まであと1点以上なら、勝利に直結する建設を最優先で実行する。
+// 建設できなければ、不足資源をバンク交易で1手ずつ補い、次ステップでの建設→勝利を狙う。
+function victoryPush(state: GameState, pid: PlayerId): Action | null {
+  if (calcVP(state, pid) < VP_TABLE.target - 1) return null;
+  const player = state.players[pid]!;
+
+  const cityVerts = Object.keys(state.vertices).filter(v => canBuildCity(state, pid, v));
+  if (cityVerts.length > 0) {
+    const best = cityVerts.reduce((a, b) => vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b);
+    return { type: 'BUILD_CITY', vertexId: best };
+  }
+  const settlVerts = Object.keys(state.vertices).filter(v => canBuildSettlement(state, pid, v));
+  if (settlVerts.length > 0) {
+    const best = settlVerts.reduce((a, b) => vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b);
+    return { type: 'BUILD_SETTLEMENT', vertexId: best };
+  }
+  // 建設不可: 都市化先があれば都市、なければ開拓地の不足資源をバンク交易で補う
+  const hasUpgradable = Object.values(state.vertices).some(
+    v => v.building?.type === 'settlement' && v.building.playerId === pid,
+  );
+  const targets: ResourceHand[] = [];
+  if (hasUpgradable && player.remainingCities > 0) targets.push(BUILD_COSTS.city as ResourceHand);
+  if (player.remainingSettlements > 0) targets.push(BUILD_COSTS.settlement as ResourceHand);
+  for (const cost of targets) {
+    const bt = bankTradeToward(state, pid, cost);
+    if (bt) return bt;
+  }
+  return null;
+}
+
 function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade = false): Action {
   const player = state.players[pid]!;
+
+  // 勝利が近いなら勝利に直結する手を最優先
+  const win = victoryPush(state, pid);
+  if (win) return win;
 
   const cityVerts = Object.keys(state.vertices).filter(vid => canBuildCity(state, pid, vid));
   if (cityVerts.length > 0) {
@@ -383,6 +439,10 @@ function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade
 function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade = false): Action {
   const player = state.players[pid]!;
 
+  // 0. 勝利が近いなら勝利に直結する手を最優先（建設 or バンク交易で資源補充）
+  const win = victoryPush(state, pid);
+  if (win) return win;
+
   // 1. 都市（VP効率最高）
   const cityVerts = Object.keys(state.vertices).filter(vid => canBuildCity(state, pid, vid));
   if (cityVerts.length > 0) {
@@ -427,6 +487,10 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   if (state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card)) {
     return { type: 'BUY_DEV_CARD' };
   }
+
+  // 7. 余剰を貯め込まない: 余った資源をバンク交易で発展カード等に変換（建設可能化）
+  const useSurplus = tryBankTrade(state, pid);
+  if (useSurplus) return useSurplus;
 
   return { type: 'END_TURN' };
 }

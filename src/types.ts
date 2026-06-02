@@ -225,7 +225,8 @@ export interface GameState {
 
 export type LogEntryType =
   | 'DICE_ROLL' | 'RESOURCE_GAIN' | 'BUILD' | 'TRADE_BANK'
-  | 'TRADE_PLAYER' | 'DEV_CARD' | 'ROBBER' | 'BONUS_CHANGE' | 'VICTORY' | 'DISCARD';
+  | 'TRADE_PLAYER' | 'DEV_CARD' | 'ROBBER' | 'BONUS_CHANGE' | 'VICTORY' | 'DISCARD'
+  | 'SYSTEM';
 
 export interface LogEntry {
   readonly turn: number;

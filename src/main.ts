@@ -643,6 +643,8 @@ function redraw(): void {
   renderBoard(svgBoard, state, opts);
   renderUI(uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch);
   updateGameNav();
+  // CPUが責任を持つ場面ならフリーズ対策ウォッチドッグを再武装
+  armCpuWatchdog();
 }
 
 // ============================================================
@@ -1028,8 +1030,7 @@ function scheduleAiTurn(): void {
     if (discardPid) {
       setTimeout(() => {
         if (gen !== gameGeneration) return;
-        const action = chooseAction(state, discardPid);
-        if (action) dispatch(action);
+        runCpuStep(discardPid, {});
       }, aiDelayMs());
     }
     return;
@@ -1040,15 +1041,136 @@ function scheduleAiTurn(): void {
     const aiOpts: AiOpts = { skipPlayerTrade: cpuPlayerTradeOfferedThisTurn };
     setTimeout(() => {
       if (gen !== gameGeneration) return;
-      let action = chooseAction(state, pid, aiOpts);
-      // 直近と完全一致するCPU交易提案は抑制し、交易抜きで選び直す。
-      if (action?.type === 'OFFER_TRADE'
-          && cpuOfferSignature(pid, action.offer) === lastCpuOfferSignature) {
-        action = chooseAction(state, pid, { ...aiOpts, skipPlayerTrade: true });
-      }
-      if (action) dispatch(action);
+      runCpuStep(pid, aiOpts);
     }, aiDelayMs());
   }
+}
+
+// CPUの1手を「例外やnullでも止まらない」ように実行する。
+function runCpuStep(pid: PlayerId, aiOpts: AiOpts): void {
+  try {
+    let action = chooseAction(state, pid, aiOpts);
+    // 直近と完全一致するCPU交易提案は抑制し、交易抜きで選び直す。
+    if (action?.type === 'OFFER_TRADE'
+        && cpuOfferSignature(pid, action.offer) === lastCpuOfferSignature) {
+      action = chooseAction(state, pid, { ...aiOpts, skipPlayerTrade: true });
+    }
+    if (!action) action = safeFallbackAction();
+    if (action) dispatch(action);
+  } catch (err) {
+    console.warn('CPU処理に失敗したためフォールバックします', err);
+    const fb = safeFallbackAction();
+    if (fb) { try { dispatch(fb); } catch (e) { console.warn('fallback failed', e); } }
+  }
+}
+
+// ============================================================
+// CPUフリーズ対策（ウォッチドッグ）: 一定時間 CPU が進めない場合に
+// 合法な安全行動を自動実行して進行不能を防ぐ。ゲームロジックは変えない。
+// ============================================================
+
+let cpuWatchdog: ReturnType<typeof setTimeout> | null = null;
+const WATCHDOG_MS = 8000;
+
+/** 次に動く責任が CPU 側にあるか（人間の番なら待つので false） */
+function cpuIsResponsible(): boolean {
+  if (!state || state.phase === 'GAME_OVER') return false;
+  const t = state.pendingTrade;
+  if (t) {
+    if (t.state === 'TRADE_OFFER') {
+      const pending = t.targetPlayerIds.find(x => !t.responses[x]);
+      return !!pending && state.players[pending]?.type === 'ai';
+    }
+    if (t.state === 'TRADE_RESPONSE') return state.players[t.initiatorId]?.type === 'ai';
+    return false;
+  }
+  if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+    return state.playerOrder.some(p => state.players[p]?.type === 'ai'
+      && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8);
+  }
+  const cur = state.playerOrder[state.currentPlayerIndex];
+  return !!cur && state.players[cur]?.type === 'ai';
+}
+
+/** 進行が止まっていないか判定するためのトークン */
+function progressToken(): string {
+  if (!state) return '';
+  const t = state.pendingTrade;
+  return `${state.globalTurnNumber}|${state.currentPlayerIndex}|${state.turnPhase}|${state.phase}|${t ? t.state + ':' + Object.keys(t.responses).length : '-'}|${state.log.length}`;
+}
+
+/** ウォッチドッグを再武装（CPU責任時のみ）。redraw のたびに呼ぶ。 */
+function armCpuWatchdog(): void {
+  if (cpuWatchdog) { clearTimeout(cpuWatchdog); cpuWatchdog = null; }
+  if (!cpuIsResponsible()) return;
+  const token = progressToken();
+  const gen = gameGeneration;
+  cpuWatchdog = setTimeout(() => {
+    cpuWatchdog = null;
+    if (gen !== gameGeneration) return;
+    if (diceAnimating) { armCpuWatchdog(); return; }      // 演出中は待つ
+    if (!cpuIsResponsible()) return;                      // 人間の番になっていれば何もしない
+    if (progressToken() !== token) { armCpuWatchdog(); return; } // 進んでいれば再武装
+    // 一定時間進まなかった → 合法な安全行動で進める
+    const fb = safeFallbackAction();
+    if (fb) {
+      appendSystemLog('CPU処理をスキップしました');
+      try { dispatch(fb); } catch (e) { console.warn('watchdog fallback failed', e); }
+    }
+  }, WATCHDOG_MS);
+}
+
+/** どのフェーズでも「合法で進行する」行動を1つ返す（最終手段）。 */
+function safeFallbackAction(): Action | null {
+  if (!state || state.phase === 'GAME_OVER') return null;
+  const trade = state.pendingTrade;
+  if (trade) {
+    if (trade.state === 'TRADE_OFFER') {
+      const pending = trade.targetPlayerIds.find(t => !trade.responses[t]);
+      if (pending && state.players[pending]?.type === 'ai') {
+        return { type: 'RESPOND_TRADE', response: { playerId: pending, status: 'REJECT' } };
+      }
+    } else if (trade.state === 'TRADE_RESPONSE' && state.players[trade.initiatorId]?.type === 'ai') {
+      const acc = trade.targetPlayerIds.find(t => trade.responses[t]?.status === 'ACCEPT') as PlayerId | undefined;
+      return acc ? { type: 'CONFIRM_TRADE', responderId: acc } : { type: 'CANCEL_TRADE' };
+    }
+    return null;
+  }
+  // 捨て札（CPUが対象のとき、大きい山から半数を捨てる）
+  if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+    const dpid = state.playerOrder.find(p => state.players[p]?.type === 'ai'
+      && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8);
+    if (dpid) {
+      const hand = state.players[dpid]!.hand;
+      let toDiscard = Math.floor(RESOURCE_TYPES.reduce((s, r) => s + hand[r], 0) / 2);
+      const resources: Partial<ResourceHand> = {};
+      for (const r of [...RESOURCE_TYPES].sort((a, b) => hand[b] - hand[a])) {
+        if (toDiscard <= 0) break;
+        const take = Math.min(hand[r], toDiscard);
+        if (take > 0) { resources[r] = take; toDiscard -= take; }
+      }
+      return { type: 'DISCARD_RESOURCES', playerId: dpid, resources };
+    }
+    return null;
+  }
+  const cur = state.playerOrder[state.currentPlayerIndex];
+  if (!cur || state.players[cur]?.type !== 'ai') return null; // 人間の番は強制しない
+  if (state.turnPhase === 'ROBBER') {
+    const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
+    const tileId = Object.keys(state.tiles).find(t => t !== robberTile);
+    if (tileId) return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
+    return null;
+  }
+  if (state.turnPhase === 'PRE_ROLL') return { type: 'ROLL_DICE' };
+  if (state.turnPhase === 'TRADE_BUILD') return { type: 'END_TURN' };
+  return null;
+}
+
+/** システムログを1件追記（公開情報のみ・CPU内部は出さない）。 */
+function appendSystemLog(message: string): void {
+  if (!state) return;
+  const entry = { turn: state.globalTurnNumber, playerId: (state.playerOrder[state.currentPlayerIndex] ?? 'player1') as PlayerId, type: 'SYSTEM' as const, message };
+  state = { ...state, log: [...state.log, entry].slice(-MAX_LOG_ENTRIES) };
 }
 
 /**
@@ -1329,7 +1451,8 @@ function dispatch(action: Action): void {
       finish();
     }
   } catch (err) {
-    console.error('applyAction error:', err);
+    // 例外が出ても全体は止めない。ウォッチドッグが安全行動で進行を回復する。
+    console.warn('applyAction error (recoverable):', err);
   }
 }
 

@@ -152,6 +152,45 @@ describe('chooseAction - SETUP フェーズ', () => {
 // PRE_ROLL フェーズ
 // ============================================================
 
+describe('chooseAction - 勝利push (item5: 勝てる時に勝つ)', () => {
+  // VPカード8枚 + 開拓地1 = 9VP（勝利まであと1点）の強CPU状態を作る
+  function nearWin(handPartial: Partial<Record<string, number>>): GameState {
+    const vpCards: DevCard[] = Array.from({ length: 8 }, (_, i) => makeDevCard('victory_point', i));
+    const s = makeGameState({
+      turnPhase: 'TRADE_BUILD',
+      diceRolledThisTurn: true,
+      currentPlayerIndex: 0,
+      players: {
+        player1: makePlayer('player1', {
+          type: 'ai', aiDifficulty: 'strong',
+          hand: makeHand(handPartial as Record<typeof RESOURCE_TYPES[number], number>),
+          devCards: vpCards,
+        }),
+        player2: makePlayer('player2'),
+      },
+    });
+    // 自分の開拓地を1つ置く（=都市化先, VP=9）
+    const vid = Object.keys(s.vertices)[0]! as VertexId;
+    return { ...s, vertices: { ...s.vertices, [vid]: { ...s.vertices[vid]!, building: { type: 'settlement', playerId: 'player1' } } } };
+  }
+
+  it('9VPで都市資源あり → BUILD_CITY（勝利に直結する建設を最優先）', () => {
+    const s = nearWin({ grain: 3, ore: 3 });
+    expect(chooseAction(s, 'player1')?.type).toBe('BUILD_CITY');
+  });
+
+  it('9VPで資源不足 → バンク交易で不足資源を補う（BANK_TRADE）', () => {
+    // 余剰の木4枚のみ（4:1でgrain/oreへ交換できる）。都市化に向け交換する。
+    const s = nearWin({ wood: 4 });
+    const act = chooseAction(s, 'player1');
+    expect(act?.type).toBe('BANK_TRADE');
+    if (act?.type === 'BANK_TRADE') {
+      expect(act.give).toBe('wood');
+      expect(['grain', 'ore']).toContain(act.receive);
+    }
+  });
+});
+
 describe('chooseAction - PRE_ROLL', () => {
   it('騎士カードなし: ROLL_DICE を返す', () => {
     const s = makeGameState({ turnPhase: 'PRE_ROLL', currentPlayerIndex: 0 });

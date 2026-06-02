@@ -11,6 +11,29 @@ import { makeHand } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
 import type { GameState, VertexId, EdgeId, PlayerId } from '../src/types';
 
+// 末端から「方向付き」に辺を辿り、確実に1本の連続パス（分岐なし）となる n 辺を返す。
+// 旧テストの adjacentEdgeIds.find(...) はY字に分岐し得たため、正しいパスを作る用。
+function straightPathEids(s: GameState, n: number, startEid?: EdgeId): EdgeId[] {
+  const start = startEid ?? (Object.keys(s.edges)[0]! as EdgeId);
+  const path: EdgeId[] = [start];
+  let tip: VertexId = s.edges[start]!.vertexIds[1]!;
+  while (path.length < n) {
+    const v = s.vertices[tip];
+    if (!v) break;
+    const next = v.adjacentEdgeIds.find(e => !path.includes(e as EdgeId)) as EdgeId | undefined;
+    if (!next) break;
+    path.push(next);
+    const ne = s.edges[next]!;
+    tip = (ne.vertexIds[0] === tip ? ne.vertexIds[1] : ne.vertexIds[0])!;
+  }
+  return path;
+}
+function placeRoads(s: GameState, eids: EdgeId[], pid: PlayerId = 'player1'): GameState {
+  const edges = { ...s.edges };
+  for (const e of eids) edges[e] = { ...edges[e]!, road: { playerId: pid } };
+  return { ...s, edges };
+}
+
 // ============================================================
 // calcVP
 // ============================================================
@@ -142,26 +165,12 @@ describe('calcLongestRoad', () => {
 
   it('counts chain of 5 connected roads', () => {
     const s = makeGameState();
-    // 連続した5辺を取得する: 1本目の辺から隣接辺を辿って5本チェーンを作る
-    let state = s;
-    let eids: EdgeId[] = [];
-    const firstEid = Object.keys(s.edges)[0]!;
-    eids.push(firstEid);
-    state = { ...state, edges: { ...state.edges, [firstEid]: { ...state.edges[firstEid]!, road: { playerId: 'player1' } } } };
-
-    // 4本隣接辺をチェーンする
-    for (let i = 0; i < 4; i++) {
-      const lastEid = eids[eids.length - 1]!;
-      const lastEdge = state.edges[lastEid]!;
-      // 隣接辺で未使用のものを選ぶ
-      const nextEid = lastEdge.adjacentEdgeIds.find(e => !eids.includes(e));
-      if (!nextEid) break;
-      eids.push(nextEid);
-      state = { ...state, edges: { ...state.edges, [nextEid]: { ...state.edges[nextEid]!, road: { playerId: 'player1' } } } };
-    }
-
-    const len = calcLongestRoad(state, 'player1');
-    expect(len).toBeGreaterThanOrEqual(eids.length);
+    // 方向付きに5本の連続パスを作る
+    const eids = straightPathEids(s, 5);
+    expect(eids.length).toBe(5);
+    const len = calcLongestRoad(placeRoads(s, eids), 'player1');
+    // 単一の連続パスなので長さ=本数
+    expect(len).toBe(eids.length);
   });
 
   it('road is cut by opponent settlement', () => {
@@ -213,6 +222,107 @@ describe('calcLongestRoad', () => {
 
     // 自分の開拓地は切断しない → 2本連続
     expect(calcLongestRoad(next, 'player1')).toBe(2);
+  });
+});
+
+// ============================================================
+// calcLongestRoad — 連続経路ルール（分岐を合算しない）
+// ============================================================
+
+describe('calcLongestRoad — 連続経路ルール', () => {
+  function withRoads(s: GameState, eids: EdgeId[], pid: PlayerId = 'player1'): GameState {
+    const edges = { ...s.edges };
+    for (const e of eids) edges[e] = { ...edges[e]!, road: { playerId: pid } };
+    return { ...s, edges };
+  }
+  function withBuilding(s: GameState, vid: VertexId, pid: PlayerId): GameState {
+    return { ...s, vertices: { ...s.vertices, [vid]: { ...s.vertices[vid]!, building: { type: 'settlement', playerId: pid } } } };
+  }
+  // 互いに頂点を共有しない（=非接続な）辺を n 本選ぶ
+  function pickDisconnected(s: GameState, n: number): EdgeId[] {
+    const blocked = new Set<VertexId>();
+    const result: EdgeId[] = [];
+    for (const e of Object.keys(s.edges)) {
+      const vs = s.edges[e]!.vertexIds;
+      if (vs.some(v => blocked.has(v))) continue;
+      result.push(e);
+      for (const v of vs) {
+        blocked.add(v);
+        for (const ae of s.vertices[v]!.adjacentEdgeIds) {
+          s.edges[ae]!.vertexIds.forEach(x => blocked.add(x));
+        }
+      }
+      if (result.length === n) break;
+    }
+    return result;
+  }
+
+  it('3本バラバラ → 最長1', () => {
+    const s = makeGameState();
+    const eids = pickDisconnected(s, 3);
+    expect(eids.length).toBe(3);
+    expect(calcLongestRoad(withRoads(s, eids), 'player1')).toBe(1);
+  });
+
+  it('2本接続 + 1本孤立 → 最長2', () => {
+    const s = makeGameState();
+    // 接続2本: 次数2以上の頂点の隣接2辺
+    const vid = Object.keys(s.vertices).find(v => s.vertices[v]!.adjacentEdgeIds.length >= 2)!;
+    const c0 = s.vertices[vid]!.adjacentEdgeIds[0]! as EdgeId;
+    const c1 = s.vertices[vid]!.adjacentEdgeIds[1]! as EdgeId;
+    // 孤立1本: 接続2本の頂点から離れた辺
+    const near = new Set<VertexId>();
+    for (const e of [c0, c1]) for (const v of s.edges[e]!.vertexIds) {
+      near.add(v);
+      for (const ae of s.vertices[v]!.adjacentEdgeIds) s.edges[ae]!.vertexIds.forEach(x => near.add(x));
+    }
+    const iso = Object.keys(s.edges).find(e => s.edges[e]!.vertexIds.every(v => !near.has(v)))!;
+    expect(calcLongestRoad(withRoads(s, [c0, c1, iso]), 'player1')).toBe(2);
+  });
+
+  it('3本直線 → 最長3', () => {
+    const s = makeGameState();
+    const eids = straightPathEids(s, 3);
+    expect(eids.length).toBe(3);
+    expect(calcLongestRoad(withRoads(s, eids), 'player1')).toBe(3);
+  });
+
+  it('Y字分岐 → 枝を合算せず最長2', () => {
+    const s = makeGameState();
+    // 次数3の頂点に3本の道（Y字）。最長の単一路線は2本。
+    const yVid = Object.keys(s.vertices).find(v => s.vertices[v]!.adjacentEdgeIds.length >= 3)!;
+    const yEdges = s.vertices[yVid]!.adjacentEdgeIds.slice(0, 3) as EdgeId[];
+    expect(calcLongestRoad(withRoads(s, yEdges), 'player1')).toBe(2);
+  });
+
+  it('Y字 + 直線で、合算されず最長は実際の連続長になる', () => {
+    const s = makeGameState();
+    // 次数3の頂点 yVid に3辺。さらに1本の枝を延長しても、分岐は合算しない。
+    const yVid = Object.keys(s.vertices).find(v => s.vertices[v]!.adjacentEdgeIds.length >= 3)!;
+    const yEdges = s.vertices[yVid]!.adjacentEdgeIds.slice(0, 3) as EdgeId[];
+    // yEdges[0] の反対側頂点から、さらに1本伸ばす
+    const e0 = s.edges[yEdges[0]!]!;
+    const farVid = (e0.vertexIds[0] === yVid ? e0.vertexIds[1] : e0.vertexIds[0]) as VertexId;
+    const ext = s.vertices[farVid]!.adjacentEdgeIds.find(e => !yEdges.includes(e as EdgeId)) as EdgeId | undefined;
+    const roads = ext ? [...yEdges, ext] : yEdges;
+    // 連続路: ext - yEdges[0] - (yEdges[1] か yEdges[2]) = 最長3。合算なら4になってしまう。
+    const len = calcLongestRoad(withRoads(s, roads), 'player1');
+    expect(len).toBe(ext ? 3 : 2);
+    expect(len).toBeLessThan(roads.length); // 全本数より小さい（=合算していない）
+  });
+
+  it('相手建物で分断、自分建物では分断されない', () => {
+    const s = makeGameState();
+    const eids = straightPathEids(s, 3);
+    expect(eids.length).toBe(3);
+    // eids[0] と eids[1] の共有頂点（連結点）を求める
+    const shared = s.edges[eids[0]!]!.vertexIds.find(v => s.edges[eids[1]!]!.vertexIds.includes(v)) as VertexId;
+    const oppBlocked = withRoads(withBuilding(s, shared, 'player2'), eids);
+    const selfOk = withRoads(withBuilding(s, shared, 'player1'), eids);
+    // 相手建物: 連結点で分断され短くなる
+    expect(calcLongestRoad(oppBlocked, 'player1')).toBeLessThan(3);
+    // 自分建物: 分断されない → 3
+    expect(calcLongestRoad(selfOk, 'player1')).toBe(3);
   });
 });
 
@@ -301,41 +411,20 @@ describe('updateLongestRoad', () => {
   });
 
   it('awards longest road when player reaches 5+ roads', () => {
-    let s = makeGameState();
-    // 5本の連続道路を player1 に設置
-    let eids: EdgeId[] = [];
-    const firstEid = Object.keys(s.edges)[0]!;
-    eids.push(firstEid);
-    s = { ...s, edges: { ...s.edges, [firstEid]: { ...s.edges[firstEid]!, road: { playerId: 'player1' } } } };
-    for (let i = 0; i < 4; i++) {
-      const last = eids[eids.length - 1]!;
-      const nextEid = s.edges[last]!.adjacentEdgeIds.find(e => !eids.includes(e));
-      if (!nextEid) break;
-      eids.push(nextEid);
-      s = { ...s, edges: { ...s.edges, [nextEid]: { ...s.edges[nextEid]!, road: { playerId: 'player1' } } } };
-    }
-    const next = updateLongestRoad(s);
-    if (eids.length >= 5) {
-      expect(next.longestRoadHolder).toBe('player1');
-      expect(next.players['player1']!.hasLongestRoad).toBe(true);
-    }
+    const s = makeGameState();
+    const eids = straightPathEids(s, 5);
+    expect(eids.length).toBe(5);
+    const next = updateLongestRoad(placeRoads(s, eids));
+    expect(next.longestRoadHolder).toBe('player1');
+    expect(next.players['player1']!.hasLongestRoad).toBe(true);
   });
 
   it('holder keeps bonus when only they have 5+ roads (no tie)', () => {
-    // player1 が単独で5本 → 保持者が維持
-    let s = makeGameState({ longestRoadHolder: 'player1' });
-    const firstEid = Object.keys(s.edges)[0]!;
-    const eids = [firstEid];
-    s = { ...s, edges: { ...s.edges, [firstEid]: { ...s.edges[firstEid]!, road: { playerId: 'player1' } } } };
-    for (let i = 0; i < 4; i++) {
-      const last = eids[eids.length - 1]!;
-      const nextEid = s.edges[last]!.adjacentEdgeIds.find(e => !eids.includes(e) && s.edges[e]!.road == null);
-      if (!nextEid) break;
-      eids.push(nextEid);
-      s = { ...s, edges: { ...s.edges, [nextEid]: { ...s.edges[nextEid]!, road: { playerId: 'player1' } } } };
-    }
-    if (eids.length < 5) return;
-    const next = updateLongestRoad(s);
+    // player1 が単独で5本の連続路 → 保持者が維持
+    const s = makeGameState({ longestRoadHolder: 'player1' });
+    const eids = straightPathEids(s, 5);
+    expect(eids.length).toBe(5);
+    const next = updateLongestRoad(placeRoads(s, eids));
     expect(next.longestRoadHolder).toBe('player1');
   });
 
@@ -351,7 +440,7 @@ describe('updateLongestRoad', () => {
   // 仕様書 §7-2: 同点・場外処理
   // ----------------------------------------------------------------
 
-  // 実際の道をN本連続で繋げるヘルパー
+  // 実際の道をN本「方向付き」に連続で繋げるヘルパー（分岐せず1本のパスを作る）
   function buildChain(state: GameState, pid: PlayerId, count: number, startEid?: EdgeId): { state: GameState; built: number } {
     let cur = state;
     const eids: EdgeId[] = [];
@@ -359,12 +448,15 @@ describe('updateLongestRoad', () => {
     if (!first || cur.edges[first]!.road != null) return { state: cur, built: 0 };
     eids.push(first);
     cur = { ...cur, edges: { ...cur.edges, [first]: { ...cur.edges[first]!, road: { playerId: pid } } } };
+    let tip: VertexId = cur.edges[first]!.vertexIds[1]!;
     for (let i = 1; i < count; i++) {
-      const last = eids[eids.length - 1]!;
-      const next = cur.edges[last]!.adjacentEdgeIds.find(e => !eids.includes(e) && cur.edges[e]!.road == null);
+      const v = cur.vertices[tip];
+      const next = v?.adjacentEdgeIds.find(e => !eids.includes(e as EdgeId) && cur.edges[e]!.road == null) as EdgeId | undefined;
       if (!next) break;
       eids.push(next);
       cur = { ...cur, edges: { ...cur.edges, [next]: { ...cur.edges[next]!, road: { playerId: pid } } } };
+      const ne = cur.edges[next]!;
+      tip = (ne.vertexIds[0] === tip ? ne.vertexIds[1] : ne.vertexIds[0])!;
     }
     return { state: cur, built: eids.length };
   }

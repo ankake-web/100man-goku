@@ -73,39 +73,46 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
   }
   if (myEdges.size === 0) return 0;
 
+  // 相手の建物がある頂点は通過不可（道路が切断される）。自分の建物は通過可。
+  const isBlocked = (vid: VertexId): boolean => {
+    const v = state.vertices[vid];
+    return v?.building != null && v.building.playerId !== playerId;
+  };
+
   let longest = 0;
 
-  function dfs(currentEdgeId: EdgeId, visited: Set<EdgeId>): number {
-    visited.add(currentEdgeId);
-    let best = visited.size;
-
-    const edge = state.edges[currentEdgeId]!;
-    for (const vid of edge.vertexIds) {
-      const vertex = state.vertices[vid];
-      if (!vertex) continue;
-
-      // 相手の建物がある頂点は切断（通過不可）
-      const blocked =
-        vertex.building != null &&
-        vertex.building.playerId !== playerId;
-      if (blocked) continue;
-
-      // この頂点に接続している自分の未使用の道を探す
-      for (const nextEid of vertex.adjacentEdgeIds) {
-        if (!myEdges.has(nextEid)) continue;
-        if (visited.has(nextEid)) continue;
-        const count = dfs(nextEid, visited);
-        if (count > best) best = count;
-      }
+  // 「方向付き」DFS。tipVid（フロンティア頂点）から1本ずつ前方にだけ伸ばす。
+  // これにより分岐点で枝を合算してしまうバグを防ぐ（直前に来た頂点へは戻らない）。
+  // visited は使用済みの辺の集合（同じ道を2回数えない）。
+  const extend = (tipVid: VertexId, visited: Set<EdgeId>, lengthSoFar: number): number => {
+    let best = lengthSoFar;
+    // 相手建物のある頂点で道は分断される（その先へは伸ばせない）
+    if (isBlocked(tipVid)) return best;
+    const tip = state.vertices[tipVid];
+    if (!tip) return best;
+    for (const nextEid of tip.adjacentEdgeIds) {
+      if (!myEdges.has(nextEid)) continue;
+      if (visited.has(nextEid)) continue;
+      const nextEdge = state.edges[nextEid]!;
+      const otherVid = nextEdge.vertexIds[0] === tipVid
+        ? nextEdge.vertexIds[1] : nextEdge.vertexIds[0];
+      visited.add(nextEid);
+      const count = extend(otherVid!, visited, lengthSoFar + 1);
+      if (count > best) best = count;
+      visited.delete(nextEid);
     }
-
-    visited.delete(currentEdgeId);
     return best;
-  }
+  };
 
+  // 各辺をどちらの端からも起点として、前方へ伸ばした最長を取る
   for (const eid of myEdges) {
-    const count = dfs(eid, new Set());
-    if (count > longest) longest = count;
+    const edge = state.edges[eid]!;
+    for (const startVid of edge.vertexIds) {
+      const otherVid = edge.vertexIds[0] === startVid ? edge.vertexIds[1] : edge.vertexIds[0];
+      const visited = new Set<EdgeId>([eid]);
+      const count = extend(otherVid!, visited, 1);
+      if (count > longest) longest = count;
+    }
   }
 
   return longest;

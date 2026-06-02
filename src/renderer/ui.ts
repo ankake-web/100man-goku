@@ -768,7 +768,11 @@ function appendDevCardButtons(
   // 街道建設カード処理中は表示しない
   if (state.roadBuildingRoadsRemaining > 0) return;
 
-  const playable = getPlayableDevCards(player, state.globalTurnNumber);
+  let playable = getPlayableDevCards(player, state.globalTurnNumber);
+  // ダイス前（PRE_ROLL）は騎士カードのみ使用可。他はダイス後の交易・建設フェーズで。
+  if (!state.diceRolledThisTurn) {
+    playable = playable.filter(c => c.type === 'knight');
+  }
   if (playable.length === 0) return;
 
   const devAlreadyPlayed = state.devCardPlayedThisTurn;

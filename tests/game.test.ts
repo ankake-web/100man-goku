@@ -465,6 +465,58 @@ describe('PLAY_MONOPOLY', () => {
 });
 
 // ============================================================
+// 発展カード使用タイミング（ダイス前は騎士のみ）
+// ============================================================
+
+describe('発展カード使用タイミング', () => {
+  function preRoll(devType: 'knight' | 'year_of_plenty' | 'monopoly' | 'road_building'): GameState {
+    return makeGameState({
+      globalTurnNumber: 2,
+      turnPhase: 'PRE_ROLL',
+      diceRolledThisTurn: false,
+      players: {
+        player1: makePlayer('player1', { devCards: [makeDevCard(devType, 1)] }),
+        player2: makePlayer('player2'),
+      },
+    });
+  }
+
+  it('ダイス前に騎士は使える', () => {
+    expect(() => applyAction(preRoll('knight'), { type: 'PLAY_KNIGHT' })).not.toThrow();
+  });
+
+  it('ダイス前に年の豊穣は使えない', () => {
+    expect(() => applyAction(preRoll('year_of_plenty'), { type: 'PLAY_YEAR_OF_PLENTY', resources: ['wood', 'grain'] }))
+      .toThrow('must roll dice first');
+  });
+
+  it('ダイス前に独占は使えない', () => {
+    expect(() => applyAction(preRoll('monopoly'), { type: 'PLAY_MONOPOLY', resource: 'wood' }))
+      .toThrow('must roll dice first');
+  });
+
+  it('ダイス前に街道建設は使えない', () => {
+    expect(() => applyAction(preRoll('road_building'), { type: 'PLAY_ROAD_BUILDING' }))
+      .toThrow('must roll dice first');
+  });
+
+  it('ダイス後（diceRolledThisTurn=true）なら年の豊穣・独占・街道建設が使える', () => {
+    const base = (devType: 'year_of_plenty' | 'monopoly' | 'road_building') => makeGameState({
+      globalTurnNumber: 2,
+      turnPhase: 'TRADE_BUILD',
+      diceRolledThisTurn: true,
+      players: {
+        player1: makePlayer('player1', { devCards: [makeDevCard(devType, 1)] }),
+        player2: makePlayer('player2'),
+      },
+    });
+    expect(() => applyAction(base('year_of_plenty'), { type: 'PLAY_YEAR_OF_PLENTY', resources: ['wood', 'grain'] })).not.toThrow();
+    expect(() => applyAction(base('monopoly'), { type: 'PLAY_MONOPOLY', resource: 'wood' })).not.toThrow();
+    expect(() => applyAction(base('road_building'), { type: 'PLAY_ROAD_BUILDING' })).not.toThrow();
+  });
+});
+
+// ============================================================
 // BANK_TRADE
 // ============================================================
 

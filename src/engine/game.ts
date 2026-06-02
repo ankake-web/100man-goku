@@ -315,6 +315,8 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_YEAR_OF_PLENTY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: already played a dev card this turn');
+      // 騎士以外はダイス後（交易・建設フェーズ）のみ使用可
+      if (!state.diceRolledThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: must roll dice first');
       const player = state.players[pid]!;
       const [r1, r2] = action.resources;
       const cardIdx = player.devCards.findIndex(
@@ -354,6 +356,7 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_MONOPOLY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_MONOPOLY: already played a dev card this turn');
+      if (!state.diceRolledThisTurn) throw new Error('PLAY_MONOPOLY: must roll dice first');
       const player = state.players[pid]!;
       const { resource } = action;
       const cardIdx = player.devCards.findIndex(
@@ -395,6 +398,7 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_ROAD_BUILDING': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_ROAD_BUILDING: already played a dev card this turn');
+      if (!state.diceRolledThisTurn) throw new Error('PLAY_ROAD_BUILDING: must roll dice first');
       const player = state.players[pid]!;
       const cardIdx = player.devCards.findIndex(
         c => c.type === 'road_building' && c.purchasedOnTurn < state.globalTurnNumber,
