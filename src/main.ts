@@ -7,7 +7,7 @@ import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffe
 import { buildBoardGeometry } from './engine/board';
 import { createRandomBoard, resolvePlayerOrder } from './engine/setup';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, BANK_INITIAL, RESOURCE_TYPES } from './constants';
+import { makeHand, BANK_INITIAL, RESOURCE_TYPES, VP_TABLE } from './constants';
 import { buildDevDeck } from './engine/game';
 import { applyAction } from './engine/game';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
@@ -265,6 +265,9 @@ function renderHome(container: HTMLElement, onStart: (cfg: HomeConfig) => void):
   card.appendChild(onlineForm);
   screen.appendChild(card);
 
+  // ---- ルール説明（折りたたみ。開始ボタンの下に置き、邪魔しない） ----
+  screen.appendChild(buildRulePanel());
+
   // ---- サウンドテストパネル ----
   const soundPanel = buildSoundTestPanel();
   screen.appendChild(soundPanel);
@@ -316,6 +319,92 @@ function renderHome(container: HTMLElement, onStart: (cfg: HomeConfig) => void):
 
     onStart(cfg);
   });
+}
+
+// ルール説明の1セクション（見出し＋箇条書き）を生成
+function ruleSection(heading: string, bullets: string[]): HTMLDivElement {
+  const sec = document.createElement('div');
+  sec.className = 'rule-section';
+  const h = document.createElement('div');
+  h.className = 'rule-heading';
+  h.textContent = heading;
+  sec.appendChild(h);
+  const ul = document.createElement('ul');
+  ul.className = 'rule-list';
+  for (const b of bullets) {
+    const li = document.createElement('li');
+    li.textContent = b;
+    ul.appendChild(li);
+  }
+  sec.appendChild(ul);
+  return sec;
+}
+
+// TOPページのルール説明（折りたたみ式）
+function buildRulePanel(): HTMLDetailsElement {
+  const details = document.createElement('details');
+  details.className = 'rule-panel';
+  const summary = document.createElement('summary');
+  summary.className = 'rule-summary';
+  summary.textContent = '📖 はじめての人へ（ルール説明）';
+  details.appendChild(summary);
+
+  const body = document.createElement('div');
+  body.className = 'rule-body';
+  const target = VP_TABLE.target;
+
+  body.appendChild(ruleSection('🎯 目的', [
+    `先に ${target} 点を取ったプレイヤーが勝ち。`,
+    '開拓地・都市・最長交易路・最大騎士力・勝利点カードで点を集める。',
+  ]));
+  body.appendChild(ruleSection('🔁 ターンの流れ', [
+    '① サイコロを振る',
+    '② 出た数字のタイルから資源をもらう',
+    '③ 交易・建設をする',
+    '④ ターン終了',
+  ]));
+  body.appendChild(ruleSection('🌲 資源', [
+    '木・レンガ・羊・麦・鉱石を集める。',
+    'タイルの数字が出ると、隣に開拓地/都市を持つ人が資源を得る。',
+    '開拓地は1個、都市は2個もらえる。',
+  ]));
+  body.appendChild(ruleSection('🏠 建設コスト', [
+    '道：木＋レンガ',
+    '開拓地：木＋レンガ＋羊＋麦',
+    '都市：麦2＋鉱石3',
+    '発展カード：羊＋麦＋鉱石',
+  ]));
+  body.appendChild(ruleSection('🦹 7と盗賊', [
+    '7が出ると資源は出ない。',
+    '手札8枚以上の人は半分捨てる。',
+    '盗賊を動かして、隣接する相手から1枚奪える。',
+    '盗賊がいるタイルからは資源が出ない。',
+  ]));
+  body.appendChild(ruleSection('🤝 交易', [
+    '他プレイヤーと資源を交換できる。',
+    '銀行（4:1）や港（3:1 / 2:1）とも交換できる。',
+    '同じ資源同士の交換はできない。',
+  ]));
+  body.appendChild(ruleSection('🃏 発展カード', [
+    '騎士・街道建設・年の豊穣（発見）・独占・勝利点カードがある。',
+    'サイコロ前に使えるのは騎士だけ。他はサイコロ後に使う。',
+    '勝利点カードは隠し点（自分だけ見える）。',
+  ]));
+  body.appendChild(ruleSection('🏆 点数', [
+    '開拓地：1点 / 都市：2点',
+    '最長交易路：2点（道5本以上で最長の人）',
+    '最大騎士力：2点（騎士3回以上で最多の人）',
+    '勝利点カード：1点',
+  ]));
+  body.appendChild(ruleSection('💡 操作のコツ', [
+    '最初は資源が多く出そうな数字の近くに開拓地を置く。',
+    '6・8は出やすい数字。',
+    '港を使うと資源を交換しやすい。',
+    '道を伸ばして開拓地を増やし、都市にすると資源が増える。',
+  ]));
+
+  details.appendChild(body);
+  return details;
 }
 
 function buildSoundTestPanel(): HTMLDivElement {
@@ -599,6 +688,9 @@ let diceAnimating = false;
 // 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
 let gameMenuOpen = false;
 
+// 出目分布の集計（インデックス2〜12が出現回数。現在のゲーム中のみ蓄積）
+let diceStats: number[] = new Array(13).fill(0);
+
 // 人間向け: 他プレイヤーからの交易提案を自動拒否する設定（既定OFF）
 let autoRejectTrades = false;
 // 人間ターゲットの交易応答タイマー（自動拒否・20秒タイムアウト用）
@@ -746,6 +838,17 @@ function updateGameNav(): void {
     seBtn.textContent = _seEnabled ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   });
   dd.appendChild(seBtn);
+
+  // 出目分布グラフ
+  const statsBtn = document.createElement('button');
+  statsBtn.className = 'game-menu-btn';
+  statsBtn.textContent = '🎲 出目分布';
+  statsBtn.addEventListener('click', () => {
+    gameMenuOpen = false;
+    dd.style.display = 'none';
+    showDiceStatsModal();
+  });
+  dd.appendChild(statsBtn);
 
   // 交易の自動拒否（人間向け。ONなら他プレイヤーからの提案を自動で拒否）
   const autoRejBtn = document.createElement('button');
@@ -1340,7 +1443,7 @@ const VICTORY_REASON: Record<string, string> = {
 };
 
 function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
-  document.querySelector('.victory-overlay')?.remove();
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove();
   if (!state) return;
   const winner = state.players[winnerId];
   if (!winner) return;
@@ -1409,11 +1512,83 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   home.textContent = '🏠 ホームに戻る';
   home.addEventListener('click', () => { overlay.remove(); returnToHome(); });
   btnRow.appendChild(home);
+  // 勝利後でもこのゲームの出目分布を見られるように
+  const statsBtn = document.createElement('button');
+  statsBtn.className = 'btn-nav';
+  statsBtn.textContent = '🎲 出目分布';
+  statsBtn.addEventListener('click', () => showDiceStatsModal());
+  btnRow.appendChild(statsBtn);
   modal.appendChild(btnRow);
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
   // 勝者パネルの発光は buildPlayerPanel 側で付与（再描画後も維持される）
+}
+
+// ============================================================
+// 出目分布グラフ（現在ゲームのダイス集計を簡易棒グラフで表示）
+// ============================================================
+
+function showDiceStatsModal(): void {
+  document.querySelector('.dicestats-overlay')?.remove();
+
+  const total = diceStats.reduce((s, n) => s + n, 0);
+  const maxCount = Math.max(1, ...diceStats.slice(2, 13));
+  let mostFreq = 0, mostFreqCount = -1;
+  for (let n = 2; n <= 12; n++) {
+    if ((diceStats[n] ?? 0) > mostFreqCount) { mostFreqCount = diceStats[n] ?? 0; mostFreq = n; }
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'dicestats-overlay';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+  const modal = document.createElement('div');
+  modal.className = 'dicestats-modal';
+
+  const header = document.createElement('div');
+  header.className = 'dicestats-header';
+  header.textContent = '🎲 出目分布（このゲーム）';
+  modal.appendChild(header);
+
+  const summary = document.createElement('div');
+  summary.className = 'dicestats-summary';
+  summary.textContent = total === 0
+    ? 'まだダイスを振っていません'
+    : `合計 ${total} 回 ・ 最多 ${mostFreq}（${mostFreqCount}回） ・ 7は ${diceStats[7] ?? 0}回`;
+  modal.appendChild(summary);
+
+  const chart = document.createElement('div');
+  chart.className = 'dicestats-chart';
+  for (let n = 2; n <= 12; n++) {
+    const count = diceStats[n] ?? 0;
+    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+    const row = document.createElement('div');
+    row.className = `dicestats-row${n === 7 ? ' seven' : ''}${n === mostFreq && count > 0 ? ' most' : ''}`;
+    const label = document.createElement('span'); label.className = 'dicestats-num'; label.textContent = String(n);
+    const track = document.createElement('div'); track.className = 'dicestats-track';
+    const bar = document.createElement('div'); bar.className = 'dicestats-bar';
+    // 0回は空、1回以上は見やすい最小幅を確保
+    bar.style.width = count > 0 ? `${Math.max(5, Math.round((count / maxCount) * 100))}%` : '0';
+    track.appendChild(bar);
+    const val = document.createElement('span'); val.className = 'dicestats-val';
+    val.textContent = total > 0 ? `${count}回 (${pct}%)` : `${count}回`;
+    row.append(label, track, val);
+    chart.appendChild(row);
+  }
+  modal.appendChild(chart);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-nav';
+  closeBtn.textContent = '閉じる';
+  closeBtn.addEventListener('click', () => overlay.remove());
+  const btnRow = document.createElement('div');
+  btnRow.className = 'dicestats-btns';
+  btnRow.appendChild(closeBtn);
+  modal.appendChild(btnRow);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 }
 
 /** サイコロ産出タイルの画面座標を取得する */
@@ -1604,6 +1779,12 @@ function dispatch(action: Action): void {
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
       : undefined;
 
+    // 出目分布の集計（確定した出目のみ。演出中の仮表示はカウントしない）。
+    // 人間/CPU 問わず1ロール1回。ロジックには影響しない。
+    if (action.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal >= 2 && diceTotal <= 12) {
+      diceStats[diceTotal] = (diceStats[diceTotal] ?? 0) + 1;
+    }
+
     // 盗賊スライド演出用に、移動前の盗賊タイルを控える
     const robberFromTile = action.type === 'MOVE_ROBBER'
       ? Object.values(prevState.tiles).find(t => t.hasRobber)?.id
@@ -1713,7 +1894,7 @@ let boardEventsAttached = false;
 function startGame(cfg: HomeConfig): void {
   // 新しいゲーム世代 → 前の AI setTimeout を無効化
   gameGeneration++;
-  document.querySelector('.victory-overlay')?.remove();
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove();
 
   lastConfig = cfg;
   state = initGameState(cfg);
@@ -1721,6 +1902,7 @@ function startGame(cfg: HomeConfig): void {
   uiPhase = { type: 'idle' };
   cpuPlayerTradeOfferedThisTurn = false;
   lastCpuOfferSignature = null;
+  diceStats = new Array(13).fill(0); // 新規ゲームで出目分布をリセット
 
   // 画面切り替え（ゲーム中は大きなタイトルは出さず、盤面/操作の領域を広げる）
   homeDiv.style.display = 'none';
@@ -1750,7 +1932,7 @@ function startGame(cfg: HomeConfig): void {
 function returnToHome(): void {
   // AI タイムアウトを無効化
   gameGeneration++;
-  document.querySelector('.victory-overlay')?.remove();
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove();
 
   appDiv.style.display = 'none';
   gameTitle.style.display = 'none';
