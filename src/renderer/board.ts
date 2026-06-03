@@ -353,8 +353,13 @@ export function renderBoard(
 ): void {
   while (svgEl_.firstChild) svgEl_.removeChild(svgEl_.firstChild);
 
-  const W = svgEl_.clientWidth || 800;
-  const H = svgEl_.clientHeight || 700;
+  // 中央寄せ・海背景はビューボックスのユーザ座標系(800×700)を基準にする。
+  // clientWidth/Height は CSS 縮小後のレンダリング px のため、盤面が縮むと
+  // タイル群が viewBox 内で左に寄り、左右の余白が非対称に見える原因になる。
+  // viewBox 寸法を使えば、レンダリング倍率に関係なく常に中央＝viewBox中心に揃う。
+  const vb = svgEl_.viewBox?.baseVal;
+  const W = vb && vb.width  ? vb.width  : (svgEl_.clientWidth  || 800);
+  const H = vb && vb.height ? vb.height : (svgEl_.clientHeight || 700);
   const { ox, oy } = boardOffset(state, W, H);
   const size = HEX_SIZE;
 

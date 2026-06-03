@@ -60,38 +60,43 @@ h1 {
      [左パネル列] [盤面] [右パネル列]。左右列を等幅(1fr)にして必ず左右対称にする。 */
   #board-area.corner-panels {
     display: grid;
-    /* 左右パネル列は等幅(対称)・適度に上限、中央は盤面の自然サイズ */
-    grid-template-columns: minmax(172px, 222px) auto minmax(172px, 222px);
+    /* 左右パネル列を等幅(1fr)にして左右対称。中央は盤面の自然サイズ(auto)。
+       盤面との間隔は column-gap で一元管理する。 */
+    grid-template-columns: 1fr auto 1fr;
     grid-template-rows: auto auto;
     justify-content: center;
     align-content: start;
-    gap: 12px 18px;
+    row-gap: 12px;
+    column-gap: 16px;   /* 盤面と左右パネルの間隔（左右共通） */
     width: 100%;
     max-width: 1340px;
     margin: 0 auto;
   }
   /* .player-panels の箱を消し、4パネルを直接グリッドアイテムにする */
   #board-area.corner-panels > .player-panels { display: contents; }
-  /* 盤面は中央列、上下2行を縦にまたいで中央に */
+  /* 盤面は中央列、上下2行を縦にまたいで中央に。
+     max-width は付けない（列幅=盤面実寸に確定させ、左右で間隔がズレる原因を排除）。 */
   #board-area.corner-panels > #board {
     grid-column: 2;
     grid-row: 1 / span 2;
-    max-width: 860px;
     align-self: center;
     justify-self: center;
   }
+  /* パネルは幅を抑え、左右とも「盤面側」に寄せる（justify-self）。
+     → 盤面〜パネルの間隔が左右とも column-gap で揃う。 */
   #board-area.corner-panels .player-panel {
     position: static;
-    width: auto;
+    width: 100%;
+    max-width: 216px;
     margin: 0;
     max-height: 46vh;
     overflow-y: auto;
   }
   /* CPU γ(player4)=左上 / CPU α(player2)=右上 / P1=左下 / CPU β(player3)=右下 */
-  #board-area.corner-panels .player-panel[data-pid="player4"] { grid-column: 1; grid-row: 1; align-self: start; }
-  #board-area.corner-panels .player-panel[data-pid="player2"] { grid-column: 3; grid-row: 1; align-self: start; }
-  #board-area.corner-panels .player-panel[data-pid="player1"] { grid-column: 1; grid-row: 2; align-self: end; }
-  #board-area.corner-panels .player-panel[data-pid="player3"] { grid-column: 3; grid-row: 2; align-self: end; }
+  #board-area.corner-panels .player-panel[data-pid="player4"] { grid-column: 1; grid-row: 1; justify-self: end;   align-self: start; }
+  #board-area.corner-panels .player-panel[data-pid="player1"] { grid-column: 1; grid-row: 2; justify-self: end;   align-self: end; }
+  #board-area.corner-panels .player-panel[data-pid="player2"] { grid-column: 3; grid-row: 1; justify-self: start; align-self: start; }
+  #board-area.corner-panels .player-panel[data-pid="player3"] { grid-column: 3; grid-row: 2; justify-self: start; align-self: end; }
 }
 
 /* ---- タイル ---- */
@@ -242,6 +247,24 @@ h1 {
   padding-bottom: 28px;
   width: 100%;
   max-width: 1000px;
+}
+
+/* 狭幅(四隅レイアウト未満)では #ui を縦積みにし、表示順を
+   操作パネル → プレイヤーパネル → ログ履歴 に固定する。
+   DOM 順は turn-panel → game-log-panel → player-panels だが、
+   order でログを最後へ回す（DOM・描画ロジックは変更しない）。
+   1200px 以上は四隅レイアウト(@media min-width:1200px)側が担当し、
+   #ui には turn-panel と log しか入らないためこの指定は無関係。 */
+@media (max-width: 1199.98px) {
+  #ui {
+    flex-direction: column;
+    align-items: center;
+  }
+  /* 縦積みでは flex-grow を切る（turn-panel の flex:1 が縦に伸びて
+     余白だらけになるのを防ぐ）。高さは内容なり。 */
+  #ui > .turn-panel     { order: 1; flex: 0 0 auto; width: 100%; }
+  #ui > .player-panels  { order: 2; flex: 0 0 auto; width: 100%; }
+  #ui > .game-log-panel { order: 3; flex: 0 0 auto; width: 100%; }
 }
 
 /* ---- 手番パネル ---- */
