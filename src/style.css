@@ -56,26 +56,42 @@ h1 {
 
 /* ---- 広い画面: プレイヤーパネルを盤面の四隅に配置 ---- */
 @media (min-width: 1200px) {
+  /* 3カラムのゲーム領域として一体配置:
+     [左パネル列] [盤面] [右パネル列]。左右列を等幅(1fr)にして必ず左右対称にする。 */
   #board-area.corner-panels {
-    max-width: 1200px;   /* 盤面820 + 左右パネル(186)×2 + 余白 */
+    display: grid;
+    /* 左右パネル列は等幅(対称)・適度に上限、中央は盤面の自然サイズ */
+    grid-template-columns: minmax(172px, 222px) auto minmax(172px, 222px);
+    grid-template-rows: auto auto;
+    justify-content: center;
+    align-content: start;
+    gap: 12px 18px;
+    width: 100%;
+    max-width: 1340px;
     margin: 0 auto;
   }
-  #board-area.corner-panels > #board { max-width: 820px; }
-  /* .player-panels の箱を消し、各パネルを #board-area 基準で個別配置 */
+  /* .player-panels の箱を消し、4パネルを直接グリッドアイテムにする */
   #board-area.corner-panels > .player-panels { display: contents; }
+  /* 盤面は中央列、上下2行を縦にまたいで中央に */
+  #board-area.corner-panels > #board {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    max-width: 860px;
+    align-self: center;
+    justify-self: center;
+  }
   #board-area.corner-panels .player-panel {
-    position: absolute;
-    width: 186px;
+    position: static;
+    width: auto;
     margin: 0;
-    z-index: 6;
-    max-height: 47%;
+    max-height: 46vh;
     overflow-y: auto;
   }
-  /* P1=左下 / CPU α(player2)=右上 / CPU β(player3)=右下 / CPU γ(player4)=左上 */
-  #board-area.corner-panels .player-panel[data-pid="player4"] { top: 0;    left: 0;  }
-  #board-area.corner-panels .player-panel[data-pid="player2"] { top: 0;    right: 0; }
-  #board-area.corner-panels .player-panel[data-pid="player1"] { bottom: 0; left: 0;  }
-  #board-area.corner-panels .player-panel[data-pid="player3"] { bottom: 0; right: 0; }
+  /* CPU γ(player4)=左上 / CPU α(player2)=右上 / P1=左下 / CPU β(player3)=右下 */
+  #board-area.corner-panels .player-panel[data-pid="player4"] { grid-column: 1; grid-row: 1; align-self: start; }
+  #board-area.corner-panels .player-panel[data-pid="player2"] { grid-column: 3; grid-row: 1; align-self: start; }
+  #board-area.corner-panels .player-panel[data-pid="player1"] { grid-column: 1; grid-row: 2; align-self: end; }
+  #board-area.corner-panels .player-panel[data-pid="player3"] { grid-column: 3; grid-row: 2; align-self: end; }
 }
 
 /* ---- タイル ---- */
