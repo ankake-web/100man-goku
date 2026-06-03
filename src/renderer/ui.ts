@@ -660,11 +660,136 @@ function buildPlayerTradeOfferUI(
 // F-05: ペンディング交易UI（応答・確認）
 // ============================================================
 
+// LAN対戦用のペンディング交易UI（視点 viewerId 基準で操作を出し分ける）。
+// 提案者: 応答状況の一覧＋（全員応答後）成立相手選択 or 取り消し。
+// 対象者: 自分が未応答なら承認/拒否。第三者: 状況の閲覧のみ。
+function buildLanPendingTradeUI(
+  state: GameState,
+  viewerId: PlayerId,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+  const trade = state.pendingTrade!;
+  const initiator = state.players[trade.initiatorId];
+  const initColor = PLAYER_COLORS[trade.initiatorId] ?? '#aaa';
+
+  const header = el('div', 'modal-header');
+  header.textContent = '🤝 プレイヤー間交易';
+  div.appendChild(header);
+
+  // 交換内容（提案者が渡す ⇅ 提案者が欲しい）— 公開情報
+  div.appendChild(buildExchangeView(trade.offer.give, trade.offer.receive, initiator?.name ?? trade.initiatorId, initColor));
+
+  const isInitiator = viewerId === trade.initiatorId;
+  const isTarget = trade.targetPlayerIds.includes(viewerId);
+  const myResp = trade.responses[viewerId];
+
+  // 応答状況の一覧（公開情報）
+  const statusLbl = el('div', 'modal-section-label');
+  statusLbl.textContent = '提案先の返答：';
+  div.appendChild(statusLbl);
+  const list = el('div', 'trade-status-list');
+  for (const t of trade.targetPlayerIds) {
+    const name = state.players[t]?.name ?? t;
+    const resp = trade.responses[t];
+    const row = el('div', 'trade-status-row');
+    if (!resp) { row.textContent = `⏳ ${name}：検討中…`; row.style.color = 'rgba(255,255,255,0.7)'; }
+    else if (resp.status === 'ACCEPT') { row.textContent = `✓ ${name}：承認`; row.style.color = '#7aee40'; }
+    else { row.textContent = `✗ ${name}：拒否`; row.style.color = '#ff6060'; }
+    list.appendChild(row);
+  }
+  div.appendChild(list);
+
+  // ---- 対象プレイヤー: 自分が未応答なら承認/拒否 ----
+  if (isTarget && !myResp && (trade.state === 'TRADE_OFFER' || trade.state === 'TRADE_RESPONSE')) {
+    const me = state.players[viewerId]!;
+    // 「自分が渡す = 提案者が受け取る(receive)」を支払えるか
+    const canAfford = RESOURCE_TYPES.every(r => (me.hand[r] ?? 0) >= (trade.offer.receive[r] ?? 0));
+    const you = el('div', 'trade-you-view');
+    you.append('👉 あなたは ');
+    you.appendChild(resChips(trade.offer.receive));
+    you.append(' を渡して ');
+    you.appendChild(resChips(trade.offer.give));
+    you.append(' をもらう');
+    div.appendChild(you);
+    if (!canAfford) {
+      const lacking = RESOURCE_TYPES.filter(r => (me.hand[r] ?? 0) < (trade.offer.receive[r] ?? 0));
+      const lackMsg = el('div', 'trade-lack-msg');
+      lackMsg.textContent = `⚠ ${lacking.map(r => RESOURCE_NAMES[r]).join('・')}が不足しています`;
+      div.appendChild(lackMsg);
+    }
+    const btnRow = el('div', 'trade-response-btns');
+    btnRow.appendChild(makeBtn('✓ 承認', canAfford ? 'btn-primary' : 'btn-disabled', !canAfford, () =>
+      dispatch({ type: 'RESPOND_TRADE', response: { playerId: viewerId, status: 'ACCEPT' } }),
+    ));
+    btnRow.appendChild(makeBtn('✗ 拒否', 'btn-end', false, () =>
+      dispatch({ type: 'RESPOND_TRADE', response: { playerId: viewerId, status: 'REJECT' } }),
+    ));
+    div.appendChild(btnRow);
+  } else if (isTarget && myResp) {
+    const done = el('div', 'modal-section-label');
+    done.textContent = myResp.status === 'ACCEPT' ? '✓ あなたは承認しました' : '✗ あなたは拒否しました';
+    div.appendChild(done);
+  }
+
+  // ---- 提案者: 取り消し / 成立相手の選択 ----
+  if (isInitiator) {
+    if (trade.state === 'TRADE_OFFER') {
+      div.appendChild(makeBtn('↩ 取り消す', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+    } else if (trade.state === 'TRADE_RESPONSE') {
+      const acceptors = trade.targetPlayerIds.filter(t => trade.responses[t]?.status === 'ACCEPT') as PlayerId[];
+      if (acceptors.length === 0) {
+        const msg = el('div', 'modal-section-label');
+        msg.textContent = '😕 全員が拒否（不成立）';
+        msg.style.color = '#ff8060';
+        div.appendChild(msg);
+        div.appendChild(makeBtn('閉じる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+      } else {
+        const lbl = el('div', 'modal-section-label');
+        lbl.textContent = acceptors.length === 1 ? '✅ 成立させる：' : '✅ 成立相手を1人選択：';
+        div.appendChild(lbl);
+        const row = el('div', 'trade-response-btns');
+        for (const a of acceptors) {
+          row.appendChild(makeBtn(`${state.players[a]?.name} と成立`, 'btn-primary', false,
+            () => dispatch({ type: 'CONFIRM_TRADE', responderId: a })));
+        }
+        div.appendChild(row);
+        div.appendChild(makeBtn('↩ やめる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+      }
+    }
+  }
+
+  // 第三者（提案者でも対象でもない）は閲覧のみ。
+  if (!isInitiator && !isTarget) {
+    const note = el('div', 'modal-section-label');
+    note.textContent = '他プレイヤーが交易中です…';
+    div.appendChild(note);
+  }
+
+  if (trade.state === 'TRADE_CANCELLED') {
+    const err = el('div', 'modal-section-label');
+    err.textContent = '取引失敗：実行前に手持ちが変化しました';
+    err.style.color = '#ff8060';
+    div.appendChild(err);
+    if (isInitiator) div.appendChild(makeBtn('閉じる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+  }
+
+  return div;
+}
+
 function buildPendingTradeUI(
   state: GameState,
   pid: PlayerId,
   dispatch: (a: Action) => void,
+  viewerId?: PlayerId,
+  lanMode = false,
 ): HTMLDivElement {
+  // LAN対戦は「視点(viewerId)」基準で承認/拒否・成立操作を出し分ける。
+  // （pid は手番=提案者なので全端末で同じになり、視点判定には使えない）
+  if (lanMode && viewerId != null) {
+    return buildLanPendingTradeUI(state, viewerId, dispatch);
+  }
+
   const div = el('div', 'modal-panel');
   const trade = state.pendingTrade!;
   const initiator = state.players[trade.initiatorId];
@@ -858,7 +983,7 @@ function buildActionButtons(
 
   // ---- F-05: ペンディング交易 ----
   if (state.pendingTrade !== null) {
-    div.appendChild(buildPendingTradeUI(state, pid, dispatch));
+    div.appendChild(buildPendingTradeUI(state, pid, dispatch, viewerId, lanMode));
     return div;
   }
 
@@ -894,8 +1019,8 @@ function buildActionButtons(
   // ---- PRE_ROLL ----
   if (state.turnPhase === 'PRE_ROLL') {
     div.appendChild(makeBtn('🎲 ダイスを振る', 'btn-primary', false, () => dispatch({ type: 'ROLL_DICE' })));
-    // LAN MVP3 では発展カード使用は未対応のため出さない。
-    if (!lanMode) appendDevCardButtons(div, state, player, setUIPhase, dispatch);
+    // ダイス前は騎士のみ使用可（appendDevCardButtons 内で制御）。LANも対応。
+    appendDevCardButtons(div, state, player, setUIPhase, dispatch);
     if (calcVP(state, pid) >= VP_TABLE.target) {
       div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
     }
@@ -926,20 +1051,17 @@ function buildActionButtons(
   div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
     () => dispatch({ type: 'BUY_DEV_CARD' })));
 
-  // LAN MVP3 では交易・発展カード使用は未対応のため出さない（MVP4で対応）。
-  if (!lanMode) {
-    div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
-      () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
+  div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
+    () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
 
-    // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
-    if (state.playerOrder.length > 1) {
-      div.appendChild(makeBtn('🤝 プレイヤー間交易', 'btn-build', false,
-        () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
-    }
-
-    // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
-    appendDevCardButtons(div, state, player, setUIPhase, dispatch);
+  // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
+  if (state.playerOrder.length > 1) {
+    div.appendChild(makeBtn('🤝 プレイヤー間交易', 'btn-build', false,
+      () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
   }
+
+  // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
+  appendDevCardButtons(div, state, player, setUIPhase, dispatch);
 
   if (calcVP(state, pid) >= VP_TABLE.target) {
     div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));

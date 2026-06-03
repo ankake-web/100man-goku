@@ -24,17 +24,25 @@ import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
+import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
 import type { PlayerId, PlayerColor, GameState, Action } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
 
-// MVP3 で LAN 同期する Action（サーバ側ホワイトリスト）。
-// 交易・発展カード使用・バンク交易・道路建設カードは MVP4。
-// 盗賊移動/捨て札は 7 が出たときの進行ロック回避のため最小対応で含める。
+// LAN 同期する Action（サーバ側ホワイトリスト）。
+// MVP4 で交易・捨て札・盗賊・発展カード使用・勝利まで全主要操作を許可する。
 const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
+  // 基本操作（MVP3）
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
-  'BUY_DEV_CARD', 'END_TURN', 'MOVE_ROBBER', 'DISCARD_RESOURCES', 'DECLARE_VICTORY',
+  'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
+  // 7 / 捨て札 / 盗賊（MVP4）
+  'MOVE_ROBBER', 'DISCARD_RESOURCES',
+  // 交易（MVP4）
+  'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
+  // 発展カード使用（MVP4）
+  'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
+  'FINISH_ROAD_BUILDING',
 ]);
 
 // その Action を実行してよいプレイヤー（actor）。送信者の id と一致せねば拒否。
@@ -235,6 +243,28 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           if (actor !== me.id) {
             send(ws, { t: 'error', message: 'あなたの操作できる場面ではありません' });
             return;
+          }
+          // 交易応答は「交易対象に含まれるプレイヤー」のみ許可（対象外を拒否）
+          if (action.type === 'RESPOND_TRADE') {
+            const pt = room.state.pendingTrade;
+            if (!pt || !pt.targetPlayerIds.includes(action.response.playerId)) {
+              send(ws, { t: 'error', message: '交易の対象ではありません' });
+              return;
+            }
+          }
+          // 捨て札は「手札の半分(切り捨て)を、所持範囲内で」のみ許可（不足/過剰を拒否）
+          if (action.type === 'DISCARD_RESOURCES') {
+            const p = room.state.players[action.playerId];
+            if (!p) { send(ws, { t: 'error', message: '不明なプレイヤーです' }); return; }
+            const handTotal = RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0);
+            const required = Math.floor(handTotal / 2);
+            const res = action.resources as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
+            const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+            const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
+            if (handTotal < 8 || discardSum !== required || !withinHand) {
+              send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
+              return;
+            }
           }
           try {
             const prev = room.state;

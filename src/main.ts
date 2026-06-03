@@ -1965,7 +1965,11 @@ function currentPid(s: GameState): PlayerId {
 // LAN で送信を許可する Action（クライアント側ガード。サーバでも二重に検証）。
 const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
-  'BUY_DEV_CARD', 'END_TURN', 'MOVE_ROBBER', 'DISCARD_RESOURCES', 'DECLARE_VICTORY',
+  'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
+  'MOVE_ROBBER', 'DISCARD_RESOURCES',
+  'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
+  'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
+  'FINISH_ROAD_BUILDING',
 ]);
 
 // ロビーから started を受け取った時に呼ばれる。以降のメッセージは main が受ける。
@@ -2080,7 +2084,15 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
   if (action && (action.type === 'BUILD_ROAD' || action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY')) {
     buildMode = 'idle';
   }
+  if (action?.type === 'PLAY_ROAD_BUILDING') buildMode = 'road';
   if (state.roadBuildingRoadsRemaining > 0) buildMode = 'road';
+
+  // 交易/発展カード/盗賊/ターン終了などの後はモーダルUIを閉じる（CPU path と同様）。
+  // ただし DISCARD_RESOURCES は除外（複数人捨て札で他人の捨て札時に自分の選択中UIを
+  // 消さないため）。捨て札・盗賊ターゲットは直後の redraw 自動同期が再導出する。
+  if (action && action.type !== 'DISCARD_RESOURCES' && RESET_UIPHASE_ACTIONS.has(action.type)) {
+    uiPhase = { type: 'idle' };
+  }
 
   const finish = (): void => {
     diceAnimating = false;
@@ -2114,8 +2126,11 @@ function netDispatch(action: Action): void {
   if (diceAnimating) return;
   if (!lanClient || !viewerPlayerId) return;
   if (!LAN_CLIENT_ALLOWED.has(action.type)) return; // 未対応操作は送らない
-  // actor（操作者）が自分か。捨て札は対象本人、それ以外は手番プレイヤー。
-  const actor = action.type === 'DISCARD_RESOURCES' ? action.playerId : currentPid(state);
+  // actor（操作者）が自分か。捨て札・交易応答は対象本人、それ以外は手番プレイヤー。
+  const actor =
+    action.type === 'DISCARD_RESOURCES' ? action.playerId :
+    action.type === 'RESPOND_TRADE'     ? action.response.playerId :
+    currentPid(state);
   if (actor !== viewerPlayerId) return; // 自分の操作できる場面のみ送信
   lanClient.send({ t: 'action', action });
 }
