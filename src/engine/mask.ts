@@ -20,10 +20,11 @@ import { RESOURCE_TYPES, makeHand } from '../constants';
 
 export function maskStateFor(state: GameState, viewerId: PlayerId): GameState {
   const players: GameState['players'] = {};
+  const revealWinner = state.phase === 'GAME_OVER' && state.winner != null;
   for (const pid of Object.keys(state.players)) {
     const p = state.players[pid]!;
-    if (pid === viewerId) {
-      // 自分自身は全公開
+    // 自分自身、および GAME_OVER 時の勝者は全公開（勝敗内訳の表示用）。
+    if (pid === viewerId || (revealWinner && pid === state.winner)) {
       players[pid] = p;
       continue;
     }

@@ -39,4 +39,4 @@ export type ServerMessage =
   | { t: 'lobby';  code: string; hostUrls: string[]; players: LobbyPlayer[]; canStart: boolean }
   | { t: 'started'; you: PlayerId; state: GameState }               // 開始（state はマスク済み）
   | { t: 'state';   state: GameState; action?: Action; by?: PlayerId } // 状態更新（MVP3 以降）
-  | { t: 'error';   message: string };
+  | { t: 'error';   message: string; fatal?: boolean };               // fatal=true で接続断などの致命的エラー

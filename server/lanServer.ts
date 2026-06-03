@@ -22,10 +22,29 @@ import type { Server } from 'node:http';
 import os from 'node:os';
 import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
+import { applyAction } from '../src/engine/game';
+import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
-import type { PlayerId, PlayerColor, GameState } from '../src/types';
+import type { PlayerId, PlayerColor, GameState, Action } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
+
+// MVP3 で LAN 同期する Action（サーバ側ホワイトリスト）。
+// 交易・発展カード使用・バンク交易・道路建設カードは MVP4。
+// 盗賊移動/捨て札は 7 が出たときの進行ロック回避のため最小対応で含める。
+const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
+  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
+  'BUY_DEV_CARD', 'END_TURN', 'MOVE_ROBBER', 'DISCARD_RESOURCES', 'DECLARE_VICTORY',
+]);
+
+// その Action を実行してよいプレイヤー（actor）。送信者の id と一致せねば拒否。
+function requiredActor(state: GameState, action: Action): PlayerId | null {
+  switch (action.type) {
+    case 'DISCARD_RESOURCES': return action.playerId;
+    case 'RESPOND_TRADE':     return action.response.playerId;
+    default:                  return state.playerOrder[state.currentPlayerIndex] ?? null;
+  }
+}
 
 const PLAYER_IDS: PlayerId[] = ['player1', 'player2', 'player3', 'player4'];
 const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
@@ -105,6 +124,15 @@ function broadcastLobby(room: Room, urls: string[]): void {
     canStart: connected >= MIN_PLAYERS && connected <= MAX_PLAYERS,
   };
   for (const m of room.members) send(m.ws, msg);
+}
+
+// 更新後の正本 state を、各メンバーへ視点別マスクして配信する。
+function broadcastState(room: Room, action: Action, byPid: PlayerId): void {
+  if (!room.state) return;
+  for (const m of room.members) {
+    if (!m.connected) continue;
+    send(m.ws, { t: 'state', state: maskStateFor(room.state, m.id), action, by: byPid });
+  }
 }
 
 function startGame(room: Room): void {
@@ -195,7 +223,33 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           break;
         }
         case 'action': {
-          // MVP3 以降で applyAction 適用＋配信を実装する。
+          // ルーム所属・開始済み・正本stateの存在を確認
+          if (!room || !me || !room.started || !room.state) return;
+          const action = msg.action;
+          if (!action || !LAN_ALLOWED_ACTIONS.has(action.type)) {
+            send(ws, { t: 'error', message: 'この操作はまだLAN対戦に対応していません' });
+            return;
+          }
+          // 操作権限: actor が送信者本人か（非手番/別IDは拒否）
+          const actor = requiredActor(room.state, action);
+          if (actor !== me.id) {
+            send(ws, { t: 'error', message: 'あなたの操作できる場面ではありません' });
+            return;
+          }
+          try {
+            const prev = room.state;
+            // 乱数（ダイス/山札/盗賊奪取）はすべてサーバ側で確定する
+            let next = applyAction(prev, action, Math.random);
+            const logs = buildActionLog(prev, action, next);
+            if (logs.length > 0) {
+              next = { ...next, log: [...next.log, ...logs].slice(-MAX_LOG_ENTRIES) };
+            }
+            room.state = next;
+            broadcastState(room, action, me.id);
+          } catch {
+            // applyAction が弾いた無効操作（送信者にのみ通知）
+            send(ws, { t: 'error', message: '無効な操作です' });
+          }
           break;
         }
       }

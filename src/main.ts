@@ -666,19 +666,9 @@ function cpuOfferSignature(cpuPid: string, offer: TradeOffer): string {
 function redraw(): void {
   if (!state) return;
 
-  // LAN対戦（MVP1-2）: マスク済み state を情報表示のみで描画。
-  // 操作UI・CPUスケジュール・ウォッチドッグは動かさない。
-  if (netMode) {
-    renderBoard(svgBoard, state, {});
-    renderUI(
-      uiDiv, state, 'idle', setBuildMode, uiPhase, setUIPhase, dispatch,
-      viewerPlayerId ?? undefined, /* readOnly */ true,
-    );
-    updateGameNav();
-    return;
-  }
-
-  // DISCARD フェーズの uiPhase 自動同期
+  // DISCARD フェーズの uiPhase 自動同期。
+  // LAN ではマスク済み state のため discardPid は「自分（8枚以上の場合）」に
+  // 自然解決し、捨て札UIが各端末で自分の分だけ出る。
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     const discardPid = state.playerOrder.find(p => {
       const h = state.players[p]!.hand;
@@ -693,6 +683,20 @@ function redraw(): void {
 
   if (state.turnPhase !== 'ROBBER' && uiPhase.type === 'robberTarget') {
     uiPhase = { type: 'idle' };
+  }
+
+  // LAN対戦: 操作UIは viewer の手番のみ有効化（lanMode）。建設ハイライトも
+  // 自分の手番のときだけ出す。CPUスケジュール/ウォッチドッグは動かさない。
+  if (netMode) {
+    const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
+    const opts = myTurn ? computeHighlights(state, buildMode) : {};
+    renderBoard(svgBoard, state, opts);
+    renderUI(
+      uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
+      viewerPlayerId ?? undefined, /* lanMode */ true,
+    );
+    updateGameNav();
+    return;
   }
 
   const opts = computeHighlights(state, buildMode);
@@ -1788,9 +1792,8 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
 }
 
 function dispatch(action: Action): void {
-  // LAN対戦（MVP1-2）: ローカル applyAction は禁止（正本はサーバ）。
-  // 操作の同期は MVP3 以降で client.send({t:'action'}) に置き換える。
-  if (netMode) return;
+  // LAN対戦: ローカル applyAction は禁止（正本はサーバ）。Action はサーバへ送る。
+  if (netMode) { netDispatch(action); return; }
   // ダイス演出中は操作を受け付けない（多重ロール・先走り操作を防止）
   if (diceAnimating) return;
   try {
@@ -1951,8 +1954,19 @@ function setUIPhase(phase: UIPhase): void {
 let boardEventsAttached = false;
 
 // ============================================================
-// LAN対戦: ゲーム開始 / サーバメッセージ処理（MVP1-2）
+// LAN対戦: ゲーム開始 / サーバメッセージ処理 / Action送信
 // ============================================================
+
+// 現在の手番プレイヤーID。
+function currentPid(s: GameState): PlayerId {
+  return s.playerOrder[s.currentPlayerIndex]!;
+}
+
+// LAN で送信を許可する Action（クライアント側ガード。サーバでも二重に検証）。
+const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
+  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
+  'BUY_DEV_CARD', 'END_TURN', 'MOVE_ROBBER', 'DISCARD_RESOURCES', 'DECLARE_VICTORY',
+]);
 
 // ロビーから started を受け取った時に呼ばれる。以降のメッセージは main が受ける。
 function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient): void {
@@ -1966,9 +1980,16 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   state = initial;
   buildMode = 'idle';
   uiPhase = { type: 'idle' };
+  diceStats = new Array(13).fill(0);
 
   // 以降のサーバメッセージ（状態更新・切断等）は main 側で処理する。
   client.setHandler(handleNetMessage);
+
+  // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
+  if (!boardEventsAttached) {
+    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch);
+    boardEventsAttached = true;
+  }
 
   // 画面をゲーム本体へ切替
   homeDiv.style.display = 'none';
@@ -1980,22 +2001,123 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
 function handleNetMessage(msg: import('./net/protocol').ServerMessage): void {
   switch (msg.t) {
-    case 'state':         // MVP3 以降: マスク済み state の更新
     case 'started':
+      // 再開始（理論上）: viewer と state を更新
+      viewerPlayerId = msg.you;
       state = msg.state;
-      if (msg.t === 'started') viewerPlayerId = msg.you;
       redraw();
       break;
+    case 'state':
+      // サーバが適用済みの正本（マスク済み）。演出はアクション種別で再現する。
+      applyNetState(msg.action, msg.state);
+      break;
     case 'error':
-      // 接続断など。ホームへ戻す（多重アラート防止のため netMode を先に落とす）。
-      if (netMode) {
-        netMode = false;
-        window.alert(`LAN対戦: ${msg.message}`);
-        returnToHome();
+      if (msg.fatal) {
+        // 接続断など致命的: ホームへ戻す（多重防止に netMode を先に落とす）。
+        if (netMode) {
+          netMode = false;
+          window.alert(`LAN対戦: ${msg.message}`);
+          returnToHome();
+        }
+      } else {
+        // 操作拒否など非致命: 進行は継続（次の state 配信で UI は整合する）。
+        console.warn('LAN操作エラー:', msg.message);
       }
       break;
-    // 'lobby'（開始後の参加者増減ブロードキャスト等）は MVP1-2 では無視
+    // 'lobby'（開始後の参加者増減ブロードキャスト等）は無視
   }
+}
+
+// アクション種別に応じた効果音。ローカル dispatch / LAN 受信の双方で使う。
+function playActionSE(action: Action): void {
+  switch (action.type) {
+    case 'ROLL_DICE':         playSE('dice'); break;
+    case 'BUILD_ROAD':
+    case 'BUILD_SETTLEMENT':
+    case 'BUILD_CITY':        playSE('build'); break;
+    case 'BUY_DEV_CARD':      playSE('devCard'); break;
+    case 'PLAY_KNIGHT':
+    case 'PLAY_ROAD_BUILDING':
+    case 'PLAY_YEAR_OF_PLENTY':
+    case 'PLAY_MONOPOLY':     playSE('devCard'); break;
+    case 'MOVE_ROBBER':       playSE('robber'); break;
+    case 'CONFIRM_TRADE':     playSE('tradeOk'); break;
+    case 'RESPOND_TRADE':
+      if ((action as { response: { status: string } }).response.status === 'REJECT') playSE('tradeNg');
+      break;
+    case 'END_TURN':          playSE('turnStart'); break;
+    case 'DECLARE_VICTORY':   playSE('victory'); break;
+    case 'DISCARD_RESOURCES': playSE('discardLose'); break;
+  }
+}
+
+// LAN: サーバ配信の新 state を反映し、アクション種別に応じた演出を再現する。
+// ローカル applyAction は行わない（正本はサーバ）。CPU/ログ処理も走らせない。
+function applyNetState(action: Action | undefined, newState: GameState): void {
+  const prevState = state;
+  state = newState;
+
+  // SE（dispatch と同じ対応）
+  if (action) playActionSE(action);
+
+  // 勝利演出（GAME_OVER 遷移時）
+  if (state.phase === 'GAME_OVER' && prevState.phase !== 'GAME_OVER') {
+    playSE('victory');
+    if (state.winner && action) showVictoryOverlay(state.winner, action.type);
+  }
+
+  const diceTotal = action?.type === 'ROLL_DICE' && state.lastDiceRoll
+    ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
+    : undefined;
+  if (action?.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal >= 2 && diceTotal <= 12) {
+    diceStats[diceTotal] = (diceStats[diceTotal] ?? 0) + 1;
+  }
+
+  const robberFromTile = action?.type === 'MOVE_ROBBER'
+    ? Object.values(prevState.tiles).find(t => t.hasRobber)?.id
+    : undefined;
+
+  if (action && (action.type === 'BUILD_ROAD' || action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY')) {
+    buildMode = 'idle';
+  }
+  if (state.roadBuildingRoadsRemaining > 0) buildMode = 'road';
+
+  const finish = (): void => {
+    diceAnimating = false;
+    redraw();
+    if (action?.type === 'MOVE_ROBBER' && robberFromTile) {
+      animateRobberMove(robberFromTile, action.tileId);
+    }
+    if (action?.type === 'ROLL_DICE' && diceTotal === 7) {
+      playSE('sevenRoll');
+      if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+        setTimeout(() => playSE('discardWarn'), 360);
+      }
+    }
+    if (action?.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal !== 7) {
+      highlightProducingTiles(diceTotal);
+    }
+    triggerResourceAnimation(prevState, state, action?.type ?? 'SYSTEM', diceTotal);
+  };
+
+  if (action?.type === 'ROLL_DICE' && state.lastDiceRoll) {
+    diceAnimating = true;
+    const [d1, d2] = state.lastDiceRoll;
+    playDiceRoll(d1, d2, finish);
+  } else {
+    finish();
+  }
+}
+
+// LAN: クライアント操作をサーバへ送る（ローカル state は変更しない）。
+function netDispatch(action: Action): void {
+  if (diceAnimating) return;
+  if (!lanClient || !viewerPlayerId) return;
+  if (!LAN_CLIENT_ALLOWED.has(action.type)) return; // 未対応操作は送らない
+  // actor（操作者）が自分か。捨て札は対象本人、それ以外は手番プレイヤー。
+  const actor = action.type === 'DISCARD_RESOURCES' ? action.playerId : currentPid(state);
+  if (actor !== viewerPlayerId) return; // 自分の操作できる場面のみ送信
+  lanClient.send({ t: 'action', action });
 }
 
 function startGame(cfg: HomeConfig): void {

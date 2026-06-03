@@ -836,6 +836,8 @@ function buildActionButtons(
   uiPhase: UIPhase,
   setUIPhase: (p: UIPhase) => void,
   dispatch: (a: Action) => void,
+  viewerId?: PlayerId,   // LAN: 自分のID
+  lanMode = false,       // LAN: 手番gating＋未対応操作を隠す
 ): HTMLDivElement | null {
   if (state.phase !== 'MAIN') return null;
   const div = el('div', 'action-buttons');
@@ -844,6 +846,7 @@ function buildActionButtons(
   if (state.turnPhase === 'DISCARD') {
     // 捨て札UIは「人間が捨てる対象のとき」だけ表示する。
     // CPUが対象の場合に出すと、CPUの手札内訳が漏れ・人間がCPU分を操作できてしまう。
+    // LAN ではマスク済み state により discardPid は「自分」に解決する。
     const discardPid = state.playerOrder.find(p => {
       const h = state.players[p]!.hand;
       return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
@@ -885,11 +888,14 @@ function buildActionButtons(
   // CPUの手番ではダイス/建設/交易/ターン終了などを人間に出さない
   // （CPUは内部ロジックで自動進行する）。
   if (player.type !== 'human') return null;
+  // LAN: 自分の手番でない端末には操作ボタンを出さない（サーバでも検証）。
+  if (lanMode && viewerId != null && viewerId !== pid) return null;
 
   // ---- PRE_ROLL ----
   if (state.turnPhase === 'PRE_ROLL') {
     div.appendChild(makeBtn('🎲 ダイスを振る', 'btn-primary', false, () => dispatch({ type: 'ROLL_DICE' })));
-    appendDevCardButtons(div, state, player, setUIPhase, dispatch);
+    // LAN MVP3 では発展カード使用は未対応のため出さない。
+    if (!lanMode) appendDevCardButtons(div, state, player, setUIPhase, dispatch);
     if (calcVP(state, pid) >= VP_TABLE.target) {
       div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
     }
@@ -919,17 +925,21 @@ function buildActionButtons(
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
   div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
     () => dispatch({ type: 'BUY_DEV_CARD' })));
-  div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
-    () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
 
-  // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
-  if (state.playerOrder.length > 1) {
-    div.appendChild(makeBtn('🤝 プレイヤー間交易', 'btn-build', false,
-      () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
+  // LAN MVP3 では交易・発展カード使用は未対応のため出さない（MVP4で対応）。
+  if (!lanMode) {
+    div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
+      () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
+
+    // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
+    if (state.playerOrder.length > 1) {
+      div.appendChild(makeBtn('🤝 プレイヤー間交易', 'btn-build', false,
+        () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
+    }
+
+    // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
+    appendDevCardButtons(div, state, player, setUIPhase, dispatch);
   }
-
-  // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
-  appendDevCardButtons(div, state, player, setUIPhase, dispatch);
 
   if (calcVP(state, pid) >= VP_TABLE.target) {
     div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
@@ -952,7 +962,7 @@ export function renderUI(
   setUIPhase: (phase: UIPhase) => void,
   dispatch: (action: Action) => void,
   viewerId?: PlayerId,      // LAN対戦: 自分のID（単一端末プレイでは未指定）
-  readOnly = false,         // LAN対戦MVP: 操作UIを出さず情報表示のみにする
+  lanMode = false,          // LAN対戦: 操作UIを viewer の手番のみ有効化＋未対応操作を隠す
 ): void {
   while (container.firstChild) container.removeChild(container.firstChild);
 
@@ -1025,11 +1035,17 @@ export function renderUI(
   titles.append(t1, t2, t3);
   turnPanel.appendChild(titles);
 
-  // LAN対戦MVPでは操作UIを出さない（操作同期は MVP3 以降）。
-  const btns = readOnly ? null : buildActionButtons(
-    state, player, pid, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
+  const btns = buildActionButtons(
+    state, player, pid, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch, viewerId, lanMode,
   );
   if (btns) turnPanel.appendChild(btns);
+
+  // LAN対戦で自分の手番でないときは、誰の手番かを明示する。
+  if (lanMode && viewerId != null && viewerId !== pid && state.phase !== 'GAME_OVER') {
+    const waitEl = el('div', 'lan-turn-wait');
+    waitEl.textContent = `⏳ ${player.name} の操作を待っています…`;
+    turnPanel.appendChild(waitEl);
+  }
 
   // CPU起案交易がある場合はターンパネルに pending trade を表示
   // （buildActionButtons の pendingTrade チェックは pid=CPU で動くが念のため明示）

@@ -40,7 +40,7 @@ export class LanClient {
       };
       ws.onclose = () => {
         if (!this.closedByUs) {
-          this.handler({ t: 'error', message: 'サーバとの接続が切れました' });
+          this.handler({ t: 'error', message: 'サーバとの接続が切れました', fatal: true });
         }
       };
     });
