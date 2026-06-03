@@ -951,6 +951,8 @@ export function renderUI(
   uiPhase: UIPhase,
   setUIPhase: (phase: UIPhase) => void,
   dispatch: (action: Action) => void,
+  viewerId?: PlayerId,      // LAN対戦: 自分のID（単一端末プレイでは未指定）
+  readOnly = false,         // LAN対戦MVP: 操作UIを出さず情報表示のみにする
 ): void {
   while (container.firstChild) container.removeChild(container.firstChild);
 
@@ -1023,7 +1025,8 @@ export function renderUI(
   titles.append(t1, t2, t3);
   turnPanel.appendChild(titles);
 
-  const btns = buildActionButtons(
+  // LAN対戦MVPでは操作UIを出さない（操作同期は MVP3 以降）。
+  const btns = readOnly ? null : buildActionButtons(
     state, player, pid, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
   );
   if (btns) turnPanel.appendChild(btns);
@@ -1055,7 +1058,7 @@ export function renderUI(
   for (const pId of state.playerOrder) {
     const p = state.players[pId];
     if (!p) continue;
-    allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid));
+    allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid, viewerId));
   }
 
   // 広い画面では盤面ラッパー(#board-area)の四隅にパネルを配置し、
@@ -1082,10 +1085,13 @@ function buildPlayerPanel(
   pId: PlayerId,
   state: GameState,
   isActive: boolean,
+  viewerId?: PlayerId,
 ): HTMLDivElement {
   // GAME_OVER時の勝者はVPカード・内訳のみ開示。資源・他発展カードは非公開のまま。
   const isWinner = state.phase === 'GAME_OVER' && pId === state.winner;
-  const isSelf = player.type === 'human';
+  // LAN対戦では viewerId（自分のID）基準で自分のみ全公開。
+  // 単一端末プレイ（viewerId 未指定）では従来どおり human=自分。
+  const isSelf = viewerId != null ? (pId === viewerId) : (player.type === 'human');
 
   const div = el('div', `player-panel${isActive ? ' active' : ''}${isWinner ? ' winner-glow' : ''}`);
   div.dataset.pid = pId;  // リソースアニメーション用
@@ -1193,7 +1199,10 @@ function buildPlayerPanel(
   div.appendChild(meta);
 
   // 資源手札UI
-  const handTotal = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
+  // 他プレイヤーは秘匿マスクで hand が全0・handCount に枚数が入る場合がある。
+  const handTotal = isSelf
+    ? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0)
+    : (player.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0));
   if (isSelf) {
     // 自分: 資源種別ごとのカード表示
     const resRow = el('div', 'res-card-row');
@@ -1222,7 +1231,9 @@ function buildPlayerPanel(
   }
 
   // 発展カードUI
-  if (player.devCards.length > 0) {
+  // 他プレイヤーは秘匿マスクで devCards が空・devCardCount に枚数が入る場合がある。
+  const devCount = isSelf ? player.devCards.length : (player.devCardCount ?? player.devCards.length);
+  if (devCount > 0) {
     const devPanel = el('div', 'dev-card-panel');
     if (isSelf) {
       // 自分: 種別・使用可否を表示
@@ -1245,7 +1256,7 @@ function buildPlayerPanel(
     } else {
       // 他プレイヤー: 枚数のみ（種類・VPカード枚数は非表示）
       const chip = el('span', 'dev-card-chip hidden');
-      chip.textContent = `🃏 ×${player.devCards.length}`;
+      chip.textContent = `🃏 ×${devCount}`;
       devPanel.appendChild(chip);
     }
     div.appendChild(devPanel);

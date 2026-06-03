@@ -1,0 +1,40 @@
+// ============================================================
+// src/engine/mask.ts — 視点別の秘匿マスク（純粋関数）
+// ============================================================
+//
+// LAN対戦では正本 state をサーバが保持し、各クライアントへ配信する前に
+// 「その視点プレイヤーが見てよい情報」だけに絞る。これにより DevTools で
+// 受信 state を覗いても他人の手札・発展カードの中身は分からない。
+//
+// マスクするもの（他プレイヤー分のみ）:
+//   - hand        … 中身を全0にし、枚数だけ handCount に入れる
+//   - devCards    … 中身を空配列にし、枚数だけ devCardCount に入れる
+// マスクしないもの（公開情報）:
+//   - 名前・色・手番順・建物/道の残数・knightsPlayed・最長/最大の保持・公開VP 等
+//
+// 注意: 返す state は表示専用。applyAction には決して渡さない
+// （applyAction の正本はサーバが保持する非マスク state）。
+
+import type { GameState, PlayerId } from '../types';
+import { RESOURCE_TYPES, makeHand } from '../constants';
+
+export function maskStateFor(state: GameState, viewerId: PlayerId): GameState {
+  const players: GameState['players'] = {};
+  for (const pid of Object.keys(state.players)) {
+    const p = state.players[pid]!;
+    if (pid === viewerId) {
+      // 自分自身は全公開
+      players[pid] = p;
+      continue;
+    }
+    const handCount = RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0);
+    players[pid] = {
+      ...p,
+      hand: makeHand(),          // 構成は秘匿
+      handCount,                 // 枚数のみ開示
+      devCards: [],              // 中身は秘匿
+      devCardCount: p.devCards.length,
+    };
+  }
+  return { ...state, players };
+}

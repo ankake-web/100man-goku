@@ -4,12 +4,13 @@
 
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
-import { buildBoardGeometry } from './engine/board';
-import { createRandomBoard, resolvePlayerOrder } from './engine/setup';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, BANK_INITIAL, RESOURCE_TYPES, VP_TABLE } from './constants';
-import { buildDevDeck } from './engine/game';
+import { makeHand, RESOURCE_TYPES, VP_TABLE } from './constants';
+import { createInitialGameState } from './engine/createState';
+import type { PlayerSpec } from './engine/createState';
 import { applyAction } from './engine/game';
+import { renderLanLobby } from './net/lanLobby';
+import type { LanClient } from './net/lanClient';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions } from './renderer/board';
@@ -48,7 +49,11 @@ const CPU_NAMES                = ['CPU α', 'CPU β', 'CPU γ'];
 // ホーム画面レンダリング
 // ============================================================
 
-function renderHome(container: HTMLElement, onStart: (cfg: HomeConfig) => void): void {
+function renderHome(
+  container: HTMLElement,
+  onStart: (cfg: HomeConfig) => void,
+  onLanStart: (state: GameState, viewerId: PlayerId, client: LanClient) => void,
+): void {
   container.innerHTML = '';
 
   const screen = document.createElement('div');
@@ -234,32 +239,12 @@ function renderHome(container: HTMLElement, onStart: (cfg: HomeConfig) => void):
   startBtn.textContent = 'ゲーム開始';
   cpuForm.appendChild(startBtn);
 
-  // ---- オンライン対戦フォーム（スタブ）----
+  // ---- LAN対戦フォーム（同一LAN内の複数端末で人間対戦）----
   const onlineForm = document.createElement('div');
   onlineForm.className = 'home-form';
   onlineForm.style.display = 'none';
-
-  const onlineBtns = document.createElement('div');
-  onlineBtns.className = 'home-online-btns';
-  const createRoomBtn = document.createElement('button');
-  createRoomBtn.className = 'home-online-btn';
-  createRoomBtn.textContent = 'ルーム作成';
-  const joinRoomBtn = document.createElement('button');
-  joinRoomBtn.className = 'home-online-btn';
-  joinRoomBtn.textContent = 'ルーム参加';
-  onlineBtns.appendChild(createRoomBtn);
-  onlineBtns.appendChild(joinRoomBtn);
-  onlineForm.appendChild(onlineBtns);
-
-  const comingSoon = document.createElement('p');
-  comingSoon.className = 'home-coming-soon';
-  comingSoon.textContent = '※ オンライン機能は近日公開予定';
-  onlineForm.appendChild(comingSoon);
-
-  const comingSoonMsg = document.createElement('div');
-  comingSoonMsg.className = 'home-coming-soon-msg';
-  comingSoonMsg.textContent = '🚧 オンライン対戦は現在開発中です。しばらくお待ちください。';
-  onlineForm.appendChild(comingSoonMsg);
+  // ロビーUIは専用モジュールが描画する（CPU対戦フォームには非干渉）。
+  renderLanLobby(onlineForm, { onGameStart: onLanStart });
 
   card.appendChild(cpuForm);
   card.appendChild(onlineForm);
@@ -288,10 +273,6 @@ function renderHome(container: HTMLElement, onStart: (cfg: HomeConfig) => void):
     tabCpu.classList.remove('active');
     onlineForm.style.display = '';
     cpuForm.style.display = 'none';
-  });
-
-  [createRoomBtn, joinRoomBtn].forEach(btn => {
-    btn.addEventListener('click', () => { comingSoonMsg.style.display = 'block'; });
   });
 
   startBtn.addEventListener('click', () => {
@@ -538,68 +519,21 @@ function createRadioGroup(name: string, options: string[], defaultVal: string): 
 // ============================================================
 
 function initGameState(cfg: HomeConfig): GameState {
-  const geo = buildBoardGeometry();
-  const { tiles, harbors } = createRandomBoard(geo);
-
   const totalPlayers = cfg.cpuCount + 1;
-  const players: GameState['players'] = {};
   // プレイヤー実体（誰が人間/CPUか）は ID 固定で生成する。手番順とは独立。
-  const allIds: PlayerId[] = [];
-
+  const specs: PlayerSpec[] = [];
   for (let i = 0; i < totalPlayers; i++) {
-    const id = PLAYER_IDS[i]!;
-    const color = PLAYER_COLORS[i]!;
     const isHuman = i === 0;
-    const base = {
-      id, color,
+    specs.push({
+      id: PLAYER_IDS[i]!,
+      color: PLAYER_COLORS[i]!,
       name: isHuman ? cfg.playerName : CPU_NAMES[i - 1]!,
-      type: isHuman ? 'human' as const : 'ai' as const,
-      hand: makeHand(),
-      devCards: [],
-      remainingRoads: 15,
-      remainingSettlements: 5,
-      remainingCities: 4,
-      knightsPlayed: 0,
-      longestRoadLength: 0,
-      hasLongestRoad: false as const,
-      hasLargestArmy: false as const,
-    };
-    players[id] = isHuman ? base : { ...base, aiDifficulty: cfg.cpuDifficulty };
-    allIds.push(id);
+      type: isHuman ? 'human' : 'ai',
+      ...(isHuman ? {} : { aiDifficulty: cfg.cpuDifficulty }),
+    });
   }
-
-  // 手番順を決定（ランダム=毎回シャッフル / 指定=spec を検証して採用）。
-  // 指定 spec が現在の参加プレイヤーと不整合なら allIds の元順にフォールバック。
-  const playerOrder = resolvePlayerOrder(allIds, cfg.orderMode, cfg.playerOrderSpec);
-
-  return {
-    tiles,
-    vertices: geo.vertices,
-    edges:    geo.edges,
-    harbors,
-    tileToVertices: geo.tileToVertices,
-    tileToEdges:    geo.tileToEdges,
-    players,
-    playerOrder,
-    bank: { ...BANK_INITIAL },
-    devDeck:        buildDevDeck(),
-    devDiscardPile: [],
-    phase: 'SETUP_FORWARD',
-    turnPhase: 'PRE_ROLL',
-    currentPlayerIndex: 0,
-    globalTurnNumber: 0,
-    setupSubPhase: 'PLACE_SETTLEMENT',
-    lastDiceRoll: null,
-    diceRolledThisTurn: false,
-    roadBuildingRoadsRemaining: 0,
-    devCardPlayedThisTurn: false,
-    longestRoadHolder: null,
-    largestArmyHolder: null,
-    pendingTrade: null,
-    winner: null,
-    discardedThisRound: [],
-    log: [],
-  };
+  // 手番順: ランダム=毎回シャッフル / 指定=spec を検証して採用（不整合なら元順）。
+  return createInitialGameState(specs, cfg.orderMode, cfg.playerOrderSpec);
 }
 
 // ============================================================
@@ -676,6 +610,13 @@ let buildMode: BuildMode = 'idle';
 let uiPhase: UIPhase = { type: 'idle' };
 let lastConfig: HomeConfig | null = null;
 
+// ---- LAN対戦（サーバ権威）----
+// netMode 時は state はサーバ配信のマスク済み state。CPU スケジューリングや
+// ローカル applyAction は一切行わず、操作UIも出さない（MVP1-2: 情報表示のみ）。
+let netMode = false;
+let viewerPlayerId: PlayerId | null = null;
+let lanClient: LanClient | null = null;
+
 // AI タイムアウト世代管理（世代が変わった setTimeout は無視）
 let gameGeneration = 0;
 
@@ -724,6 +665,18 @@ function cpuOfferSignature(cpuPid: string, offer: TradeOffer): string {
 
 function redraw(): void {
   if (!state) return;
+
+  // LAN対戦（MVP1-2）: マスク済み state を情報表示のみで描画。
+  // 操作UI・CPUスケジュール・ウォッチドッグは動かさない。
+  if (netMode) {
+    renderBoard(svgBoard, state, {});
+    renderUI(
+      uiDiv, state, 'idle', setBuildMode, uiPhase, setUIPhase, dispatch,
+      viewerPlayerId ?? undefined, /* readOnly */ true,
+    );
+    updateGameNav();
+    return;
+  }
 
   // DISCARD フェーズの uiPhase 自動同期
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
@@ -1835,6 +1788,9 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
 }
 
 function dispatch(action: Action): void {
+  // LAN対戦（MVP1-2）: ローカル applyAction は禁止（正本はサーバ）。
+  // 操作の同期は MVP3 以降で client.send({t:'action'}) に置き換える。
+  if (netMode) return;
   // ダイス演出中は操作を受け付けない（多重ロール・先走り操作を防止）
   if (diceAnimating) return;
   try {
@@ -1994,11 +1950,60 @@ function setUIPhase(phase: UIPhase): void {
 // SVG ボードイベントは一度だけ登録
 let boardEventsAttached = false;
 
+// ============================================================
+// LAN対戦: ゲーム開始 / サーバメッセージ処理（MVP1-2）
+// ============================================================
+
+// ロビーから started を受け取った時に呼ばれる。以降のメッセージは main が受ける。
+function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient): void {
+  // CPU 系タイマーを無効化（LANはCPU不使用）
+  gameGeneration++;
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
+
+  netMode = true;
+  viewerPlayerId = viewerId;
+  lanClient = client;
+  state = initial;
+  buildMode = 'idle';
+  uiPhase = { type: 'idle' };
+
+  // 以降のサーバメッセージ（状態更新・切断等）は main 側で処理する。
+  client.setHandler(handleNetMessage);
+
+  // 画面をゲーム本体へ切替
+  homeDiv.style.display = 'none';
+  gameTitle.style.display = 'none';
+  appDiv.style.display = '';
+
+  redraw();
+}
+
+function handleNetMessage(msg: import('./net/protocol').ServerMessage): void {
+  switch (msg.t) {
+    case 'state':         // MVP3 以降: マスク済み state の更新
+    case 'started':
+      state = msg.state;
+      if (msg.t === 'started') viewerPlayerId = msg.you;
+      redraw();
+      break;
+    case 'error':
+      // 接続断など。ホームへ戻す（多重アラート防止のため netMode を先に落とす）。
+      if (netMode) {
+        netMode = false;
+        window.alert(`LAN対戦: ${msg.message}`);
+        returnToHome();
+      }
+      break;
+    // 'lobby'（開始後の参加者増減ブロードキャスト等）は MVP1-2 では無視
+  }
+}
+
 function startGame(cfg: HomeConfig): void {
   // 新しいゲーム世代 → 前の AI setTimeout を無効化
   gameGeneration++;
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
 
+  netMode = false; // CPU対戦はローカル完結（LAN状態を確実に解除）
   lastConfig = cfg;
   state = initGameState(cfg);
   buildMode = 'idle';
@@ -2037,12 +2042,20 @@ function returnToHome(): void {
   gameGeneration++;
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
 
+  // LAN対戦の後片付け（接続を閉じてローカルモードへ戻す）
+  if (netMode || lanClient) {
+    lanClient?.close();
+    lanClient = null;
+    netMode = false;
+    viewerPlayerId = null;
+  }
+
   appDiv.style.display = 'none';
   gameTitle.style.display = 'none';
   homeDiv.style.display = '';
 
   // ホーム画面を再レンダリング（前回の設定を引き継ぐ）
-  renderHome(homeDiv, startGame);
+  renderHome(homeDiv, startGame, startLanGame);
 }
 
 // ============================================================
@@ -2064,4 +2077,4 @@ document.addEventListener('click', (e) => {
   }
 });
 
-renderHome(homeDiv, startGame);
+renderHome(homeDiv, startGame, startLanGame);

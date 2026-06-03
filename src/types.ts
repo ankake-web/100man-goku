@@ -118,6 +118,12 @@ export interface Player {
 
   hasLongestRoad: boolean;
   hasLargestArmy: boolean;
+
+  // ---- LAN対戦の秘匿マスク用（表示専用・単一端末プレイでは常に未設定） ----
+  // 他プレイヤー視点へ配信する state では hand / devCards の中身を隠し、
+  // 枚数だけをここへ入れて配信する。applyAction はこれらを一切参照しない。
+  handCount?: number;
+  devCardCount?: number;
 }
 
 // ---- フェーズ ----
