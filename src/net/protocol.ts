@@ -23,6 +23,7 @@ export interface LobbyPlayer {
   readonly color: PlayerColor;
   readonly isHost: boolean;
   readonly connected: boolean;
+  readonly isCpu: boolean;        // CPU プレイヤーか（混合対戦用）
 }
 
 // ---- クライアント → サーバ ----
@@ -30,13 +31,15 @@ export type ClientMessage =
   | { t: 'create'; name: string }                       // ルーム作成（作成者がホスト）
   | { t: 'join';   code: string; name: string }         // ルーム参加
   | { t: 'rename'; name: string }                       // 名前変更（ロビー中）
+  | { t: 'setCpu'; count: number }                       // CPU 人数設定（ホストのみ）
   | { t: 'start' }                                       // ホストがゲーム開始
   | { t: 'action'; action: Action };                     // 操作（MVP3 以降）
 
 // ---- サーバ → クライアント ----
 export type ServerMessage =
   | { t: 'joined'; code: string; you: PlayerId; isHost: boolean }   // 入室確定＋自分のID
-  | { t: 'lobby';  code: string; hostUrls: string[]; players: LobbyPlayer[]; canStart: boolean }
+  | { t: 'lobby';  code: string; hostUrls: string[]; players: LobbyPlayer[];
+      canStart: boolean; cpuCount: number; maxCpu: number }         // maxCpu=今追加できるCPU上限
   | { t: 'started'; you: PlayerId; state: GameState }               // 開始（state はマスク済み）
   | { t: 'state';   state: GameState; action?: Action; by?: PlayerId } // 状態更新（MVP3 以降）
   | { t: 'error';   message: string; fatal?: boolean };               // fatal=true で接続断などの致命的エラー

@@ -24,6 +24,7 @@ import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
+import { nextCpuAction } from '../src/engine/lanCpu';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
@@ -56,8 +57,15 @@ function requiredActor(state: GameState, action: Action): PlayerId | null {
 
 const PLAYER_IDS: PlayerId[] = ['player1', 'player2', 'player3', 'player4'];
 const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
+const CPU_NAMES = ['CPU α', 'CPU β', 'CPU γ'];
+const CPU_DIFFICULTY = 'normal' as const;
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
+
+// CPU の一手ごとのディレイ(ms)。人間が何が起きたか追えるよう待つ。
+// ダイス後は出目演出が見えるよう長めにする。
+const CPU_STEP_MS = 850;
+const CPU_AFTER_ROLL_MS = 1700;
 
 interface Member {
   ws: WebSocket;
@@ -69,9 +77,11 @@ interface Member {
 
 interface Room {
   code: string;
-  members: Member[];
+  members: Member[];          // 人間プレイヤー（socketを持つ）。CPUは含まない。
   started: boolean;
   state: GameState | null;
+  cpuCount: number;           // CPU 人数（0..3、ホストが設定）
+  cpuTimer: ReturnType<typeof setTimeout> | null; // サーバ側CPU駆動タイマー
   // 視点別ログ（playerId → ログ配列）。各端末に「自分視点」のログを配信するため。
   memberLogs: Record<string, LogEntry[]>;
 }
@@ -104,11 +114,28 @@ function colorFor(id: PlayerId): PlayerColor {
   return PLAYER_COLORS[PLAYER_IDS.indexOf(id)] ?? 'red';
 }
 
+const connectedHumans = (room: Room): number => room.members.filter(m => m.connected).length;
+
+// CPU に割り当てる空きスロット（人間が使っていない player1..4 の先頭から cpuCount 個）。
+function cpuSlots(room: Room): PlayerId[] {
+  const used = new Set(room.members.map(m => m.id));
+  return PLAYER_IDS.filter(id => !used.has(id)).slice(0, room.cpuCount);
+}
+
+// 人間＋CPU が 4 を超えないよう CPU 人数をクランプする。
+function clampCpu(room: Room): void {
+  const maxCpu = Math.max(0, MAX_PLAYERS - room.members.length);
+  room.cpuCount = Math.min(Math.max(0, room.cpuCount), maxCpu);
+}
+
 function lobbyPlayers(room: Room): LobbyPlayer[] {
-  // 手番スロット順（player1..4）で安定表示
-  return [...room.members]
+  const humans: LobbyPlayer[] = [...room.members]
     .sort((a, b) => PLAYER_IDS.indexOf(a.id) - PLAYER_IDS.indexOf(b.id))
-    .map(m => ({ id: m.id, name: m.name, color: colorFor(m.id), isHost: m.isHost, connected: m.connected }));
+    .map(m => ({ id: m.id, name: m.name, color: colorFor(m.id), isHost: m.isHost, connected: m.connected, isCpu: false }));
+  const cpus: LobbyPlayer[] = cpuSlots(room).map((id, i) => ({
+    id, name: CPU_NAMES[i] ?? `CPU ${i + 1}`, color: colorFor(id), isHost: false, connected: true, isCpu: true,
+  }));
+  return [...humans, ...cpus];
 }
 
 function lanHostUrls(port: number): string[] {
@@ -125,13 +152,18 @@ function lanHostUrls(port: number): string[] {
 }
 
 function broadcastLobby(room: Room, urls: string[]): void {
-  const connected = room.members.filter(m => m.connected).length;
+  clampCpu(room);
+  const humans = connectedHumans(room);
+  const total = humans + room.cpuCount;
   const msg: ServerMessage = {
     t: 'lobby',
     code: room.code,
     hostUrls: urls,
     players: lobbyPlayers(room),
-    canStart: connected >= MIN_PLAYERS && connected <= MAX_PLAYERS,
+    // 人間が1人以上、合計2〜4人なら開始可（CPUだけの対戦は不可）
+    canStart: humans >= 1 && total >= MIN_PLAYERS && total <= MAX_PLAYERS,
+    cpuCount: room.cpuCount,
+    maxCpu: Math.max(0, MAX_PLAYERS - humans),
   };
   for (const m of room.members) send(m.ws, msg);
 }
@@ -151,15 +183,24 @@ function broadcastState(room: Room, prev: GameState, action: Action, byPid: Play
 }
 
 function startGame(room: Room): void {
+  clampCpu(room);
   const ordered = [...room.members].sort((a, b) => PLAYER_IDS.indexOf(a.id) - PLAYER_IDS.indexOf(b.id));
-  const specs: PlayerSpec[] = ordered.map(m => ({
+  const humanSpecs: PlayerSpec[] = ordered.map(m => ({
     id: m.id,
     name: m.name,
     color: colorFor(m.id),
     type: 'human' as const,
   }));
-  // LAN は人間のみ。手番順はランダム。乱数（ダイス/山札/盤面）はすべてサーバ側。
-  const state = createInitialGameState(specs, 'random', undefined);
+  // CPU は空きスロットへ割り当て（type:'ai'・難易度付き）。
+  const cpuSpecs: PlayerSpec[] = cpuSlots(room).map((id, i) => ({
+    id,
+    name: CPU_NAMES[i] ?? `CPU ${i + 1}`,
+    color: colorFor(id),
+    type: 'ai' as const,
+    aiDifficulty: CPU_DIFFICULTY,
+  }));
+  // 手番順はランダム（人間・CPU混在）。乱数（ダイス/山札/盤面/CPU判断）はすべてサーバ側。
+  const state = createInitialGameState([...humanSpecs, ...cpuSpecs], 'random', undefined);
   room.started = true;
   room.state = state;
   room.memberLogs = {};
@@ -167,6 +208,47 @@ function startGame(room: Room): void {
     room.memberLogs[m.id] = [];
     send(m.ws, { t: 'started', you: m.id, state: maskStateFor(state, m.id) });
   }
+  // 開始直後の手番が CPU の場合に備えて CPU 駆動を起動。
+  scheduleCpuTick(room, CPU_STEP_MS);
+}
+
+// ============================================================
+// サーバ側 CPU 駆動（混合対戦）
+// ============================================================
+
+// CPU が動く必要があれば、delay 後に一手だけ適用して配信し、再スケジュールする。
+// 人間の手番・人間の入力待ち・GAME_OVER になれば停止する。
+function scheduleCpuTick(room: Room, delay: number): void {
+  if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
+  if (!room.started || !room.state || room.state.phase === 'GAME_OVER') return;
+  if (!nextCpuAction(room.state)) return; // 今は CPU が動く場面ではない
+  room.cpuTimer = setTimeout(() => {
+    room.cpuTimer = null;
+    if (!room.started || !room.state || room.state.phase === 'GAME_OVER') return;
+    const step = nextCpuAction(room.state, Math.random);
+    if (!step) return; // 人間の番になった等
+    try {
+      const prev = room.state;
+      const next = applyAction(prev, step.action, Math.random);
+      room.state = next;
+      broadcastState(room, prev, step.action, step.pid);
+      // 次の CPU 手番へ。ダイス後は演出ぶん長めに待つ。
+      const nextDelay = step.action.type === 'ROLL_DICE' ? CPU_AFTER_ROLL_MS : CPU_STEP_MS;
+      scheduleCpuTick(room, nextDelay);
+    } catch (err) {
+      // 想定外で applyAction が失敗しても進行を止めない（END_TURN で復帰を試みる）。
+      try {
+        const cur = room.state!.playerOrder[room.state!.currentPlayerIndex]!;
+        if (room.state!.players[cur]?.type === 'ai' && room.state!.phase === 'MAIN' && room.state!.turnPhase === 'TRADE_BUILD') {
+          const prev = room.state!;
+          room.state = applyAction(prev, { type: 'END_TURN' }, Math.random);
+          broadcastState(room, prev, { type: 'END_TURN' }, cur);
+          scheduleCpuTick(room, CPU_STEP_MS);
+        }
+      } catch { /* これ以上は何もしない（人間の操作/再接続を待つ） */ }
+      void err;
+    }
+  }, delay);
 }
 
 /**
@@ -204,7 +286,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         case 'create': {
           if (room) return;
           const code = genCode();
-          room = { code, members: [], started: false, state: null, memberLogs: {} };
+          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, memberLogs: {} };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: sanitizeName(msg.name), isHost: true, connected: true };
           room.members.push(me);
@@ -232,10 +314,23 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           broadcastLobby(room, currentUrls());
           break;
         }
+        case 'setCpu': {
+          // CPU 人数の設定はホストのみ・ロビー中のみ。
+          if (!room || !me || !me.isHost || room.started) return;
+          const n = Number.isFinite(msg.count) ? Math.floor(msg.count) : 0;
+          room.cpuCount = n; // clampCpu は broadcastLobby 内で適用
+          broadcastLobby(room, currentUrls());
+          break;
+        }
         case 'start': {
           if (!room || !me || !me.isHost || room.started) return;
-          const connected = room.members.filter(m => m.connected).length;
-          if (connected < MIN_PLAYERS) { send(ws, { t: 'error', message: '2人以上で開始できます' }); return; }
+          clampCpu(room);
+          const humans = connectedHumans(room);
+          const total = humans + room.cpuCount;
+          if (humans < 1 || total < MIN_PLAYERS || total > MAX_PLAYERS) {
+            send(ws, { t: 'error', message: '人間1人以上・合計2〜4人で開始できます' });
+            return;
+          }
           startGame(room);
           break;
         }
@@ -282,6 +377,8 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
             room.state = next;
             // 視点別ログは broadcastState 内で各メンバー視点に生成する
             broadcastState(room, prev, action, me.id);
+            // 人間の操作後に CPU の手番/応答が来る場合は CPU 駆動を起動。
+            scheduleCpuTick(room, action.type === 'ROLL_DICE' ? CPU_AFTER_ROLL_MS : CPU_STEP_MS);
           } catch {
             // applyAction が弾いた無効操作（送信者にのみ通知）
             send(ws, { t: 'error', message: '無効な操作です' });
@@ -306,9 +403,16 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         }
         broadcastLobby(room, currentUrls());
       } else {
-        // 開始後: 切断を記録（再接続/進行ハンドリングは MVP3 以降）
+        // 開始後: 切断を記録。残りの人間へ配信は継続（CPUは動き続ける）。
         me.connected = false;
-        broadcastLobby(room, currentUrls());
+        // 人間が全員いなくなったら CPU 駆動を止めてルームを破棄（リーク防止）。
+        if (connectedHumans(room) === 0) {
+          if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
+          rooms.delete(room.code);
+        } else {
+          // 残りの人間に切断を知らせる（ログ＋現在stateを再配信）。
+          notifyDisconnect(room, me.name);
+        }
       }
     });
   });
@@ -317,4 +421,21 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
 function sanitizeName(raw: string): string {
   const name = (raw ?? '').toString().trim().slice(0, 20);
   return name || 'プレイヤー';
+}
+
+// ゲーム中の切断を、残りの人間プレイヤーへ通知する（システムログ＋現在stateの再配信）。
+function notifyDisconnect(room: Room, name: string): void {
+  if (!room.state) return;
+  const entry: LogEntry = {
+    turn: room.state.globalTurnNumber,
+    playerId: room.state.playerOrder[room.state.currentPlayerIndex] ?? 'player1',
+    type: 'SYSTEM',
+    message: `🔌 ${name} が切断しました`,
+  };
+  for (const m of room.members) {
+    if (!m.connected) continue;
+    const log = [...(room.memberLogs[m.id] ?? []), entry].slice(-MAX_LOG_ENTRIES);
+    room.memberLogs[m.id] = log;
+    send(m.ws, { t: 'state', state: { ...maskStateFor(room.state, m.id), log } });
+  }
 }

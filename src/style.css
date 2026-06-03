@@ -1157,6 +1157,7 @@ h1 {
 .lan-player-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
 .lan-player-name { font-weight: bold; }
 .lan-player-tags { font-size: 0.76rem; color: rgba(255,255,255,0.55); }
+.lan-player-row.cpu .lan-player-name { color: #cfe3ff; }
 .lan-wait {
   text-align: center;
   padding: 12px;
@@ -1164,6 +1165,40 @@ h1 {
   color: rgba(255,255,255,0.7);
 }
 .lan-leave { margin-top: 2px; }
+
+/* CPU 人数設定（ホストのみ） */
+.lan-cpu-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+}
+.lan-cpu-label { font-size: 0.86rem; color: rgba(255,255,255,0.8); }
+.lan-cpu-btn {
+  width: 38px; height: 38px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.45);
+  color: #fff; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+}
+.lan-cpu-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.lan-cpu-val { min-width: 1.4em; text-align: center; font-size: 1.2rem; font-weight: bold; }
+.lan-cpu-hint { font-size: 0.76rem; color: rgba(255,255,255,0.5); }
+
+/* LAN: CPU/相手の手番中の待機表示 */
+.lan-turn-wait {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(80,140,255,0.12);
+  border: 1px solid rgba(80,140,255,0.28);
+  border-radius: 8px;
+  font-size: 0.86rem;
+  color: #bcd6ff;
+  text-align: center;
+}
 
 /* ---- 交易相手選択 ---- */
 .trade-target-row {

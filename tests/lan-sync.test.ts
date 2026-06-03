@@ -332,3 +332,96 @@ describe('LAN per-viewer log', () => {
     expect(forP2).not.toContain('🌲');
   });
 });
+
+// ============================================================
+// 混合対戦: サーバ側CPU駆動（nextCpuAction）
+// ============================================================
+import { nextCpuAction } from '../src/engine/lanCpu';
+
+const MIXED_SPECS: PlayerSpec[] = [
+  { id: 'player1', name: 'Human', color: 'red',  type: 'human' },
+  { id: 'player2', name: 'CPU α', color: 'blue', type: 'ai', aiDifficulty: 'normal' },
+];
+
+// サーバの混合ドライブを模倣: CPUは nextCpuAction、人間は最初の合法手で進める。
+function driveMixedToMain(state: GameState): GameState {
+  let s = state;
+  for (let i = 0; i < 200 && s.phase !== 'MAIN'; i++) {
+    const step = nextCpuAction(s, () => 0.5);
+    if (step) { s = applyAction(s, step.action, createRng(i + 1)); continue; }
+    // 人間の手番（setup）
+    const p = cur(s);
+    if (s.setupSubPhase === 'PLACE_SETTLEMENT') {
+      s = applyAction(s, { type: 'BUILD_SETTLEMENT', vertexId: firstValidVertex(s, p)! }, createRng(1));
+    } else {
+      s = applyAction(s, { type: 'BUILD_ROAD', edgeId: firstValidEdge(s, p)! }, createRng(1));
+    }
+  }
+  return s;
+}
+
+describe('LAN mixed human+CPU: server-side CPU drive', () => {
+  it('completes initial placement with a CPU auto-placing on its turn', () => {
+    const s0 = createInitialGameState(MIXED_SPECS, 'fixed', ['player1', 'player2'], createRng(3));
+    const s = driveMixedToMain(s0);
+    expect(s.phase).toBe('MAIN');
+    // 両者が開拓地2件ずつ置けている（2巡）
+    const built = (pid: PlayerId) => Object.values(s.vertices).filter(v => v.building?.playerId === pid).length;
+    expect(built('player1')).toBe(2);
+    expect(built('player2')).toBe(2);
+    // 2巡目開拓地の初期資源が両者に配られている
+    expect(handTotal(s, 'player1')).toBeGreaterThan(0);
+    expect(handTotal(s, 'player2')).toBeGreaterThan(0);
+  });
+
+  it('returns a CPU discard (exactly half) when a CPU holds 8+ on a 7', () => {
+    const base = tradeReadyState({}, { wood: 4, brick: 4 }); // player2 will be CPU below
+    // player2 を CPU・8枚保持・DISCARD フェーズにする
+    const s: GameState = {
+      ...base,
+      turnPhase: 'DISCARD',
+      discardedThisRound: [],
+      players: {
+        ...base.players,
+        player2: { ...base.players.player2!, type: 'ai', aiDifficulty: 'normal', hand: makeHand({ wood: 4, brick: 4 }) },
+      },
+    };
+    const step = nextCpuAction(s, () => 0.5);
+    expect(step?.pid).toBe('player2');
+    expect(step?.action.type).toBe('DISCARD_RESOURCES');
+    const res = (step!.action as { resources: Record<string, number> }).resources;
+    const sum = RESOURCE_TYPES.reduce((a, r) => a + (res[r] ?? 0), 0);
+    expect(sum).toBe(4); // floor(8/2)
+  });
+
+  it('makes a CPU respond to a human trade offer (accept when affordable & lucky)', () => {
+    const base = tradeReadyState({ wood: 2 }, { brick: 2 });
+    const withCpu: GameState = {
+      ...base,
+      players: { ...base.players, player2: { ...base.players.player2!, type: 'ai', aiDifficulty: 'normal' } },
+    };
+    // player1(human) が player2(CPU) に交易提案
+    const offered = applyAction(withCpu, { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: ['player2'] }, createRng(1));
+    const accept = nextCpuAction(offered, () => 0.1); // rng<0.6 → 承諾
+    expect(accept?.pid).toBe('player2');
+    expect(accept?.action).toEqual({ type: 'RESPOND_TRADE', response: { playerId: 'player2', status: 'ACCEPT' } });
+    const reject = nextCpuAction(offered, () => 0.9); // rng>=0.6 → 拒否
+    expect((reject?.action as { response: { status: string } }).response.status).toBe('REJECT');
+  });
+
+  it('does not act for a human turn (returns null)', () => {
+    const s = createInitialGameState(MIXED_SPECS, 'fixed', ['player1', 'player2'], createRng(3));
+    // 手番は player1(human) → CPU は動かない
+    expect(cur(s)).toBe('player1');
+    expect(nextCpuAction(s, () => 0.5)).toBeNull();
+  });
+
+  it('keeps CPU hands masked from a human viewer', () => {
+    const s = driveMixedToMain(createInitialGameState(MIXED_SPECS, 'fixed', ['player1', 'player2'], createRng(3)));
+    const view = maskStateFor(s, 'player1');
+    // 人間(player1)視点: CPU(player2)の手札中身は0・枚数のみ
+    expect(RESOURCE_TYPES.reduce((a, r) => a + view.players.player2!.hand[r], 0)).toBe(0);
+    expect(view.players.player2!.handCount).toBe(handTotal(s, 'player2'));
+    expect(view.players.player2!.devCards).toEqual([]);
+  });
+});

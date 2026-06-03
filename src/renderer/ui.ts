@@ -1163,9 +1163,12 @@ export function renderUI(
   if (btns) turnPanel.appendChild(btns);
 
   // LAN対戦で自分の手番でないときは、誰の手番かを明示する。
+  // CPU の手番は「操作中」と分かるように表示する（サーバ側で自動進行）。
   if (lanMode && viewerId != null && viewerId !== pid && state.phase !== 'GAME_OVER') {
     const waitEl = el('div', 'lan-turn-wait');
-    waitEl.textContent = `⏳ ${player.name} の操作を待っています…`;
+    waitEl.textContent = player.type === 'ai'
+      ? `🤖 ${player.name} が操作中です…`
+      : `⏳ ${player.name} の操作を待っています…`;
     turnPanel.appendChild(waitEl);
   }
 

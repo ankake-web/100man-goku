@@ -26,6 +26,8 @@ interface LobbyView {
   players: LobbyPlayer[];
   hostUrls: string[];
   canStart: boolean;
+  cpuCount: number;
+  maxCpu: number;
   error: string;
 }
 
@@ -34,7 +36,8 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
 
   let client: LanClient | null = null;
   const view: LobbyView = {
-    code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false, error: '',
+    code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false,
+    cpuCount: 0, maxCpu: 3, error: '',
   };
   let stage: 'idle' | 'lobby' = 'idle';
 
@@ -51,6 +54,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
       case 'lobby':
         view.code = msg.code; view.players = msg.players;
         view.hostUrls = msg.hostUrls; view.canStart = msg.canStart;
+        view.cpuCount = msg.cpuCount; view.maxCpu = msg.maxCpu;
         if (stage === 'lobby') render(); break;
       case 'started':
         if (client) cb.onGameStart(msg.state, msg.you, client);
@@ -177,32 +181,60 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
     listTitle.className = 'lan-players-title';
     listTitle.textContent = `参加者 (${view.players.filter(p => p.connected).length})`;
     listBox.appendChild(listTitle);
+    const humanCount = view.players.filter(p => !p.isCpu && p.connected).length;
     for (const p of view.players) {
       const row = document.createElement('div');
-      row.className = `lan-player-row${p.connected ? '' : ' disconnected'}`;
+      row.className = `lan-player-row${p.connected ? '' : ' disconnected'}${p.isCpu ? ' cpu' : ''}`;
       const dot = document.createElement('span');
       dot.className = 'lan-player-dot';
       dot.style.background = COLOR_HEX[p.color];
       row.appendChild(dot);
       const nm = document.createElement('span');
       nm.className = 'lan-player-name';
-      nm.textContent = p.name;
+      nm.textContent = p.isCpu ? `🤖 ${p.name}` : p.name;
       row.appendChild(nm);
       const tags = document.createElement('span');
       tags.className = 'lan-player-tags';
+      if (p.isCpu) tags.textContent += ' CPU';
       if (p.isHost) tags.textContent += ' 👑ホスト';
       if (p.id === view.you) tags.textContent += ' (あなた)';
-      if (!p.connected) tags.textContent += ' …切断';
+      if (!p.connected && !p.isCpu) tags.textContent += ' …切断';
       row.appendChild(tags);
       listBox.appendChild(row);
     }
     root.appendChild(listBox);
 
+    // CPU 人数設定（ホストのみ）。人間＋CPUが2〜4人になるよう調整する。
+    if (view.isHost) {
+      const cpuBox = document.createElement('div');
+      cpuBox.className = 'lan-cpu-ctrl';
+      const lbl = document.createElement('span');
+      lbl.className = 'lan-cpu-label';
+      lbl.textContent = 'CPU 人数';
+      cpuBox.appendChild(lbl);
+      const minus = document.createElement('button');
+      minus.className = 'lan-cpu-btn'; minus.textContent = '−';
+      minus.disabled = view.cpuCount <= 0;
+      minus.addEventListener('click', () => client?.send({ t: 'setCpu', count: view.cpuCount - 1 }));
+      const val = document.createElement('span');
+      val.className = 'lan-cpu-val'; val.textContent = String(view.cpuCount);
+      const plus = document.createElement('button');
+      plus.className = 'lan-cpu-btn'; plus.textContent = '＋';
+      plus.disabled = view.cpuCount >= view.maxCpu;
+      plus.addEventListener('click', () => client?.send({ t: 'setCpu', count: view.cpuCount + 1 }));
+      cpuBox.append(minus, val, plus);
+      const hint = document.createElement('span');
+      hint.className = 'lan-cpu-hint';
+      hint.textContent = `（人間 ${humanCount} ＋ CPU ${view.cpuCount} ＝ ${humanCount + view.cpuCount}人）`;
+      cpuBox.appendChild(hint);
+      root.appendChild(cpuBox);
+    }
+
     // 開始 / 待機
     if (view.isHost) {
       const startBtn = document.createElement('button');
       startBtn.className = 'home-start-btn';
-      startBtn.textContent = view.canStart ? 'ゲーム開始' : '2人以上で開始できます';
+      startBtn.textContent = view.canStart ? 'ゲーム開始' : '人間1人以上・合計2〜4人で開始';
       startBtn.disabled = !view.canStart;
       startBtn.addEventListener('click', () => client?.send({ t: 'start' }));
       root.appendChild(startBtn);
