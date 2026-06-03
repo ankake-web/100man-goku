@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host",
     "build": "tsc && vite build",
     "test": "vitest run",
     "test:watch": "vitest",

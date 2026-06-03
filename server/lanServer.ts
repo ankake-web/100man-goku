@@ -27,7 +27,7 @@ import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
-import type { PlayerId, PlayerColor, GameState, Action } from '../src/types';
+import type { PlayerId, PlayerColor, GameState, Action, LogEntry } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
 
 // LAN 同期する Action（サーバ側ホワイトリスト）。
@@ -72,6 +72,8 @@ interface Room {
   members: Member[];
   started: boolean;
   state: GameState | null;
+  // 視点別ログ（playerId → ログ配列）。各端末に「自分視点」のログを配信するため。
+  memberLogs: Record<string, LogEntry[]>;
 }
 
 const rooms = new Map<string, Room>();
@@ -134,12 +136,17 @@ function broadcastLobby(room: Room, urls: string[]): void {
   for (const m of room.members) send(m.ws, msg);
 }
 
-// 更新後の正本 state を、各メンバーへ視点別マスクして配信する。
-function broadcastState(room: Room, action: Action, byPid: PlayerId): void {
+// 更新後の正本 state を、各メンバーへ視点別マスク＋視点別ログで配信する。
+// ログは buildActionLog を「その視点(m.id)」で生成するため、自分の獲得内訳や
+// 「あなた」表記が各端末で正しくなり、他人の資源獲得内訳も漏れない。
+function broadcastState(room: Room, prev: GameState, action: Action, byPid: PlayerId): void {
   if (!room.state) return;
   for (const m of room.members) {
     if (!m.connected) continue;
-    send(m.ws, { t: 'state', state: maskStateFor(room.state, m.id), action, by: byPid });
+    const entries = buildActionLog(prev, action, room.state, m.id);
+    const log = [...(room.memberLogs[m.id] ?? []), ...entries].slice(-MAX_LOG_ENTRIES);
+    room.memberLogs[m.id] = log;
+    send(m.ws, { t: 'state', state: { ...maskStateFor(room.state, m.id), log }, action, by: byPid });
   }
 }
 
@@ -155,7 +162,9 @@ function startGame(room: Room): void {
   const state = createInitialGameState(specs, 'random', undefined);
   room.started = true;
   room.state = state;
+  room.memberLogs = {};
   for (const m of room.members) {
+    room.memberLogs[m.id] = [];
     send(m.ws, { t: 'started', you: m.id, state: maskStateFor(state, m.id) });
   }
 }
@@ -195,7 +204,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         case 'create': {
           if (room) return;
           const code = genCode();
-          room = { code, members: [], started: false, state: null };
+          room = { code, members: [], started: false, state: null, memberLogs: {} };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: sanitizeName(msg.name), isHost: true, connected: true };
           room.members.push(me);
@@ -269,13 +278,10 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           try {
             const prev = room.state;
             // 乱数（ダイス/山札/盗賊奪取）はすべてサーバ側で確定する
-            let next = applyAction(prev, action, Math.random);
-            const logs = buildActionLog(prev, action, next);
-            if (logs.length > 0) {
-              next = { ...next, log: [...next.log, ...logs].slice(-MAX_LOG_ENTRIES) };
-            }
+            const next = applyAction(prev, action, Math.random);
             room.state = next;
-            broadcastState(room, action, me.id);
+            // 視点別ログは broadcastState 内で各メンバー視点に生成する
+            broadcastState(room, prev, action, me.id);
           } catch {
             // applyAction が弾いた無効操作（送信者にのみ通知）
             send(ws, { t: 'error', message: '無効な操作です' });

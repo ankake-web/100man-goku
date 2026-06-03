@@ -31,10 +31,20 @@ export const MAX_LOG_ENTRIES = 60;
  * - 資源獲得の内訳は人間プレイヤー自身の分のみ（自分の情報）。
  * - 捨て札・盗み取りは「枚数」のみ（種類は秘匿）。
  */
-export function buildActionLog(prev: GameState, action: Action, next: GameState): LogEntry[] {
+export function buildActionLog(
+  prev: GameState,
+  action: Action,
+  next: GameState,
+  // LAN対戦: この視点プレイヤー基準で「あなた」表記・自分の獲得内訳を出す。
+  // 省略時（単一端末プレイ）は唯一の human を基準にする（従来挙動）。
+  viewerId?: PlayerId,
+): LogEntry[] {
   const turn = next.globalTurnNumber;
   const nm = (pid: string): string => next.players[pid]?.name ?? prev.players[pid]?.name ?? pid;
   const actor = prev.playerOrder[prev.currentPlayerIndex] ?? next.playerOrder[next.currentPlayerIndex] ?? '';
+  // 「自分」判定: viewerId 指定時はそのID、未指定時は human プレイヤー。
+  const selfPid = viewerId ?? next.playerOrder.find(p => next.players[p]?.type === 'human');
+  const isMe = (pid: string): boolean => pid === selfPid;
   const entries: LogEntry[] = [];
   const push = (playerId: string, type: LogEntry['type'], message: string) =>
     entries.push({ turn, playerId: playerId as PlayerId, type, message });
@@ -43,14 +53,14 @@ export function buildActionLog(prev: GameState, action: Action, next: GameState)
     case 'ROLL_DICE': {
       const [d1, d2] = next.lastDiceRoll ?? [0, 0];
       push(actor, 'DICE_ROLL', `🎲 ${nm(actor)} がダイス ${d1}+${d2}=${d1 + d2}`);
-      // 人間自身の獲得資源のみ内訳を出す（自分の情報なので漏洩ではない）
-      const humanPid = next.playerOrder.find(p => next.players[p]?.type === 'human');
-      if (humanPid) {
+      // 「自分」の獲得資源のみ内訳を出す（自分の情報なので漏洩ではない）。
+      // LAN では viewerId 視点＝各端末で自分の獲得だけが見える（他人の内訳は出ない）。
+      if (selfPid && next.players[selfPid]) {
         const gains = RESOURCE_TYPES
-          .map(r => ({ r, n: next.players[humanPid]!.hand[r] - (prev.players[humanPid]?.hand[r] ?? 0) }))
+          .map(r => ({ r, n: next.players[selfPid]!.hand[r] - (prev.players[selfPid]?.hand[r] ?? 0) }))
           .filter(g => g.n > 0);
         if (gains.length > 0) {
-          push(humanPid, 'RESOURCE_GAIN', `📥 あなたが ${gains.map(g => `${RES_EMOJI[g.r]}×${g.n}`).join(' ')} 獲得`);
+          push(selfPid, 'RESOURCE_GAIN', `📥 あなたが ${gains.map(g => `${RES_EMOJI[g.r]}×${g.n}`).join(' ')} 獲得`);
         }
       }
       break;
@@ -81,8 +91,7 @@ export function buildActionLog(prev: GameState, action: Action, next: GameState)
       break;
     }
     case 'OFFER_TRADE': {
-      const isCpu = prev.players[actor]?.type === 'ai';
-      push(actor, 'TRADE_PLAYER', isCpu ? `🤝 ${nm(actor)} が交易を提案` : `🤝 あなたが交易を提案`);
+      push(actor, 'TRADE_PLAYER', isMe(actor) ? `🤝 あなたが交易を提案` : `🤝 ${nm(actor)} が交易を提案`);
       break;
     }
     case 'CONFIRM_TRADE': {

@@ -289,3 +289,46 @@ describe('LAN MVP4 sync: victory', () => {
     expect(viewP2.players.player1!.devCards.length).toBe(10);
   });
 });
+
+// ============================================================
+// MVP4安定化: 視点別ログ（buildActionLog の viewerId）
+// ============================================================
+import { buildActionLog } from '../src/engine/log';
+
+describe('LAN per-viewer log', () => {
+  it('uses "あなた" only for the proposing viewer in OFFER_TRADE', () => {
+    const prev = tradeReadyState({ wood: 2 }, { brick: 2 }); // current = player1(A)
+    const action: Action = { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: ['player2'] };
+    const next = applyAction(prev, action, createRng(1));
+    const forP1 = buildActionLog(prev, action, next, 'player1').map(e => e.message).join('|');
+    const forP2 = buildActionLog(prev, action, next, 'player2').map(e => e.message).join('|');
+    expect(forP1).toContain('あなたが交易を提案');
+    expect(forP2).toContain('A が交易を提案');
+    expect(forP2).not.toContain('あなた');
+  });
+
+  it('shows only the viewer’s own resource gains on ROLL_DICE (no leak of others)', () => {
+    const prev = tradeReadyState({}, {});
+    // ダイス後の状態を手で作る: player1 が wood+1、player2 が wool+1 を得た想定
+    const next: GameState = {
+      ...prev,
+      turnPhase: 'TRADE_BUILD',
+      lastDiceRoll: [3, 2],
+      diceRolledThisTurn: true,
+      players: {
+        ...prev.players,
+        player1: { ...prev.players.player1!, hand: makeHand({ wood: 1 }) },
+        player2: { ...prev.players.player2!, hand: makeHand({ wool: 1 }) },
+      },
+    };
+    const action: Action = { type: 'ROLL_DICE' };
+    const forP1 = buildActionLog(prev, action, next, 'player1').map(e => e.message).join('|');
+    const forP2 = buildActionLog(prev, action, next, 'player2').map(e => e.message).join('|');
+    // player1 視点: 自分の wood 獲得のみ。player2 の wool は出ない。
+    expect(forP1).toContain('🌲×1');
+    expect(forP1).not.toContain('🐑');
+    // player2 視点: 自分の wool 獲得のみ。player1 の wood は出ない。
+    expect(forP2).toContain('🐑×1');
+    expect(forP2).not.toContain('🌲');
+  });
+});
