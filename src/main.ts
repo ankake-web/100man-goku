@@ -688,6 +688,11 @@ let diceAnimating = false;
 // 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
 let gameMenuOpen = false;
 
+// CPU手番の状況バナー（「今CPUが何をしているか」を上部中央に表示）
+let cpuStatusActor = '';   // CPU名
+let cpuStatusColor = '#aaa';
+let cpuStatusMsg = '';     // 行動説明 or 「考え中…」
+
 // 出目分布の集計（インデックス2〜12が出現回数。現在のゲーム中のみ蓄積）
 let diceStats: number[] = new Array(13).fill(0);
 
@@ -743,6 +748,8 @@ function redraw(): void {
   updateGameNav();
   // CPUが責任を持つ場面ならフリーズ対策ウォッチドッグを再武装
   armCpuWatchdog();
+  // CPU手番ステータスバナーの更新
+  updateCpuStatusBanner();
 }
 
 // ============================================================
@@ -1209,6 +1216,7 @@ function scheduleAiTurn(): void {
       return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
     });
     if (discardPid) {
+      setCpuThinking(discardPid); updateCpuStatusBanner();
       setTimeout(() => {
         if (gen !== gameGeneration) return;
         runCpuStep(discardPid, {});
@@ -1220,6 +1228,7 @@ function scheduleAiTurn(): void {
   const pid = state.playerOrder[state.currentPlayerIndex]!;
   if (state.players[pid]?.type === 'ai') {
     const aiOpts: AiOpts = { skipPlayerTrade: cpuPlayerTradeOfferedThisTurn };
+    setCpuThinking(pid); updateCpuStatusBanner();
     setTimeout(() => {
       if (gen !== gameGeneration) return;
       runCpuStep(pid, aiOpts);
@@ -1443,7 +1452,7 @@ const VICTORY_REASON: Record<string, string> = {
 };
 
 function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
-  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove();
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
   if (!state) return;
   const winner = state.players[winnerId];
   if (!winner) return;
@@ -1591,6 +1600,79 @@ function showDiceStatsModal(): void {
   document.body.appendChild(overlay);
 }
 
+// ============================================================
+// CPU手番ステータスバナー（「今CPUが何をしているか」を上部中央に表示）
+// ============================================================
+
+const CPU_ACTION_DESC: Record<string, string> = {
+  ROLL_DICE:            '🎲 ダイスを振った',
+  BUILD_ROAD:           '🛤 道を建設',
+  BUILD_SETTLEMENT:     '🏠 開拓地を建設',
+  BUILD_CITY:           '🏙 都市を建設',
+  BUY_DEV_CARD:         '🃏 発展カードを購入',
+  PLAY_KNIGHT:          '⚔ 騎士を使用',
+  PLAY_ROAD_BUILDING:   '🛤 街道建設カードを使用',
+  PLAY_YEAR_OF_PLENTY:  '🌾 年の豊穣を使用',
+  PLAY_MONOPOLY:        '🏛 独占を使用',
+  MOVE_ROBBER:          '🦹 盗賊を移動',
+  BANK_TRADE:           '💱 銀行と交易',
+  OFFER_TRADE:          '🤝 交易を提案',
+  CONFIRM_TRADE:        '🤝 交易を成立',
+  CANCEL_TRADE:         '🤝 交易を取り下げ',
+  DISCARD_RESOURCES:    '🗑 手札を捨てた',
+  END_TURN:             '↩ ターンを終了',
+};
+
+/** CPUが行ったアクションからステータスバナーの文言を設定する（actorがCPUの時のみ） */
+function setCpuStatusFromAction(action: Action, prevState: GameState): void {
+  let actorId: string = prevState.playerOrder[prevState.currentPlayerIndex] ?? '';
+  if (action.type === 'DISCARD_RESOURCES') actorId = action.playerId;
+  else if (action.type === 'RESPOND_TRADE') actorId = action.response.playerId;
+  const actor = prevState.players[actorId] ?? state.players[actorId];
+  if (actor?.type !== 'ai') return;
+  cpuStatusActor = actor.name;
+  cpuStatusColor = PLAYER_HEX[actorId] ?? '#aaa';
+  if (action.type === 'RESPOND_TRADE') {
+    cpuStatusMsg = action.response.status === 'ACCEPT' ? '🤝 交易を承諾' : '🤝 交易を拒否';
+  } else {
+    cpuStatusMsg = CPU_ACTION_DESC[action.type] ?? '';
+  }
+}
+
+/** 「考え中…」状態をセット（次のCPU行動を待っている間） */
+function setCpuThinking(actorId: string): void {
+  const actor = state.players[actorId];
+  if (!actor) return;
+  cpuStatusActor = actor.name;
+  cpuStatusColor = PLAYER_HEX[actorId] ?? '#aaa';
+  cpuStatusMsg = '考え中…';
+}
+
+/** CPUが責任を持つ場面なら上部中央にステータスバナーを表示。人間の番では消す。 */
+function updateCpuStatusBanner(): void {
+  const existing = document.getElementById('cpu-status');
+  const show = !!state && state.phase !== 'GAME_OVER' && cpuIsResponsible() && !!cpuStatusActor;
+  if (!show) { existing?.remove(); return; }
+  let banner = existing as HTMLDivElement | null;
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'cpu-status';
+    banner.className = 'cpu-status-banner';
+    document.body.appendChild(banner);
+  }
+  banner.style.borderColor = cpuStatusColor;
+  banner.textContent = '';
+  const dot = document.createElement('span');
+  dot.className = 'cpu-status-dot';
+  dot.style.background = cpuStatusColor;
+  const robot = document.createElement('span'); robot.textContent = '🤖';
+  const name = document.createElement('span'); name.className = 'cpu-status-name'; name.textContent = cpuStatusActor;
+  const msg = document.createElement('span');
+  msg.className = cpuStatusMsg === '考え中…' ? 'cpu-status-msg thinking' : 'cpu-status-msg';
+  msg.textContent = cpuStatusMsg;
+  banner.append(robot, dot, name, msg);
+}
+
 /** サイコロ産出タイルの画面座標を取得する */
 function getProducingTileOrigin(diceTotal: number): { x: number; y: number } | null {
   const boardEl = document.getElementById('board') as SVGSVGElement | null;
@@ -1619,6 +1701,20 @@ function getBoardCenter(): { x: number; y: number } {
   if (!boardEl) return { x: window.innerWidth / 2, y: window.innerHeight / 3 };
   const r = boardEl.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+/** ダイス目に対応する産出タイルを一時的に強調表示（どのタイルから資源が出たか分かりやすく） */
+function highlightProducingTiles(diceTotal: number): void {
+  if (lastConfig?.cpuSpeed === 'instant') return;
+  const boardEl = document.getElementById('board');
+  if (!boardEl) return;
+  for (const tile of Object.values(state.tiles)) {
+    if (tile.number !== diceTotal || tile.hasRobber) continue;
+    const poly = boardEl.querySelector(`[data-tile-id="${tile.id}"] .hex-tile`) as SVGElement | null;
+    if (!poly) continue;
+    poly.classList.add('producing');
+    setTimeout(() => poly.classList.remove('producing'), 1600);
+  }
 }
 
 function triggerResourceAnimation(
@@ -1745,6 +1841,9 @@ function dispatch(action: Action): void {
     const prevState = state;
     state = applyAction(state, action);
 
+    // CPU手番ステータス: CPUが行った行動をバナーに反映
+    setCpuStatusFromAction(action, prevState);
+
     // SE
     switch (action.type) {
       case 'ROLL_DICE':         playSE('dice'); break;
@@ -1850,6 +1949,10 @@ function dispatch(action: Action): void {
           setTimeout(() => playSE('discardWarn'), 360);
         }
       }
+      // 7以外: 産出タイルを強調して「どのタイルから資源が出たか」を分かりやすく
+      if (action.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal !== 7) {
+        highlightProducingTiles(diceTotal);
+      }
       triggerResourceAnimation(prevState, state, action.type, diceTotal);
       // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
       if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
@@ -1894,7 +1997,7 @@ let boardEventsAttached = false;
 function startGame(cfg: HomeConfig): void {
   // 新しいゲーム世代 → 前の AI setTimeout を無効化
   gameGeneration++;
-  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove();
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
 
   lastConfig = cfg;
   state = initGameState(cfg);
@@ -1932,7 +2035,7 @@ function startGame(cfg: HomeConfig): void {
 function returnToHome(): void {
   // AI タイムアウトを無効化
   gameGeneration++;
-  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove();
+  document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
 
   appDiv.style.display = 'none';
   gameTitle.style.display = 'none';

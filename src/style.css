@@ -86,6 +86,14 @@ h1 {
   transition: filter 0.15s;
 }
 .hex-tile:hover { filter: brightness(1.15); }
+/* 産出タイル強調（ダイス確定時に光ってどのタイルが出たか分かる） */
+.hex-tile.producing { animation: tileProduce 1.6s ease-out; }
+@keyframes tileProduce {
+  0%   { filter: brightness(1); }
+  18%  { filter: brightness(1.85) drop-shadow(0 0 9px rgba(255,240,150,0.95)); }
+  60%  { filter: brightness(1.3) drop-shadow(0 0 5px rgba(255,240,150,0.6)); }
+  100% { filter: brightness(1); }
+}
 
 .hex-tile.forest   { fill: #2d6a2d; }
 .hex-tile.field    { fill: #c8a830; }
@@ -459,6 +467,43 @@ h1 {
 }
 .trade-arrow { color: #ffd700; margin: 0 4px; }
 .trade-response-btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+/* ---- 交易: 資源チップ＆交換ビュー（一目で分かる表示） ---- */
+.res-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; }
+.res-chip {
+  display: inline-flex; align-items: center; gap: 1px;
+  padding: 2px 7px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  font-size: 0.82rem; font-weight: bold; color: #fff;
+  white-space: nowrap;
+}
+.res-chip-emoji { font-size: 0.95rem; }
+.res-chip-count { color: rgba(255,255,255,0.85); }
+.res-chip-none { opacity: 0.5; }
+.trade-exchange {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0;
+}
+.trade-ex-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.trade-ex-label {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.78rem; color: rgba(255,255,255,0.7); white-space: nowrap;
+}
+.trade-ex-arrow { color: #ffd700; font-size: 1.1rem; line-height: 1; }
+.trade-you-view {
+  font-size: 0.82rem; color: #ffe39a; font-weight: bold;
+  background: rgba(255,210,90,0.1);
+  border: 1px solid rgba(255,210,90,0.3);
+  border-radius: 8px;
+  padding: 7px 10px; margin: 6px 0;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 3px;
+  line-height: 1.6;
+}
 
 /* ---- 交易: 提案先の返答一覧 ---- */
 .trade-status-list {
@@ -1071,6 +1116,36 @@ h1 {
   35%  { filter: drop-shadow(0 0 13px rgba(255,220,80,1)); }
   100% { filter: drop-shadow(0 0 0 rgba(255,220,80,0)); }
 }
+
+/* ---- CPU手番ステータスバナー（上部中央） ---- */
+.cpu-status-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 90vw;
+  padding: 7px 16px;
+  background: rgba(18,20,28,0.92);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 22px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  font-size: 0.86rem;
+  font-weight: bold;
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: cpuStatusIn 0.25s ease-out;
+}
+@keyframes cpuStatusIn { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.cpu-status-dot { width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); flex-shrink: 0; }
+.cpu-status-name { color: rgba(255,255,255,0.95); }
+.cpu-status-msg { color: rgba(255,255,255,0.75); font-weight: normal; }
+.cpu-status-msg.thinking { font-style: italic; animation: cpuThinking 1s ease-in-out infinite; }
+@keyframes cpuThinking { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
 
 /* ---- 勝利演出（派手な勝利モーダル＋紙吹雪） ---- */
 .victory-overlay {

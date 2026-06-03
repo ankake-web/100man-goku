@@ -501,6 +501,40 @@ function formatResources(partial: Partial<ResourceHand>): string {
   return parts.length > 0 ? parts.join(' ') : '（なし）';
 }
 
+// 資源を見やすいチップ列で表示（交易UIの「一目で分かる」用）
+function resChips(partial: Partial<ResourceHand>): HTMLDivElement {
+  const wrap = el('div', 'res-chips');
+  let any = false;
+  for (const r of RESOURCE_TYPES) {
+    const n = partial[r] ?? 0;
+    if (n <= 0) continue;
+    any = true;
+    const chip = el('span', `res-chip res-chip-${r}`);
+    const em = el('span', 'res-chip-emoji'); em.textContent = RESOURCE_EMOJI[r];
+    const ct = el('span', 'res-chip-count'); ct.textContent = `×${n}`;
+    chip.append(em, ct);
+    wrap.appendChild(chip);
+  }
+  if (!any) { const none = el('span', 'res-chip res-chip-none'); none.textContent = '—'; wrap.appendChild(none); }
+  return wrap;
+}
+
+// 「提案者が渡す → 提案者が欲しい」を視覚的に表示する交換ビュー
+function buildExchangeView(give: Partial<ResourceHand>, receive: Partial<ResourceHand>, initiatorName: string, initiatorColor: string): HTMLDivElement {
+  const box = el('div', 'trade-exchange');
+  const row1 = el('div', 'trade-ex-row');
+  const lbl1 = el('span', 'trade-ex-label');
+  const dot = el('span', 'color-dot'); dot.style.background = initiatorColor;
+  lbl1.append(dot, document.createTextNode(`${initiatorName} が渡す`));
+  row1.append(lbl1, resChips(give));
+  const arrow = el('div', 'trade-ex-arrow'); arrow.textContent = '⇅';
+  const row2 = el('div', 'trade-ex-row');
+  const lbl2 = el('span', 'trade-ex-label'); lbl2.textContent = `${initiatorName} が欲しい`;
+  row2.append(lbl2, resChips(receive));
+  box.append(row1, arrow, row2);
+  return box;
+}
+
 // ============================================================
 // F-05: 交易オファー作成UI
 // ============================================================
@@ -525,6 +559,14 @@ function buildPlayerTradeOfferUI(
   const header = el('div', 'modal-header');
   header.textContent = '🤝 プレイヤー間交易：オファー作成';
   div.appendChild(header);
+
+  // ---- 現在の交換内容サマリ（一目で分かるように）----
+  const summary = el('div', 'trade-you-view');
+  summary.append('あなたが渡す ');
+  summary.appendChild(resChips(give));
+  summary.append(' → もらう ');
+  summary.appendChild(resChips(receive));
+  div.appendChild(summary);
 
   // ---- 交易相手選択 ----
   const targetLabel = el('div', 'modal-section-label');
@@ -636,34 +678,22 @@ function buildPendingTradeUI(
   }
   div.appendChild(header);
 
-  if (isCpuInitiated) {
-    // CPU起案：「CPUが渡す / CPUが欲しい」を明示
-    const giveRow = el('div', 'cpu-trade-row');
-    const giveLbl = el('span', 'cpu-trade-lbl');
-    giveLbl.textContent = `${initiator?.name ?? 'CPU'} が渡す：`;
-    giveRow.appendChild(giveLbl);
-    giveRow.append(formatResources(trade.offer.give));
-    div.appendChild(giveRow);
+  // 交換内容を視覚的に表示（提案者が渡す ⇅ 提案者が欲しい）
+  const initColor = PLAYER_COLORS[trade.initiatorId] ?? '#aaa';
+  div.appendChild(buildExchangeView(trade.offer.give, trade.offer.receive, initiator?.name ?? trade.initiatorId, initColor));
 
-    const recvRow = el('div', 'cpu-trade-row');
-    const recvLbl = el('span', 'cpu-trade-lbl');
-    recvLbl.textContent = `${initiator?.name ?? 'CPU'} が欲しい：`;
-    recvRow.appendChild(recvLbl);
-    recvRow.append(formatResources(trade.offer.receive));
-    div.appendChild(recvRow);
-  } else {
-    // 人間起案：従来通りの表示
-    const offerBox = el('div', 'trade-offer-box');
-    const who = el('strong');
-    who.textContent = `${initiator?.name ?? trade.initiatorId}`;
-    offerBox.appendChild(who);
-    offerBox.append(' の提案: ');
-    offerBox.append(formatResources(trade.offer.give));
-    const arrow = el('span', 'trade-arrow');
-    arrow.textContent = ' → ';
-    offerBox.appendChild(arrow);
-    offerBox.append(formatResources(trade.offer.receive));
-    div.appendChild(offerBox);
+  // CPU起案で人間が応答する場合は「あなた視点」を明示（一目で分かるように）
+  if (isCpuInitiated) {
+    const youPid = trade.targetPlayerIds.find(t => state.players[t]?.type === 'human');
+    if (youPid) {
+      const you = el('div', 'trade-you-view');
+      you.append('👉 あなたは ');
+      you.appendChild(resChips(trade.offer.receive)); // あなたが渡す = 提案者が欲しい
+      you.append(' を渡して ');
+      you.appendChild(resChips(trade.offer.give));     // あなたがもらう = 提案者が渡す
+      you.append(' をもらう');
+      div.appendChild(you);
+    }
   }
 
   if (isCpuInitiated) {
