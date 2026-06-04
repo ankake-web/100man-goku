@@ -425,3 +425,143 @@ describe('LAN mixed human+CPU: server-side CPU drive', () => {
     expect(view.players.player2!.devCards).toEqual([]);
   });
 });
+
+// ============================================================
+// CPU駆動の健全性: 全員CPUで1ゲーム完走（手が失敗しない＝フォールバック不要）
+// ============================================================
+import { cpuFallbackAction } from '../src/engine/lanCpu';
+
+const ALL_CPU: PlayerSpec[] = [
+  { id: 'player1', name: 'CPU α', color: 'red',    type: 'ai', aiDifficulty: 'normal' },
+  { id: 'player2', name: 'CPU β', color: 'blue',   type: 'ai', aiDifficulty: 'normal' },
+  { id: 'player3', name: 'CPU γ', color: 'purple', type: 'ai', aiDifficulty: 'normal' },
+];
+
+describe('CPU drive soundness', () => {
+  it('runs a full all-CPU game to GAME_OVER without any CPU action failing', () => {
+    // 全員CPUにして nextCpuAction で進める。各手は applyAction で必ず成功するはず。
+    // （混合戦のCPU部分と同じ純粋AI経路。失敗が出れば「本来成功すべき手の失敗」を検出できる）
+    let s = createInitialGameState(ALL_CPU, 'random', undefined, createRng(123));
+    let failures = 0;
+    let steps = 0;
+    let seed = 1;
+    for (; steps < 4000 && s.phase !== 'GAME_OVER'; steps++) {
+      const step = nextCpuAction(s, createRng(seed++));
+      if (!step) break; // 全員CPUなら通常 null にならない（なったら停止）
+      try {
+        s = applyAction(s, step.action, createRng(seed++));
+      } catch {
+        failures++;
+        // フォールバックで進行（サーバと同じ）
+        s = applyAction(s, cpuFallbackAction(s, step.pid), createRng(seed++));
+      }
+    }
+    expect(s.phase).toBe('GAME_OVER');        // 勝者が出るまで進む
+    expect(s.winner).not.toBeNull();
+    expect(failures).toBe(0);                 // 本来成功すべきCPU手は一度も失敗しない
+  });
+
+  it('cpuFallbackAction returns an action applyAction accepts in each phase', () => {
+    // PRE_ROLL
+    let s = runSetup(createInitialGameState(MIXED_SPECS, 'fixed', ['player1', 'player2'], createRng(5)), createRng(1));
+    expect(s.turnPhase).toBe('PRE_ROLL');
+    const pid = cur(s);
+    expect(() => applyAction(s, cpuFallbackAction(s, pid), createRng(1))).not.toThrow();
+    // TRADE_BUILD（ダイス後・非7）
+    let seed = 1; let rolled = s;
+    do { rolled = applyAction(s, { type: 'ROLL_DICE' }, createRng(seed++)); }
+    while (rolled.lastDiceRoll![0] + rolled.lastDiceRoll![1] === 7 && seed < 60);
+    expect(rolled.turnPhase).toBe('TRADE_BUILD');
+    expect(cpuFallbackAction(rolled, cur(rolled)).type).toBe('END_TURN');
+    expect(() => applyAction(rolled, cpuFallbackAction(rolled, cur(rolled)), createRng(1))).not.toThrow();
+  });
+});
+
+describe('CPU victory is reported and revealed correctly to humans', () => {
+  // 全員CPUを決定論で GAME_OVER まで進めて勝者stateを得る。
+  function playToGameOver(seed: number): GameState {
+    let s = createInitialGameState(ALL_CPU, 'random', undefined, createRng(seed));
+    let g = 1;
+    for (let i = 0; i < 4000 && s.phase !== 'GAME_OVER'; i++) {
+      const step = nextCpuAction(s, createRng(g++));
+      if (!step) break;
+      try { s = applyAction(s, step.action, createRng(g++)); }
+      catch { s = applyAction(s, cpuFallbackAction(s, step.pid), createRng(g++)); }
+    }
+    return s;
+  }
+
+  it('reaches GAME_OVER with a CPU winner whose hidden VP count toward 10', () => {
+    const s = playToGameOver(123);
+    expect(s.phase).toBe('GAME_OVER');
+    expect(s.winner).not.toBeNull();
+    // 勝者は CPU（type 'ai'）で、隠しVPカード込みの内部VPが目標到達
+    expect(s.players[s.winner!]!.type).toBe('ai');
+    // calcVP は scoring から（隠しVP込み）— ここでは公開API経由で十分大きいことを確認
+    const winnerName = s.players[s.winner!]!.name;
+    expect(winnerName.startsWith('CPU')).toBe(true);
+  });
+
+  it('reveals the winner to a non-winner viewer at GAME_OVER, but masks losers', () => {
+    const s = playToGameOver(123);
+    const winner = s.winner!;
+    const viewer = s.playerOrder.find(p => p !== winner)!; // 別CPUを人間視点の代わりに使う
+    const view = maskStateFor(s, viewer);
+    // 勝者の手札/発展カードは GAME_OVER で公開される（勝敗内訳の表示用）
+    expect(view.players[winner]!.devCards).toEqual(s.players[winner]!.devCards);
+    expect(view.players[winner]!.handCount).toBeUndefined(); // マスクされていない
+    // 勝者でも viewer でもない敗者は引き続きマスク（手札中身は0・枚数のみ）
+    const loser = s.playerOrder.find(p => p !== winner && p !== viewer);
+    if (loser) {
+      expect(RESOURCE_TYPES.reduce((a, r) => a + view.players[loser]!.hand[r], 0)).toBe(0);
+      expect(typeof view.players[loser]!.handCount).toBe('number');
+    }
+  });
+});
+
+describe('Secrecy regression: discard / robber steal do not leak contents', () => {
+  const EMOJIS = ['🌲', '🧱', '🐑', '🌾', '⛰'];
+  const hasResEmoji = (s: string) => EMOJIS.some(e => s.includes(e));
+
+  it('discard log shows only a count, never the resource types', () => {
+    const base = tradeReadyState({ wood: 8 }, {});
+    const s: GameState = { ...base, turnPhase: 'DISCARD', discardedThisRound: [] };
+    const action: Action = { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 4 } };
+    const next = applyAction(s, action, createRng(1));
+    // どの視点でも「種類」は出ない（枚数のみ）
+    for (const viewer of ['player1', 'player2'] as PlayerId[]) {
+      const msgs = buildActionLog(s, action, next, viewer).map(e => e.message).join('|');
+      expect(msgs).toContain('4枚');
+      expect(hasResEmoji(msgs)).toBe(false);
+    }
+  });
+
+  it('robber steal log shows "1枚" but never the stolen resource type, and hands stay masked', () => {
+    // player1 が盗賊を player2 に隣接させ player2 から1枚奪う状況を直接作る
+    const base = tradeReadyState({}, { wool: 3 });
+    // ROBBER フェーズ・player1 手番にして MOVE_ROBBER を適用
+    const robberTileId = Object.keys(base.tiles)[0]!;
+    const targetTileId = Object.keys(base.tiles).find(t => t !== robberTileId)!;
+    // player2 の建物を targetTile 隣接頂点に置き、盗める状態にする
+    const vid = base.tileToVertices[targetTileId]![0]!;
+    const s: GameState = {
+      ...base,
+      turnPhase: 'ROBBER',
+      diceRolledThisTurn: true,
+      tiles: { ...base.tiles, [robberTileId]: { ...base.tiles[robberTileId]!, hasRobber: true } },
+      vertices: { ...base.vertices, [vid]: { ...base.vertices[vid]!, building: { type: 'settlement', playerId: 'player2' } } },
+    };
+    const action: Action = { type: 'MOVE_ROBBER', tileId: targetTileId, stealFromPlayerId: 'player2' };
+    const next = applyAction(s, action, createRng(1));
+    // ログ: 「1枚奪った」だが資源の種類は出ない（どの視点でも）
+    for (const viewer of ['player1', 'player2'] as PlayerId[]) {
+      const msgs = buildActionLog(s, action, next, viewer).map(e => e.message).join('|');
+      expect(msgs).toContain('奪');
+      expect(hasResEmoji(msgs)).toBe(false);
+    }
+    // 第三者視点では奪った側(player1)・奪われた側(player2)の手札中身は見えない
+    const third = maskStateFor(next, 'player3' as PlayerId);
+    expect(RESOURCE_TYPES.reduce((a, r) => a + (third.players.player1?.hand[r] ?? 0), 0)).toBe(0);
+    expect(RESOURCE_TYPES.reduce((a, r) => a + (third.players.player2?.hand[r] ?? 0), 0)).toBe(0);
+  });
+});

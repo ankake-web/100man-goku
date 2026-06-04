@@ -24,7 +24,7 @@ import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
-import { nextCpuAction } from '../src/engine/lanCpu';
+import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
@@ -216,6 +216,9 @@ function startGame(room: Room): void {
 // サーバ側 CPU 駆動（混合対戦）
 // ============================================================
 
+// CPU 駆動の観測用カウンタ（テスト/手順での追跡用。秘匿情報は含めない）。
+export const cpuDriveStats = { steps: 0, fallbacks: 0 };
+
 // CPU が動く必要があれば、delay 後に一手だけ適用して配信し、再スケジュールする。
 // 人間の手番・人間の入力待ち・GAME_OVER になれば停止する。
 function scheduleCpuTick(room: Room, delay: number): void {
@@ -227,28 +230,45 @@ function scheduleCpuTick(room: Room, delay: number): void {
     if (!room.started || !room.state || room.state.phase === 'GAME_OVER') return;
     const step = nextCpuAction(room.state, Math.random);
     if (!step) return; // 人間の番になった等
+    const applied = applyCpuStep(room, step.pid, step.action);
+    if (!applied) return; // 適用できず（極めて稀）。人間操作/再接続を待つ。
+    // 次の CPU 手番へ。ダイス後は演出ぶん長めに待つ。
+    const nextDelay = applied === 'ROLL_DICE' ? CPU_AFTER_ROLL_MS : CPU_STEP_MS;
+    scheduleCpuTick(room, nextDelay);
+  }, delay);
+}
+
+// CPU の一手を適用して配信する。失敗時はフェーズ別の安全行動でフォールバックし、
+// それでも失敗したら（極めて稀）進行を止めずに停止する。
+// 返り値: 適用できた Action の type（再スケジュール判定用）/ 失敗なら null。
+function applyCpuStep(room: Room, pid: PlayerId, action: Action): Action['type'] | null {
+  if (!room.state) return null;
+  try {
+    const prev = room.state;
+    const next = applyAction(prev, action, Math.random);
+    room.state = next;
+    cpuDriveStats.steps++;
+    broadcastState(room, prev, action, pid);
+    return action.type;
+  } catch (err) {
+    // 本来成功すべき CPU Action が失敗した。秘匿情報は出さず type と理由のみ記録する。
+    cpuDriveStats.fallbacks++;
+    console.warn(`[LAN-CPU] action ${action.type} by ${pid} failed; falling back. reason: ${(err as Error)?.message ?? 'unknown'}`);
     try {
       const prev = room.state;
-      const next = applyAction(prev, step.action, Math.random);
+      const cur = prev.playerOrder[prev.currentPlayerIndex];
+      // フォールバックの actor: 捨て札/交易応答は対象本人、それ以外は手番者。
+      const fbActor = (action.type === 'DISCARD_RESOURCES' || action.type === 'RESPOND_TRADE') ? pid : (cur ?? pid);
+      const fb = cpuFallbackAction(prev, fbActor as PlayerId);
+      const next = applyAction(prev, fb, Math.random);
       room.state = next;
-      broadcastState(room, prev, step.action, step.pid);
-      // 次の CPU 手番へ。ダイス後は演出ぶん長めに待つ。
-      const nextDelay = step.action.type === 'ROLL_DICE' ? CPU_AFTER_ROLL_MS : CPU_STEP_MS;
-      scheduleCpuTick(room, nextDelay);
-    } catch (err) {
-      // 想定外で applyAction が失敗しても進行を止めない（END_TURN で復帰を試みる）。
-      try {
-        const cur = room.state!.playerOrder[room.state!.currentPlayerIndex]!;
-        if (room.state!.players[cur]?.type === 'ai' && room.state!.phase === 'MAIN' && room.state!.turnPhase === 'TRADE_BUILD') {
-          const prev = room.state!;
-          room.state = applyAction(prev, { type: 'END_TURN' }, Math.random);
-          broadcastState(room, prev, { type: 'END_TURN' }, cur);
-          scheduleCpuTick(room, CPU_STEP_MS);
-        }
-      } catch { /* これ以上は何もしない（人間の操作/再接続を待つ） */ }
-      void err;
+      broadcastState(room, prev, fb, fbActor as PlayerId);
+      return fb.type;
+    } catch (err2) {
+      console.warn(`[LAN-CPU] fallback also failed: ${(err2 as Error)?.message ?? 'unknown'}`);
+      return null;
     }
-  }, delay);
+  }
 }
 
 /**

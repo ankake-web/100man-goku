@@ -17,6 +17,7 @@
 import type { GameState, Action, PlayerId } from '../types';
 import { RESOURCE_TYPES } from '../constants';
 import { chooseAction } from './ai';
+import { canBuildSettlement, canBuildRoad } from './actions';
 
 export interface CpuStep {
   readonly pid: PlayerId;
@@ -76,14 +77,28 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     const action = chooseAction(state, cur, { skipPlayerTrade: true });
     if (action) return { pid: cur, action };
     // フォールバック: 何も選べない場合でも進行させる
-    return { pid: cur, action: cpuFallback(state, cur) };
+    return { pid: cur, action: cpuFallbackAction(state, cur) };
   }
 
   return null; // 人間の手番
 }
 
-/** どのフェーズでも合法に進む安全行動（CPUが手を選べない時の最終手段）。 */
-function cpuFallback(state: GameState, pid: PlayerId): Action {
+/**
+ * どのフェーズでも「合法で進行する」安全な行動を1つ返す（最終手段）。
+ * CPU の選択 or 適用が失敗した時に、サーバがゲームを止めないために使う。
+ */
+export function cpuFallbackAction(state: GameState, pid: PlayerId): Action {
+  // セットアップ: 最初の合法な配置（これが無いことは通常起こらない）。
+  if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
+    if (state.setupSubPhase === 'PLACE_ROAD') {
+      const e = Object.keys(state.edges).find(eid => canBuildRoad(state, pid, eid));
+      if (e) return { type: 'BUILD_ROAD', edgeId: e };
+    }
+    const v = Object.keys(state.vertices).find(vid => canBuildSettlement(state, pid, vid));
+    if (v) return { type: 'BUILD_SETTLEMENT', vertexId: v };
+  }
+  // ペンディング交易: 取り消し（CPU起案時のみ実質有効）。
+  if (state.pendingTrade) return { type: 'CANCEL_TRADE' };
   if (state.turnPhase === 'PRE_ROLL') return { type: 'ROLL_DICE' };
   if (state.turnPhase === 'ROBBER') {
     const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
