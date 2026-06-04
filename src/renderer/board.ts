@@ -19,6 +19,13 @@ export interface BoardRenderOptions {
 // 強盗コマをタイル中心から下へずらす量（数字チップとの重なり回避）。
 const ROBBER_DY = 22;
 
+// タッチ端末（スマホ等）か。港・数字チップを少し大きくして見やすくする。
+function isTouchDevice(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+}
+
 // ============================================================
 // SVGユーティリティ
 // ============================================================
@@ -120,10 +127,12 @@ function renderTile(
   if (isValidRobber) poly.classList.add('valid-robber');
   g.appendChild(poly);
 
-  // 数字トークン（砂漠以外）
+  // 数字トークン（砂漠以外）。タッチ端末では少し大きく見やすくする。
   if (tile.number != null) {
     const isRed = tile.number === 6 || tile.number === 8;
-    const RADIUS = 18;
+    const touch = isTouchDevice();
+    const RADIUS = touch ? 21 : 18;
+    const dotsY = touch ? 16 : 14;
 
     const circle = svgEl('circle');
     circle.classList.add('token-circle');
@@ -140,7 +149,7 @@ function renderTile(
     const dots = svgEl('text');
     dots.classList.add('token-dots');
     if (isRed) dots.classList.add('red');
-    setAttrs(dots, { x: cx, y: cy + 14 });
+    setAttrs(dots, { x: cx, y: cy + dotsY });
     dots.textContent = DOTS[tile.number] ?? '';
     g.appendChild(dots);
   }
@@ -190,24 +199,26 @@ function renderHarbor(
   const mx = (ax + bx) / 2;
   const my = (ay + by) / 2;
 
+  const touch = isTouchDevice();
+
   // 港辺ライン（太く、色付き）
   const line = svgEl('line');
   line.classList.add('harbor-line');
   setAttrs(line, { x1: ax, y1: ay, x2: bx, y2: by,
-    stroke: HARBOR_COLOR[harbor.type], 'stroke-width': 5 });
+    stroke: HARBOR_COLOR[harbor.type], 'stroke-width': touch ? 6 : 5 });
   g.appendChild(line);
 
   // 頂点マーカー（港がどの交点に対応しているかを表示）
   for (const [cx, cy] of [[ax, ay], [bx, by]] as [number, number][]) {
     const dot = svgEl('circle');
     dot.classList.add('harbor-dot');
-    setAttrs(dot, { cx, cy, r: 5, fill: HARBOR_COLOR[harbor.type], opacity: 0.8 });
+    setAttrs(dot, { cx, cy, r: touch ? 6 : 5, fill: HARBOR_COLOR[harbor.type], opacity: 0.8 });
     g.appendChild(dot);
   }
 
-  // 背景バッジ（大きめに）
-  const badgeW = 44;
-  const badgeH = 18;
+  // 背景バッジ（タッチ端末では大きめに：中心(mx,my)基準なので拡大しても中央のまま）
+  const badgeW = touch ? 52 : 44;
+  const badgeH = touch ? 22 : 18;
   const bg = svgEl('rect');
   setAttrs(bg, { x: mx - badgeW / 2, y: my - badgeH / 2, width: badgeW, height: badgeH,
     rx: 4, fill: 'rgba(0,0,0,0.82)', stroke: HARBOR_COLOR[harbor.type], 'stroke-width': 1.5 });

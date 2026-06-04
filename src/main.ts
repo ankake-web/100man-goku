@@ -73,15 +73,17 @@ function renderHome(
   const tabs = document.createElement('div');
   tabs.className = 'home-tabs';
 
-  const tabCpu    = createTab('CPU 対戦',      true);
-  const tabOnline = createTab('オンライン対戦', false);
+  // 既定はオンライン（LAN）対戦タブ。CPU対戦タブも残す。
+  const tabCpu    = createTab('CPU 対戦',      false);
+  const tabOnline = createTab('オンライン対戦', true);
   tabs.appendChild(tabCpu);
   tabs.appendChild(tabOnline);
   card.appendChild(tabs);
 
-  // ---- CPU 対戦フォーム ----
+  // ---- CPU 対戦フォーム ----（既定はオンラインタブなので初期は非表示）
   const cpuForm = document.createElement('div');
   cpuForm.className = 'home-form';
+  cpuForm.style.display = 'none';
 
   const nameField = document.createElement('div');
   nameField.className = 'home-field';
@@ -246,10 +248,9 @@ function renderHome(
   startBtn.textContent = 'ゲーム開始';
   cpuForm.appendChild(startBtn);
 
-  // ---- LAN対戦フォーム（同一LAN内の複数端末で人間対戦）----
+  // ---- LAN対戦フォーム（同一LAN内の複数端末で人間対戦）。既定タブなので表示。----
   const onlineForm = document.createElement('div');
   onlineForm.className = 'home-form';
-  onlineForm.style.display = 'none';
   // ロビーUIは専用モジュールが描画する（CPU対戦フォームには非干渉）。
   renderLanLobby(onlineForm, { onGameStart: onLanStart });
 

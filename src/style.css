@@ -214,8 +214,27 @@ h1 {
   #ui > .turn-panel { padding: 6px 8px; min-width: 0; max-width: none; flex: 0 0 auto; }
   #ui .turn-order-bar, #ui .turn-titles { display: none; }
   #ui > .game-log-panel { flex: 0 0 auto; }
-  #ui .game-log-list { max-height: 60px; }
+  #ui .game-log-list { max-height: 48px; }
   #ui > .player-panels { display: none; } /* 四隅にあるので #ui 側には出さない */
+
+  /* 操作パネル内の余白・間隔を詰めて内部スクロールを減らす */
+  #ui .turn-info-row, #ui .turn-phase-text, #ui .dice-result { margin: 1px 0; }
+  #ui .action-buttons { gap: 4px; }
+  #ui .action-buttons button { padding: 7px 10px; }
+  #ui .modal-panel { padding: 6px; }
+  #ui .modal-header { margin-bottom: 3px; }
+  /* 交易の資源選択を横並びでコンパクトに */
+  #ui .modal-res-row { gap: 3px; }
+  #ui .modal-res-cell { padding: 1px 2px; }
+  #ui .modal-res-cell .btn-small { width: 24px; height: 24px; }
+  #ui .modal-res-info { font-size: 0.7rem; }
+  #ui .trade-target-row { gap: 4px; }
+  #ui .trade-response-btns { gap: 6px; }
+
+  /* シート展開中は body 側に下方向のスクロール余地を確保し、
+     盤面を上へスクロールしてシート裏を覗けるようにする（内部スクロール依存を減らす）。 */
+  body.lsheet-open #app { padding-bottom: 58vh; }
+  body.lsheet-open { scroll-padding-bottom: 58vh; }
 }
 
 /* ---- タイル ---- */
@@ -292,6 +311,14 @@ h1 {
   fill: rgba(255,255,255,0.6);
   stroke: none;
   pointer-events: none;
+}
+
+/* タッチ端末（スマホ等）では数字・港ラベルのフォントを大きく読みやすく（PCは不変）。
+   円/バッジのジオメトリは board.ts 側で拡大している。 */
+@media (pointer: coarse) {
+  .token-number { font-size: 18px; }
+  .token-dots   { font-size: 9px; }
+  .harbor-label { font-size: 13px; letter-spacing: -0.2px; }
 }
 
 /* ---- 頂点（開拓地/都市の建設候補点） ---- */
@@ -1254,8 +1281,20 @@ h1 {
   color: rgba(255,255,255,0.4);
   position: relative;
 }
-.lan-join-row { display: flex; gap: 8px; }
+.lan-join-row { display: flex; gap: 8px; align-items: stretch; }
+.lan-join-row .home-online-btn { flex: 0 0 auto; min-width: 88px; }
 .lan-code-input { flex: 1; text-transform: uppercase; letter-spacing: 0.18em; text-align: center; }
+/* スマホ縦持ち: コード入力欄の下に「参加」ボタンを縦配置し、押しやすく全幅に。 */
+@media (max-width: 480px) {
+  .lan-join-row { flex-direction: column; }
+  .lan-join-row .home-online-btn { width: 100%; padding: 12px 0; font-size: 0.95rem; }
+}
+.lan-wait-note {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.5);
+}
 .lan-hint {
   font-size: 0.78rem;
   color: rgba(255,255,255,0.45);

@@ -561,8 +561,9 @@ function buildPlayerTradeOfferUI(
     ? uiPhase.targetPids
     : opponents; // デフォルト全員
 
+  const lc = isLandscapeCompact(); // 横持ちは短ラベルで圧縮
   const header = el('div', 'modal-header');
-  header.textContent = '🤝 プレイヤー間交易：オファー作成';
+  header.textContent = lc ? '🤝 交易を提案' : '🤝 プレイヤー間交易：オファー作成';
   div.appendChild(header);
 
   // ---- 現在の交換内容サマリ（一目で分かるように）----
@@ -575,7 +576,7 @@ function buildPlayerTradeOfferUI(
 
   // ---- 交易相手選択 ----
   const targetLabel = el('div', 'modal-section-label');
-  targetLabel.textContent = '交易相手：';
+  targetLabel.textContent = lc ? '相手' : '交易相手：';
   div.appendChild(targetLabel);
   const targetRow = el('div', 'trade-target-row');
   for (const opp of opponents) {
@@ -595,7 +596,7 @@ function buildPlayerTradeOfferUI(
 
   // 渡す資源
   const giveLabel = el('div', 'modal-section-label');
-  giveLabel.textContent = '渡す資源：';
+  giveLabel.textContent = lc ? '出す' : '渡す資源：';
   div.appendChild(giveLabel);
 
   const giveRow = el('div', 'modal-res-row');
@@ -616,7 +617,7 @@ function buildPlayerTradeOfferUI(
 
   // 受け取る資源
   const recvLabel = el('div', 'modal-section-label');
-  recvLabel.textContent = '受け取る資源：';
+  recvLabel.textContent = lc ? 'もらう' : '受け取る資源：';
   div.appendChild(recvLabel);
 
   const recvRow = el('div', 'modal-res-row');
@@ -648,7 +649,7 @@ function buildPlayerTradeOfferUI(
     warn.style.color = '#ffb060';
     div.appendChild(warn);
   }
-  div.appendChild(makeBtn('📤 オファー送信', canSendWithTarget ? 'btn-primary' : 'btn-disabled', !canSendWithTarget, () => {
+  div.appendChild(makeBtn(lc ? '📤 提案' : '📤 オファー送信', canSendWithTarget ? 'btn-primary' : 'btn-disabled', !canSendWithTarget, () => {
     const giveP: Partial<ResourceHand> = {};
     const recvP: Partial<ResourceHand> = {};
     for (const r of RESOURCE_TYPES) {
@@ -657,7 +658,7 @@ function buildPlayerTradeOfferUI(
     }
     dispatch({ type: 'OFFER_TRADE', offer: { give: giveP, receive: recvP }, targetPlayerIds: targetPids });
   }));
-  div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  div.appendChild(makeBtn(lc ? '✕' : '✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
   return div;
 }
 
@@ -678,8 +679,9 @@ function buildLanPendingTradeUI(
   const initiator = state.players[trade.initiatorId];
   const initColor = PLAYER_COLORS[trade.initiatorId] ?? '#aaa';
 
+  const lc = isLandscapeCompact();
   const header = el('div', 'modal-header');
-  header.textContent = '🤝 プレイヤー間交易';
+  header.textContent = lc ? '🤝 交易' : '🤝 プレイヤー間交易';
   div.appendChild(header);
 
   // 交換内容（提案者が渡す ⇅ 提案者が欲しい）— 公開情報
@@ -691,7 +693,7 @@ function buildLanPendingTradeUI(
 
   // 応答状況の一覧（公開情報）
   const statusLbl = el('div', 'modal-section-label');
-  statusLbl.textContent = '提案先の返答：';
+  statusLbl.textContent = lc ? '返答' : '提案先の返答：';
   div.appendChild(statusLbl);
   const list = el('div', 'trade-status-list');
   for (const t of trade.targetPlayerIds) {
@@ -724,7 +726,7 @@ function buildLanPendingTradeUI(
       div.appendChild(lackMsg);
     }
     const btnRow = el('div', 'trade-response-btns');
-    btnRow.appendChild(makeBtn('✓ 承認', canAfford ? 'btn-primary' : 'btn-disabled', !canAfford, () =>
+    btnRow.appendChild(makeBtn(lc ? '✓ OK' : '✓ 承認', canAfford ? 'btn-primary' : 'btn-disabled', !canAfford, () =>
       dispatch({ type: 'RESPOND_TRADE', response: { playerId: viewerId, status: 'ACCEPT' } }),
     ));
     btnRow.appendChild(makeBtn('✗ 拒否', 'btn-end', false, () =>
@@ -740,26 +742,26 @@ function buildLanPendingTradeUI(
   // ---- 提案者: 取り消し / 成立相手の選択 ----
   if (isInitiator) {
     if (trade.state === 'TRADE_OFFER') {
-      div.appendChild(makeBtn('↩ 取り消す', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+      div.appendChild(makeBtn(lc ? '取消' : '↩ 取り消す', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
     } else if (trade.state === 'TRADE_RESPONSE') {
       const acceptors = trade.targetPlayerIds.filter(t => trade.responses[t]?.status === 'ACCEPT') as PlayerId[];
       if (acceptors.length === 0) {
         const msg = el('div', 'modal-section-label');
-        msg.textContent = '😕 全員が拒否（不成立）';
+        msg.textContent = lc ? '😕 全員拒否' : '😕 全員が拒否（不成立）';
         msg.style.color = '#ff8060';
         div.appendChild(msg);
         div.appendChild(makeBtn('閉じる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
       } else {
         const lbl = el('div', 'modal-section-label');
-        lbl.textContent = acceptors.length === 1 ? '✅ 成立させる：' : '✅ 成立相手を1人選択：';
+        lbl.textContent = lc ? '成立相手:' : (acceptors.length === 1 ? '✅ 成立させる：' : '✅ 成立相手を1人選択：');
         div.appendChild(lbl);
         const row = el('div', 'trade-response-btns');
         for (const a of acceptors) {
-          row.appendChild(makeBtn(`${state.players[a]?.name} と成立`, 'btn-primary', false,
+          row.appendChild(makeBtn(lc ? `${state.players[a]?.name}` : `${state.players[a]?.name} と成立`, 'btn-primary', false,
             () => dispatch({ type: 'CONFIRM_TRADE', responderId: a })));
         }
         div.appendChild(row);
-        div.appendChild(makeBtn('↩ やめる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
+        div.appendChild(makeBtn(lc ? 'やめる' : '↩ やめる', 'btn-end', false, () => dispatch({ type: 'CANCEL_TRADE' })));
       }
     }
   }

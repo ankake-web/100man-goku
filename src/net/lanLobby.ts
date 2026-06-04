@@ -115,7 +115,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
     // ルーム作成
     const createBtn = document.createElement('button');
     createBtn.className = 'home-start-btn';
-    createBtn.textContent = 'ルームを作成（ホストになる）';
+    createBtn.textContent = 'ルームを作成';
     createBtn.addEventListener('click', async () => {
       if (await ensureClient()) client!.send({ t: 'create', name: getName() });
     });
@@ -243,14 +243,21 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
     if (view.isHost) {
       const startBtn = document.createElement('button');
       startBtn.className = 'home-start-btn';
-      startBtn.textContent = view.canStart ? 'ゲーム開始' : '人間1人以上・合計2〜4人で開始';
+      // 開始条件未達は内部条件を見せず、シンプルに「待機中」。
+      startBtn.textContent = view.canStart ? 'ゲーム開始' : '⏳ 待機中…';
       startBtn.disabled = !view.canStart;
       startBtn.addEventListener('click', () => client?.send({ t: 'start' }));
       root.appendChild(startBtn);
+      if (!view.canStart) {
+        const note = document.createElement('div');
+        note.className = 'lan-wait-note';
+        note.textContent = '参加者を待っています';
+        root.appendChild(note);
+      }
     } else {
       const wait = document.createElement('div');
       wait.className = 'lan-wait';
-      wait.textContent = '⏳ ホストの開始を待っています…';
+      wait.textContent = '⏳ ホストの開始を待っています';
       root.appendChild(wait);
     }
 
