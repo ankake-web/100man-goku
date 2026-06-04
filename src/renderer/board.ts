@@ -16,6 +16,9 @@ export interface BoardRenderOptions {
   validTileIds?: Set<string>;
 }
 
+// 強盗コマをタイル中心から下へずらす量（数字チップとの重なり回避）。
+const ROBBER_DY = 22;
+
 // ============================================================
 // SVGユーティリティ
 // ============================================================
@@ -75,15 +78,17 @@ const HARBOR_COLOR: Record<HarborType, string> = {
 // ボード中心オフセット計算
 // ============================================================
 
-function boardOffset(state: GameState, svgW: number, svgH: number): { ox: number; oy: number } {
+// タイル群の中心を、指定した中心座標(centerX, centerY)へ合わせるオフセットを返す。
+// centerX/Y は viewBox の中心（vb.x + vb.width/2 など）を渡す。
+function boardOffset(state: GameState, centerX: number, centerY: number): { ox: number; oy: number } {
   const coords = Object.values(state.tiles).map(t => axialToPixel(t.coord));
   const minX = Math.min(...coords.map(p => p.x));
   const maxX = Math.max(...coords.map(p => p.x));
   const minY = Math.min(...coords.map(p => p.y));
   const maxY = Math.max(...coords.map(p => p.y));
   return {
-    ox: svgW / 2 - (minX + maxX) / 2,
-    oy: svgH / 2 - (minY + maxY) / 2,
+    ox: centerX - (minX + maxX) / 2,
+    oy: centerY - (minY + maxY) / 2,
   };
 }
 
@@ -140,17 +145,18 @@ function renderTile(
     g.appendChild(dots);
   }
 
-  // 強盗コマ（どろぼう風アイコン）
+  // 強盗コマ（どろぼう風アイコン）。数字チップ(中央)と丸かぶりしないよう少し下にずらす。
   if (tile.hasRobber) {
+    const ry = cy + ROBBER_DY;
     const rg = svgEl('g');
     rg.classList.add('robber');
     const bg = svgEl('circle');
-    setAttrs(bg, { cx, cy, r: 15, fill: 'rgba(18,18,24,0.88)', stroke: '#000', 'stroke-width': 1.5 });
+    setAttrs(bg, { cx, cy: ry, r: 14, fill: 'rgba(18,18,24,0.9)', stroke: '#000', 'stroke-width': 1.5 });
     rg.appendChild(bg);
     const icon = svgEl('text');
     setAttrs(icon, {
-      x: cx, y: cy + 1,
-      'font-size': 20, 'text-anchor': 'middle', 'dominant-baseline': 'central',
+      x: cx, y: ry + 1,
+      'font-size': 18, 'text-anchor': 'middle', 'dominant-baseline': 'central',
       'pointer-events': 'none',
     });
     icon.textContent = '🦹';
@@ -376,12 +382,15 @@ export function renderBoard(
   const vb = svgEl_.viewBox?.baseVal;
   const W = vb && vb.width  ? vb.width  : (svgEl_.clientWidth  || 800);
   const H = vb && vb.height ? vb.height : (svgEl_.clientHeight || 700);
-  const { ox, oy } = boardOffset(state, W, H);
+  const vbx = vb && vb.width ? vb.x : 0;
+  const vby = vb && vb.height ? vb.y : 0;
+  // タイル群は viewBox の中心に合わせる（viewBox を狭めて余白を削ると相対的にタイルが拡大する）。
+  const { ox, oy } = boardOffset(state, vbx + W / 2, vby + H / 2);
   const size = HEX_SIZE;
 
-  // --- 海背景 ---
+  // --- 海背景（viewBox 全体を覆う） ---
   const sea = svgEl('rect');
-  setAttrs(sea, { x: 0, y: 0, width: W, height: H, fill: '#1a6ea8', rx: 12 });
+  setAttrs(sea, { x: vbx, y: vby, width: W, height: H, fill: '#1a6ea8', rx: 12 });
   svgEl_.appendChild(sea);
 
   // --- タイル（最下層） ---

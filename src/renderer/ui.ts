@@ -40,6 +40,11 @@ let logPanelOpen = true;
 // この幅以上でプレイヤーパネルを盤面の四隅に配置する（未満は盤面下に縦並び）
 const CORNER_LAYOUT_MIN_WIDTH = 1200;
 
+// 横持ちスマホ（横長かつ低い高さ）か。表示テキストを短縮するために使う。
+function isLandscapeCompact(): boolean {
+  return window.innerWidth > window.innerHeight && window.innerHeight <= 600;
+}
+
 const RESOURCE_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
 };
@@ -1049,7 +1054,8 @@ function buildActionButtons(
   if (buildMode === 'road' || buildMode === 'settlement' || buildMode === 'city') {
     const label = buildMode === 'road' ? '道' : buildMode === 'settlement' ? '開拓地' : '都市';
     const hint = el('div', 'build-select-hint');
-    hint.textContent = `🛠 選択中：${label} — 光っている場所をタップ`;
+    // 横持ちは情報を最小化（短縮表記）。
+    hint.textContent = isLandscapeCompact() ? `${label}を配置` : `🛠 選択中：${label} — 光っている場所をタップ`;
     div.appendChild(hint);
   }
 
@@ -1174,9 +1180,10 @@ export function renderUI(
   // CPU の手番は「操作中」と分かるように表示する（サーバ側で自動進行）。
   if (lanMode && viewerId != null && viewerId !== pid && state.phase !== 'GAME_OVER') {
     const waitEl = el('div', 'lan-turn-wait');
+    const compact = isLandscapeCompact();
     waitEl.textContent = player.type === 'ai'
-      ? `🤖 ${player.name} が操作中です…`
-      : `⏳ ${player.name} の操作を待っています…`;
+      ? (compact ? `🤖 ${player.name} 操作中` : `🤖 ${player.name} が操作中です…`)
+      : (compact ? `⏳ ${player.name} の番` : `⏳ ${player.name} の操作を待っています…`);
     turnPanel.appendChild(waitEl);
   }
 

@@ -705,6 +705,7 @@ function redraw(): void {
       viewerPlayerId ?? undefined, /* lanMode */ true,
     );
     updateGameNav();
+    updateLandscapeSheet();
     return;
   }
 
@@ -716,6 +717,81 @@ function redraw(): void {
   armCpuWatchdog();
   // CPU手番ステータスバナーの更新
   updateCpuStatusBanner();
+  updateLandscapeSheet();
+}
+
+// ============================================================
+// 横持ちスマホ: 操作パネルをボトムシート化（collapsed/expanded）
+// ============================================================
+
+// ユーザーが手動で開いた状態。交易依頼/捨て札中は強制で開く（mustAct）。
+let landscapeSheetUserOpen = false;
+let sheetHandleEl: HTMLButtonElement | null = null;
+
+// 横持ちの操作対象プレイヤー（LAN=自分、ローカル=人間）。
+function viewerForStatus(): PlayerId | null {
+  if (netMode) return viewerPlayerId;
+  return state.playerOrder.find(p => state.players[p]?.type === 'human') ?? null;
+}
+
+// ボトムシートのハンドルに出す短いステータス。alert=見逃すと困る（交易/捨て札）。
+function computeSheetStatus(): { text: string; alert: boolean } {
+  if (!state) return { text: '', alert: false };
+  const viewer = viewerForStatus();
+  const cur = state.playerOrder[state.currentPlayerIndex];
+  const tr = state.pendingTrade;
+  if (viewer && tr && tr.targetPlayerIds.includes(viewer) && !tr.responses[viewer]
+      && (tr.state === 'TRADE_OFFER' || tr.state === 'TRADE_RESPONSE')) {
+    return { text: '🤝 交易依頼！', alert: true };
+  }
+  if (viewer && state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+    const h = state.players[viewer]?.hand;
+    const total = h ? RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) : 0;
+    if (total >= 8 && !(state.discardedThisRound ?? []).includes(viewer)) {
+      return { text: '🗑 捨て札！', alert: true };
+    }
+  }
+  if (viewer && cur === viewer) {
+    if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
+      return { text: state.setupSubPhase === 'PLACE_ROAD' ? '🛤 道を配置' : '🏠 開拓地を配置', alert: false };
+    }
+    if (state.turnPhase === 'PRE_ROLL') return { text: '🎲 ダイス', alert: false };
+    if (state.turnPhase === 'ROBBER')   return { text: '🦹 盗賊', alert: false };
+    if (state.turnPhase === 'TRADE_BUILD') {
+      if (buildMode === 'road')       return { text: '🛤 道を配置', alert: false };
+      if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
+      if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
+      return { text: '🛠 建設・交易', alert: false };
+    }
+  }
+  if (cur) {
+    const p = state.players[cur];
+    if (p?.type === 'ai') return { text: `🤖 ${p.name} 操作中`, alert: false };
+    return { text: `⏳ ${p?.name ?? ''} の番`, alert: false };
+  }
+  return { text: '', alert: false };
+}
+
+// ハンドル更新＋開閉状態の反映（横持ち以外でも安全に呼べる：CSSが媒体で制御）。
+function updateLandscapeSheet(): void {
+  if (!sheetHandleEl) {
+    sheetHandleEl = document.createElement('button');
+    sheetHandleEl.id = 'ui-sheet-handle';
+    sheetHandleEl.type = 'button';
+    sheetHandleEl.addEventListener('click', () => {
+      landscapeSheetUserOpen = !landscapeSheetUserOpen;
+      updateLandscapeSheet();
+    });
+    appDiv.appendChild(sheetHandleEl);
+  }
+  if (!state) return;
+  const st = computeSheetStatus();
+  // 交易/捨て札は自動展開。建設モード中は盤面をタップさせたいので自動収納。
+  const open = st.alert || (landscapeSheetUserOpen && buildMode === 'idle');
+  document.body.classList.toggle('lsheet-open', open);
+  sheetHandleEl.classList.toggle('alert', st.alert);
+  const arrow = open ? '▼ 閉じる' : '▲ 操作';
+  sheetHandleEl.textContent = `${st.text}　${arrow}`;
 }
 
 // ============================================================
@@ -1947,6 +2023,8 @@ function dispatch(action: Action): void {
 
 function setBuildMode(mode: BuildMode): void {
   buildMode = mode;
+  // 建設モードに入ったら横持ちシートは畳む（盤面をタップしやすく）。
+  if (mode !== 'idle') landscapeSheetUserOpen = false;
   redraw();
 }
 
@@ -1993,6 +2071,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   state = initial;
   buildMode = 'idle';
   uiPhase = { type: 'idle' };
+  landscapeSheetUserOpen = false;
   diceStats = new Array(13).fill(0);
 
   // 以降のサーバメッセージ（状態更新・切断等）は main 側で処理する。
@@ -2154,6 +2233,7 @@ function startGame(cfg: HomeConfig): void {
   state = initGameState(cfg);
   buildMode = 'idle';
   uiPhase = { type: 'idle' };
+  landscapeSheetUserOpen = false;
   cpuPlayerTradeOfferedThisTurn = false;
   lastCpuOfferSignature = null;
   diceStats = new Array(13).fill(0); // 新規ゲームで出目分布をリセット
@@ -2187,6 +2267,9 @@ function returnToHome(): void {
   // AI タイムアウトを無効化
   gameGeneration++;
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
+  // 横持ちボトムシートの状態をリセット
+  landscapeSheetUserOpen = false;
+  document.body.classList.remove('lsheet-open');
 
   // LAN対戦の後片付け（接続を閉じてローカルモードへ戻す）
   if (netMode || lanClient) {
