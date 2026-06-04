@@ -1045,6 +1045,14 @@ function buildActionButtons(
   const canCity  = player.remainingCities > 0 && hasEnoughResources(player.hand, BUILD_COSTS.city);
   const canDev   = state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card);
 
+  // 建設モード選択中は「どこを置くか」を明示（タッチでの誤操作防止・選択状態の可視化）。
+  if (buildMode === 'road' || buildMode === 'settlement' || buildMode === 'city') {
+    const label = buildMode === 'road' ? '道' : buildMode === 'settlement' ? '開拓地' : '都市';
+    const hint = el('div', 'build-select-hint');
+    hint.textContent = `🛠 選択中：${label} — 光っている場所をタップ`;
+    div.appendChild(hint);
+  }
+
   div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
@@ -1202,19 +1210,25 @@ export function renderUI(
     allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid, viewerId));
   }
 
-  // 広い画面では盤面ラッパー(#board-area)の四隅にパネルを配置し、
-  // 資源エフェクトの行き先と盤面の対応を強める。
-  // 狭い画面では従来どおり #ui 内（盤面下の縦並び/折返し）にフォールバック。
+  // 広い画面・横持ちスマホでは盤面ラッパー(#board-area)の四隅にパネルを配置し、
+  // 盤面を大きく見せる。狭い縦画面では従来どおり #ui 内（盤面下の縦並び）にする。
   const boardArea = document.getElementById('board-area');
   // 前回描画でラッパーに残ったパネルを除去（モード切替・再描画対策）
   boardArea?.querySelector('.player-panels')?.remove();
-  if (boardArea && window.innerWidth >= CORNER_LAYOUT_MIN_WIDTH) {
+  if (boardArea && useCornerLayout()) {
     boardArea.classList.add('corner-panels');
     boardArea.appendChild(allPanels);
   } else {
     boardArea?.classList.remove('corner-panels');
     container.appendChild(allPanels);
   }
+}
+
+// 四隅レイアウトを使うか: 広い画面 or 横持ちスマホ（横長かつ低い高さ）。
+function useCornerLayout(): boolean {
+  const w = window.innerWidth, h = window.innerHeight;
+  if (w >= CORNER_LAYOUT_MIN_WIDTH) return true;
+  return w > h && h <= 600; // landscape phone
 }
 
 // ============================================================

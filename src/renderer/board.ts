@@ -253,15 +253,22 @@ function renderEdges(
       g.appendChild(line);
     } else {
       const isValid = opts?.validEdgeIds?.has(edge.id) ?? false;
+      const x1 = vA.pixel.x + ox, y1 = vA.pixel.y + oy;
+      const x2 = vB.pixel.x + ox, y2 = vB.pixel.y + oy;
       const line = svgEl('line');
       line.classList.add('edge-line');
       if (isValid) line.classList.add('valid');
       line.setAttribute('data-edge-id', edge.id);
-      setAttrs(line, {
-        x1: vA.pixel.x + ox, y1: vA.pixel.y + oy,
-        x2: vB.pixel.x + ox, y2: vB.pixel.y + oy,
-      });
+      setAttrs(line, { x1, y1, x2, y2 });
       g.appendChild(line);
+      // タッチ用の透明な太い当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。
+      if (isValid) {
+        const hit = svgEl('line');
+        hit.classList.add('edge-hit');
+        hit.setAttribute('data-edge-id', edge.id);
+        setAttrs(hit, { x1, y1, x2, y2 });
+        g.appendChild(hit);
+      }
     }
   }
   return g;
@@ -331,6 +338,15 @@ function renderVertices(
       if (isValid) dot.classList.add('valid');
       setAttrs(dot, { cx: vx, cy: vy, r: isValid ? 7 : 5 });
       vg.appendChild(dot);
+    }
+
+    // タッチ用の透明な大きめ当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。
+    // 開拓地候補・都市候補（建物あり）の両方に付与する。
+    if (isValid) {
+      const hit = svgEl('circle');
+      hit.classList.add('vertex-hit');
+      setAttrs(hit, { cx: vx, cy: vy, r: 16 });
+      vg.appendChild(hit);
     }
 
     g.appendChild(vg);

@@ -99,6 +99,74 @@ h1 {
   #board-area.corner-panels .player-panel[data-pid="player3"] { grid-column: 3; grid-row: 2; justify-self: start; align-self: end; }
 }
 
+/* ---- 横持ちスマホ: 盤面を大きく＋四隅パネル＋操作は下部に浮かせる ---- */
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 1199.98px) {
+  body { align-items: stretch; }
+  #app { padding: 2px; gap: 2px; }
+  #board { max-height: 92vh; max-width: 100%; }
+
+  #board-area.corner-panels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-rows: 1fr 1fr;
+    justify-content: center;
+    align-content: center;
+    column-gap: 4px;
+    row-gap: 4px;
+    width: 100%;
+    max-width: 100vw;
+    margin: 0 auto;
+  }
+  #board-area.corner-panels > .player-panels { display: contents; }
+  #board-area.corner-panels > #board {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    justify-self: center;
+  }
+  #board-area.corner-panels .player-panel {
+    position: static;
+    width: 100%;
+    max-width: min(30vw, 200px);
+    margin: 0;
+    max-height: 47vh;
+    overflow-y: auto;
+    font-size: 0.66rem;
+    padding: 5px 6px;
+  }
+  #board-area.corner-panels .player-panel[data-pid="player4"] { grid-column: 1; grid-row: 1; justify-self: end;   align-self: start; }
+  #board-area.corner-panels .player-panel[data-pid="player1"] { grid-column: 1; grid-row: 2; justify-self: end;   align-self: end; }
+  #board-area.corner-panels .player-panel[data-pid="player2"] { grid-column: 3; grid-row: 1; justify-self: start; align-self: start; }
+  #board-area.corner-panels .player-panel[data-pid="player3"] { grid-column: 3; grid-row: 2; justify-self: start; align-self: end; }
+
+  /* 操作パネル/ログは下部中央に浮かせる（四隅パネルを避けるため幅を絞る）。 */
+  #ui {
+    position: fixed;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    width: min(58vw, 470px);
+    max-width: 470px;
+    max-height: 46vh;
+    overflow-y: auto;
+    z-index: 40;
+    padding: 4px 6px;
+    background: rgba(10,12,18,0.85);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 12px;
+    backdrop-filter: blur(3px);
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+  }
+  #ui > .turn-panel { padding: 6px 8px; min-width: 0; max-width: none; flex: 0 0 auto; }
+  /* 横持ちでは手番順バー・称号など冗長な行は隠してコンパクトに */
+  #ui .turn-order-bar, #ui .turn-titles { display: none; }
+  #ui > .game-log-panel { flex: 0 0 auto; }
+  #ui .game-log-list { max-height: 64px; }
+  #ui > .player-panels { display: none; } /* 四隅にあるので #ui 側には出さない */
+}
+
 /* ---- タイル ---- */
 .hex-tile {
   stroke: #5a3a1a;
@@ -238,6 +306,27 @@ h1 {
   filter: brightness(1.6);
 }
 
+/* ---- タッチ用の透明な当たり判定（候補のみに重ねる） ----
+   既定(マウス)では無効化し、見た目の点/線/タイルでそのまま操作する。
+   タッチ端末(pointer:coarse)でのみ有効化して、タップしやすくする。 */
+.vertex-hit { fill: transparent; pointer-events: none; cursor: pointer; }
+.edge-hit {
+  stroke: transparent;
+  fill: none;
+  stroke-width: 22;
+  stroke-linecap: round;
+  pointer-events: none;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .vertex-hit, .edge-hit { pointer-events: all; }
+  /* タッチ時は候補（valid）をより大きく・はっきり光らせて押しやすくする。 */
+  .vertex-dot.valid { r: 9; stroke-width: 2.5; }
+  .edge-line.valid  { stroke-width: 11; }
+  /* 盗賊候補タイルもタッチ時はより強調 */
+  .hex-tile.valid-robber { stroke-width: 4; filter: brightness(1.45); }
+}
+
 /* ---- UI レイアウト ---- */
 #ui {
   display: flex;
@@ -373,6 +462,20 @@ h1 {
   box-shadow: 0 0 8px #7aee4088;
 }
 .btn-active:hover:not(:disabled) { background: #90ff55; }
+
+/* 建設モード選択中のヒント（どこを置くか・選択状態の可視化） */
+.build-select-hint {
+  flex: 1 1 100%;
+  margin: 2px 0 4px;
+  padding: 6px 10px;
+  background: rgba(80,255,140,0.14);
+  border: 1px solid rgba(80,255,140,0.35);
+  border-radius: 8px;
+  color: #b6ffcf;
+  font-size: 0.82rem;
+  font-weight: bold;
+  text-align: center;
+}
 
 .btn-end {
   background: #6a4020;
@@ -1165,6 +1268,21 @@ h1 {
   color: rgba(255,255,255,0.7);
 }
 .lan-leave { margin-top: 2px; }
+
+/* 名前入力欄＋🎲 再生成ボタン（ロビー / CPUホーム共通） */
+.name-input-row { display: flex; gap: 8px; align-items: stretch; }
+.name-input-row .home-input { flex: 1; min-width: 0; }
+.name-dice-btn {
+  flex: 0 0 auto;
+  width: 46px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.name-dice-btn:hover { background: rgba(255,255,255,0.16); }
 
 /* CPU 人数設定（ホストのみ） */
 .lan-cpu-ctrl {

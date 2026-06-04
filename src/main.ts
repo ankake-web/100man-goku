@@ -11,6 +11,8 @@ import type { PlayerSpec } from './engine/createState';
 import { applyAction } from './engine/game';
 import { renderLanLobby } from './net/lanLobby';
 import type { LanClient } from './net/lanClient';
+import { generateRandomPlayerName } from './net/names';
+import { attachNameField, savePlayerName } from './net/nameField';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions } from './renderer/board';
@@ -89,10 +91,15 @@ function renderHome(
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'home-input';
-  nameInput.value = lastConfig?.playerName ?? 'プレイヤー1';
-  nameInput.maxLength = 20;
+  const nameRow = document.createElement('div');
+  nameRow.className = 'name-input-row';
+  // 初期値=保存名 or ランダムなカタカナ名、横に 🎲 再生成ボタン。
+  const nameDice = attachNameField(nameInput);
+  if (lastConfig?.playerName) nameInput.value = lastConfig.playerName; // 同セッションの再戦は前回名を優先
+  nameRow.appendChild(nameInput);
+  nameRow.appendChild(nameDice);
   nameField.appendChild(nameLabel);
-  nameField.appendChild(nameInput);
+  nameField.appendChild(nameRow);
   cpuForm.appendChild(nameField);
 
   const countField = document.createElement('div');
@@ -276,7 +283,9 @@ function renderHome(
   });
 
   startBtn.addEventListener('click', () => {
-    const name = nameInput.value.trim() || 'プレイヤー1';
+    // 未入力ならランダムなカタカナ名（機械的な「プレイヤー1」を避ける）。
+    const name = nameInput.value.trim() || generateRandomPlayerName();
+    savePlayerName(name);
 
     const countVal = (countGroup.querySelector('input[name="cpuCount"]:checked') as HTMLInputElement | null)?.value ?? '1';
     const cpuCount = (parseInt(countVal, 10) as 1 | 2 | 3) || 1;

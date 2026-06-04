@@ -9,6 +9,7 @@
 import { LanClient } from './lanClient';
 import type { ServerMessage, LobbyPlayer } from './protocol';
 import type { GameState, PlayerId, PlayerColor } from '../types';
+import { attachNameField, savePlayerName } from './nameField';
 
 const COLOR_HEX: Record<PlayerColor, string> = {
   red: '#e23b3b', blue: '#3b7fe2', purple: '#9b5bd6', orange: '#e2913b',
@@ -93,15 +94,23 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
 
   function renderIdle(): void {
     const nameField = field('プレイヤー名');
+    const nameRow = document.createElement('div');
+    nameRow.className = 'name-input-row';
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.className = 'home-input';
-    nameInput.maxLength = 20;
-    nameInput.value = 'プレイヤー';
-    nameField.appendChild(nameInput);
+    const dice = attachNameField(nameInput);  // 初期値=保存名 or ランダム、🎲ボタン
+    nameRow.appendChild(nameInput);
+    nameRow.appendChild(dice);
+    nameField.appendChild(nameRow);
     root.appendChild(nameField);
 
-    const getName = (): string => nameInput.value.trim() || 'プレイヤー';
+    // 未入力なら空のまま送る（サーバがランダム名を補完＋重複回避する）。
+    const getName = (): string => {
+      const n = nameInput.value.trim();
+      savePlayerName(n);
+      return n;
+    };
 
     // ルーム作成
     const createBtn = document.createElement('button');

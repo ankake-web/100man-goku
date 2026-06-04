@@ -25,6 +25,7 @@ import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
+import { generateRandomPlayerName, resolveUniqueName } from '../src/net/names';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
@@ -308,7 +309,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           const code = genCode();
           room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, memberLogs: {} };
           rooms.set(code, room);
-          me = { ws, id: 'player1', name: sanitizeName(msg.name), isHost: true, connected: true };
+          me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true };
           room.members.push(me);
           send(ws, { t: 'joined', code, you: me.id, isHost: true });
           broadcastLobby(room, currentUrls());
@@ -322,7 +323,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           const slot = nextSlot(target);
           if (!slot) { send(ws, { t: 'error', message: 'ルームが満員です（最大4人）' }); return; }
           room = target;
-          me = { ws, id: slot, name: sanitizeName(msg.name), isHost: false, connected: true };
+          me = { ws, id: slot, name: assignName(msg.name, target), isHost: false, connected: true };
           room.members.push(me);
           send(ws, { t: 'joined', code: room.code, you: me.id, isHost: false });
           broadcastLobby(room, currentUrls());
@@ -330,7 +331,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         }
         case 'rename': {
           if (!room || !me || room.started) return;
-          me.name = sanitizeName(msg.name);
+          me.name = assignName(msg.name, room, me);
           broadcastLobby(room, currentUrls());
           break;
         }
@@ -439,8 +440,16 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
 }
 
 function sanitizeName(raw: string): string {
-  const name = (raw ?? '').toString().trim().slice(0, 20);
-  return name || 'プレイヤー';
+  // 空でもここでは補完しない（空判定を assignName に委ねる）。
+  return (raw ?? '').toString().trim().slice(0, 20);
+}
+
+// ルーム内の他メンバー名と重複しない名前を割り当てる。
+// 空入力ならランダムなカタカナ名を生成。明示入力は尊重しつつ重複だけ回避する。
+function assignName(raw: string, room: Room, exclude?: Member): string {
+  const existing = room.members.filter(m => m !== exclude).map(m => m.name);
+  const requested = sanitizeName(raw) || generateRandomPlayerName(existing);
+  return resolveUniqueName(requested, existing);
 }
 
 // ゲーム中の切断を、残りの人間プレイヤーへ通知する（システムログ＋現在stateの再配信）。
