@@ -1299,7 +1299,11 @@ function buildPlayerPanel(
   nameSpan.textContent = player.name;
   nameRow.appendChild(nameSpan);
   h3.appendChild(nameRow);
-  // 2行目: VP + 順位バッジ
+  // 2行目: VP + 順位 + コンパクト統計（開拓地/都市/手札枚数）。1行固定で折り返さない。
+  const bd = calcVPBreakdown(state, pId);
+  const handTotal = isSelf
+    ? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0)
+    : (player.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0));
   const statRow = el('span', 'panel-stat-row');
   const vpSpan = el('span', 'panel-vp');
   // 自分: 内部VP（VPカード込み）、他プレイヤー: 公開VPのみ
@@ -1308,28 +1312,22 @@ function buildPlayerPanel(
   const rankEl = el('span', `rank-badge${rank === 1 ? ' rank-1' : ''}`);
   rankEl.textContent = rankLabel;
   statRow.appendChild(rankEl);
+  // 開拓地数・都市数・手札枚数をまとめて表示（手札は枚数のみ＝公開情報）。
+  const counts = el('span', 'stat-counts');
+  for (const [icon, n] of [['🏠', bd.settlements], ['🏙', bd.cities], ['🃏', handTotal]] as [string, number][]) {
+    const c = el('span', 'stat-count');
+    c.textContent = `${icon}${n}`;
+    counts.appendChild(c);
+  }
+  statRow.appendChild(counts);
   h3.appendChild(statRow);
   div.appendChild(h3);
 
-  // VP 内訳
-  const bd = calcVPBreakdown(state, pId);
-  // GAME_OVER時は勝者のVPカード枚数も開示する（他プレイヤーは非公開のまま）
+  // ボーナスVP内訳（最長/最大/VPカード）。開拓地・都市数は stat-row に集約済み。
+  // GAME_OVER時は勝者のVPカード枚数も開示する（他プレイヤーは非公開のまま）。
   const showVpCards = (isSelf || isWinner) && bd.vpCards > 0;
-  const hasAny = bd.settlements > 0 || bd.cities > 0 || bd.lr || bd.la || showVpCards;
-  if (hasAny) {
+  if (bd.lr || bd.la || showVpCards) {
     const vpRow = el('div', 'vp-breakdown');
-    if (bd.settlements > 0) {
-      const item = el('span', 'vp-item');
-      item.textContent = `🏠×${bd.settlements}`;
-      item.title = `開拓地 ${bd.settlements}VP`;
-      vpRow.appendChild(item);
-    }
-    if (bd.cities > 0) {
-      const item = el('span', 'vp-item');
-      item.textContent = `🏙×${bd.cities}`;
-      item.title = `都市 ${bd.cities * 2}VP`;
-      vpRow.appendChild(item);
-    }
     if (bd.lr) {
       const item = el('span', 'vp-item bonus');
       item.textContent = '🛤最長+2';
@@ -1373,13 +1371,9 @@ function buildPlayerPanel(
   meta.appendChild(pieces);
   div.appendChild(meta);
 
-  // 資源手札UI
-  // 他プレイヤーは秘匿マスクで hand が全0・handCount に枚数が入る場合がある。
-  const handTotal = isSelf
-    ? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0)
-    : (player.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0));
+  // 資源手札UI（自分のみ種別カードを表示。枚数合計は stat-row の 🃏 に集約済み）。
+  // 他プレイヤーは秘匿マスクで hand が全0・handCount に枚数が入るため種別は出さない。
   if (isSelf) {
-    // 自分: 資源種別ごとのカード表示
     const resRow = el('div', 'res-card-row');
     for (const r of RESOURCE_TYPES) {
       const count = player.hand[r];
@@ -1393,16 +1387,6 @@ function buildPlayerPanel(
       resRow.appendChild(card);
     }
     div.appendChild(resRow);
-    const totalEl = el('div', 'hand-total');
-    totalEl.textContent = `計 ${handTotal}枚`;
-    div.appendChild(totalEl);
-  } else {
-    // 他プレイヤー: 合計枚数のみ
-    const totalEl = el('div', 'hand-total');
-    totalEl.textContent = `🃏 手札 ${handTotal}枚`;
-    totalEl.style.fontSize = '0.85rem';
-    totalEl.style.marginTop = '4px';
-    div.appendChild(totalEl);
   }
 
   // 発展カードUI

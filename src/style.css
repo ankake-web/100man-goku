@@ -603,17 +603,36 @@ h1 {
   min-width: 0;
 }
 .panel-name {
-  word-break: break-word;
-  overflow-wrap: break-word;
   min-width: 0;
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .panel-stat-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: clamp(3px, 1.4vw, 6px);
+  font-size: clamp(0.66rem, 3vw, 0.8rem);
+  min-width: 0;
+  overflow: hidden;
 }
+.panel-stat-row .panel-vp,
+.panel-stat-row .rank-badge { flex: 0 0 auto; }
+/* 開拓地/都市/手札枚数のコンパクト統計（1行固定・右寄せ・はみ出しは省略） */
+.stat-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(3px, 1.4vw, 7px);
+  margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.stat-count { flex: 0 0 auto; }
 .panel-vp {
   color: #ffd700;
   font-size: 0.85rem;
@@ -644,17 +663,21 @@ h1 {
 /* ---- F-04: 資源カードスタイル ---- */
 .res-card-row {
   display: flex;
-  gap: 3px;
-  flex-wrap: wrap;
+  gap: clamp(2px, 1vw, 4px);
+  flex-wrap: nowrap;        /* スマホでも1行固定（折り返さず縮小して収める） */
   margin: 5px 0 1px;
+  width: 100%;
+  min-width: 0;
 }
 .res-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 3px 5px;
+  justify-content: center;
+  padding: 3px clamp(1px, 1vw, 5px);
   border-radius: 5px;
-  min-width: 32px;
+  flex: 1 1 0;             /* 5枚を等分し、はみ出さず縮小 */
+  min-width: 0;
   border: 1px solid rgba(255,255,255,0.12);
   transition: opacity 0.15s;
 }
@@ -667,8 +690,8 @@ h1 {
 .res-wool  { background: rgba(109, 191,  74, 0.35); }
 .res-grain { background: rgba(200, 168,  48, 0.45); }
 .res-ore   { background: rgba(136, 136, 136, 0.50); }
-.res-card-emoji { font-size: 1.0rem; line-height: 1.2; }
-.res-card-count { font-size: 0.92rem; font-weight: bold; line-height: 1; }
+.res-card-emoji { font-size: clamp(0.72rem, 3.4vw, 1.0rem); line-height: 1.2; }
+.res-card-count { font-size: clamp(0.64rem, 3vw, 0.92rem); font-weight: bold; line-height: 1; }
 .hand-total {
   font-size: 0.67rem;
   color: rgba(255,255,255,0.38);

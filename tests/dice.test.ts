@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { rollDice, distributeResources } from '../src/engine/dice';
+import { rollDice, distributeResources, computeDiceProduction } from '../src/engine/dice';
 import { createRng } from '../src/engine/setup';
 import { makeHand } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
@@ -233,5 +233,51 @@ describe('distributeResources', () => {
     const originalWood = state.players['player1']!.hand.wood;
     distributeResources(state, 6);
     expect(state.players['player1']!.hand.wood).toBe(originalWood);
+  });
+});
+
+// ============================================================
+// computeDiceProduction — 公開情報からの導出（演出用・LANマスク状態でも全員分が分かる）
+// ============================================================
+
+describe('computeDiceProduction', () => {
+  // forest(wood)・number=6 のタイルに player1=開拓地, player2=都市 を置く。
+  function twoPlayerForest6(): GameState {
+    const base = makeGameState({
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    });
+    const tid = '0,0';
+    const tiles = { ...base.tiles, [tid]: { ...base.tiles[tid]!, type: 'forest' as const, number: 6, hasRobber: false } };
+    const vIds = base.tileToVertices[tid]!;
+    const vertices = {
+      ...base.vertices,
+      [vIds[0]!]: { ...base.vertices[vIds[0]!]!, building: { type: 'settlement' as const, playerId: 'player1' as const } },
+      [vIds[2]!]: { ...base.vertices[vIds[2]!]!, building: { type: 'city' as const, playerId: 'player2' as const } },
+    };
+    return { ...base, tiles, vertices };
+  }
+
+  it('全プレイヤーのダイス産出を返す（開拓地=1枚 / 都市=2枚）', () => {
+    const prod = computeDiceProduction(twoPlayerForest6(), 6);
+    expect(prod['player1']?.wood).toBe(1);
+    expect(prod['player2']?.wood).toBe(2);
+  });
+
+  it('手札を0にしても結果は同じ（盤面から導出＝LANのマスク状態でも全員分が分かる）', () => {
+    const s = twoPlayerForest6();
+    const masked: GameState = {
+      ...s,
+      players: {
+        player1: { ...s.players.player1!, hand: makeHand() },
+        player2: { ...s.players.player2!, hand: makeHand() },
+      },
+    };
+    expect(computeDiceProduction(masked, 6)).toEqual(computeDiceProduction(s, 6));
+    expect(computeDiceProduction(masked, 6)['player2']?.wood).toBe(2);
+  });
+
+  it('7では何も産出しない', () => {
+    expect(computeDiceProduction(twoPlayerForest6(), 7)).toEqual({});
   });
 });

@@ -306,8 +306,8 @@ function renderVertices(
     player1: '#e03030', player2: '#3060e0',
     player3: '#a855f7', player4: '#f0a020',
   };
-  // タッチ端末では建物をひと回り大きく描いて、開拓地/都市の差を見やすくする。
-  const bs = isTouchDevice() ? 1.22 : 1.0;
+  // 建物は実機で目立つよう大きめに描く（従来比 約1.5倍）。タッチ端末はさらに少し大きく。
+  const bs = isTouchDevice() ? 1.7 : 1.5;
 
   for (const vertex of Object.values(state.vertices)) {
     const vx = vertex.pixel.x + ox;
@@ -340,14 +340,17 @@ function renderVertices(
         // 都市：開拓地より明確に大きい「城」型。
         //   影 → 横長の城壁 → 城壁上部の鋸歯(銃眼) → 金色の王冠。
         // 城壁はプレイヤーカラー、王冠は金色固定（「格上げ済み」の共通サイン）。
+        // 黒枠で縁取って、明るいタイル上でも一目で都市と分かるよう強調する。
+        const cityStroke = isValid ? '#00ff88' : '#0a0a0a';
+        const citySw = (isValid ? 2.6 : 2.2) * bs;
         const shadow = svgEl('ellipse');
         setAttrs(shadow, { cx: vx, cy: vy + 6.8 * bs, rx: 11.5 * bs, ry: 2.7 * bs,
-          fill: 'rgba(0,0,0,0.30)' });
+          fill: 'rgba(0,0,0,0.32)' });
         vg.appendChild(shadow);
 
         const wall = svgEl('rect');
         setAttrs(wall, { x: vx - 11 * bs, y: vy - 2 * bs, width: 22 * bs, height: 9 * bs, rx: 1,
-          fill: color, stroke, 'stroke-width': sw });
+          fill: color, stroke: cityStroke, 'stroke-width': citySw, 'paint-order': 'stroke' });
         vg.appendChild(wall);
 
         // 城壁上部の鋸歯（3つの銃眼=メルロン）。城らしさを出す。
@@ -357,7 +360,7 @@ function renderVertices(
           P(-3, -4), P(-3, -7), P(3, -7), P(3, -4),
           P(7.5, -4), P(7.5, -7), P(11, -7), P(11, -2),
         ].join(' '));
-        setAttrs(merlons, { fill: color, stroke, 'stroke-width': sw });
+        setAttrs(merlons, { fill: color, stroke: cityStroke, 'stroke-width': citySw, 'paint-order': 'stroke' });
         vg.appendChild(merlons);
 
         // 金色の王冠（都市の識別マーク）。プレイヤーカラーとは別色で「都市」を一目で示す。

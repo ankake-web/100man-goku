@@ -5,7 +5,7 @@
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, RESOURCE_TYPES, VP_TABLE } from './constants';
+import { makeHand, RESOURCE_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { PlayerSpec } from './engine/createState';
 import { applyAction } from './engine/game';
@@ -27,6 +27,7 @@ import type { AiOpts } from './engine/ai';
 import { buildActionLog, MAX_LOG_ENTRIES, RES_EMOJI } from './engine/log';
 import { calcVP, calcPublicVP } from './engine/scoring';
 import { buildPlayerRecap } from './engine/recap';
+import { computeDiceProduction } from './engine/dice';
 
 // ============================================================
 // ホーム画面設定
@@ -1857,6 +1858,45 @@ function highlightProducingTiles(diceTotal: number): void {
   }
 }
 
+// ダイス以外（年の豊穣等）での手札増加。LANでは自分のみ非0（相手はマスクで0）。
+function handDiffGains(oldState: GameState, newState: GameState, pid: string): Array<{ r: ResourceType; n: number }> {
+  const oldH = oldState.players[pid]?.hand;
+  const newH = newState.players[pid]?.hand;
+  if (!oldH || !newH) return [];
+  const gains: Array<{ r: ResourceType; n: number }> = [];
+  for (const r of RESOURCE_TYPES) {
+    const diff = newH[r] - oldH[r];
+    if (diff > 0) gains.push({ r, n: diff });
+  }
+  return gains;
+}
+
+// 資源 r を「このダイス目で産出し、かつ pid の建物に隣接する」タイルの画面中心を返す。
+// 見つからなければ その資源の産出タイル先頭 → 産出タイル → 盤面中央 へフォールバック。
+// 参照は公開情報（タイル/数字/強盗/盤面の建物）のみ。
+function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: number; y: number } {
+  const boardEl = document.getElementById('board');
+  const screenOf = (tileId: string): { x: number; y: number } | null => {
+    const g = boardEl?.querySelector(`[data-tile-id="${tileId}"]`) as SVGGElement | null;
+    if (!g) return null;
+    const rect = g.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  };
+  let firstOfRes: string | null = null;
+  for (const tile of Object.values(state.tiles)) {
+    if (tile.number !== diceTotal || tile.hasRobber) continue;
+    if (TILE_RESOURCE_MAP[tile.type] !== r) continue;
+    if (firstOfRes == null) firstOfRes = tile.id;
+    const vids = state.tileToVertices[tile.id] ?? [];
+    if (vids.some(v => state.vertices[v]?.building?.playerId === pid)) {
+      const pos = screenOf(tile.id);
+      if (pos) return pos;
+    }
+  }
+  if (firstOfRes) { const pos = screenOf(firstOfRes); if (pos) return pos; }
+  return getProducingTileOrigin(diceTotal) ?? getBoardCenter();
+}
+
 function triggerResourceAnimation(
   oldState: GameState,
   newState: GameState,
@@ -1864,40 +1904,35 @@ function triggerResourceAnimation(
   diceTotal?: number,
 ): void {
   if (lastConfig?.cpuSpeed === 'instant') return;
-  // 盗み取り(MOVE_ROBBER)の獲得は飛ばさない（奪った資源の種類を秘匿するため）。
+  // 盗み取り(MOVE_ROBBER)は飛ばさない（奪った資源の種類を秘匿するため）。
   if (actionType === 'MOVE_ROBBER') return;
 
-  // 全プレイヤー分のアイコンを、誰のものでも実資源アイコンで、1個ずつ順番に飛ばす。
-  // （ダイス産出は盤面を見れば分かる公開情報。誰に何が入ったか追えることを優先）
+  // ダイス産出は公開情報。盤面（タイル/数字/強盗/建物）とバンクから各プレイヤーの
+  // 実獲得を導出し、全員分のアイコンを該当ヘックスからパネルへ飛ばす。
+  // LANでは相手の手札がマスクされ手札差分が0になるため、この公開導出が必須。
+  // ダイス以外（年の豊穣等）は従来どおり手札差分（自分のみ公開）で飛ばす。
+  const isDice = actionType === 'ROLL_DICE' && diceTotal !== undefined;
+  const production = isDice ? computeDiceProduction(oldState, diceTotal!) : null;
+
+  const MAX_PER_PLAYER = 6; // スマホで重くならないよう1人あたりの上限
   let delay = 0;
   for (const pid of newState.playerOrder) {
-    const oldH = oldState.players[pid]?.hand;
-    const newH = newState.players[pid]?.hand;
-    if (!oldH || !newH) continue;
-    const gains: Array<{ r: ResourceType; n: number }> = [];
-    for (const r of RESOURCE_TYPES) {
-      const diff = newH[r] - oldH[r];
-      if (diff > 0) gains.push({ r, n: diff });
-    }
+    const gains = production
+      ? RESOURCE_TYPES.map(r => ({ r, n: production[pid]?.[r] ?? 0 })).filter(g => g.n > 0)
+      : handDiffGains(oldState, newState, pid);
     if (gains.length === 0) continue;
     const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
     if (!panelEl) continue;
 
-    // 起点座標（ダイス産出はそのタイル中心、それ以外は盤面中央）
-    const origin = (actionType === 'ROLL_DICE' && diceTotal !== undefined)
-      ? (getProducingTileOrigin(diceTotal) ?? getBoardCenter())
-      : getBoardCenter();
-
-    // 実資源アイコンを枚数分（種類が分かる）。多すぎる場合は最大5個まで。
-    const glyphs: string[] = [];
+    let count = 0;
     for (const { r, n } of gains) {
-      for (let i = 0; i < Math.min(n, 5); i++) glyphs.push(RES_EMOJI[r]);
-    }
-
-    for (const glyph of glyphs) {
-      const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-      spawnResFlyer(glyph, panelEl, jitter, delay);
-      delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
+      const origin = isDice ? originForGain(diceTotal!, pid, r) : getBoardCenter();
+      for (let i = 0; i < n && count < MAX_PER_PLAYER; i++) {
+        const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
+        spawnResFlyer(RES_EMOJI[r], panelEl, jitter, delay);
+        delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
+        count++;
+      }
     }
   }
 }
