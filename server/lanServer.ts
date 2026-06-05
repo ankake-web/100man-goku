@@ -20,6 +20,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 import type { Server } from 'node:http';
 import os from 'node:os';
+import { randomBytes } from 'node:crypto';
 import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
@@ -98,8 +99,10 @@ function send(ws: WebSocket | null, msg: ServerMessage): void {
   if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
+// 再接続トークンは「同一プレイヤーとして復帰＝相手の手札も見える」認証情報なので、
+// 推測可能だとセッション乗っ取り（秘匿漏洩）につながる。CSPRNG で生成する。
 function genToken(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return randomBytes(32).toString('base64url');
 }
 
 function genCode(): string {
