@@ -53,15 +53,24 @@ export function buildActionLog(
     case 'ROLL_DICE': {
       const [d1, d2] = next.lastDiceRoll ?? [0, 0];
       push(actor, 'DICE_ROLL', `🎲 ${nm(actor)} がダイス ${d1}+${d2}=${d1 + d2}`);
-      // 「自分」の獲得資源のみ内訳を出す（自分の情報なので漏洩ではない）。
-      // LAN では viewerId 視点＝各端末で自分の獲得だけが見える（他人の内訳は出ない）。
-      if (selfPid && next.players[selfPid]) {
+      // ダイス生産は「盤面＋出目」から誰でも導出できる公開情報。全プレイヤーの
+      // 「このロールで得た分」を1行にまとめて出す（自分は「あなた」表記）。
+      // ※ 公開するのは“このロールの増加分”だけ。手札の既存ストックや内訳、
+      //   盗み取り/交易/捨て札による増減は対象外（秘匿）。
+      const gainParts: string[] = [];
+      for (const pid of next.playerOrder) {
         const gains = RESOURCE_TYPES
-          .map(r => ({ r, n: next.players[selfPid]!.hand[r] - (prev.players[selfPid]?.hand[r] ?? 0) }))
+          .map(r => ({ r, n: (next.players[pid]?.hand[r] ?? 0) - (prev.players[pid]?.hand[r] ?? 0) }))
           .filter(g => g.n > 0);
-        if (gains.length > 0) {
-          push(selfPid, 'RESOURCE_GAIN', `📥 あなたが ${gains.map(g => `${RES_EMOJI[g.r]}×${g.n}`).join(' ')} 獲得`);
-        }
+        if (gains.length === 0) continue;
+        const who = isMe(pid) ? 'あなた' : nm(pid);
+        gainParts.push(`${who} ${gains.map(g => `${RES_EMOJI[g.r]}×${g.n}`).join('')}`);
+      }
+      if (gainParts.length > 0) {
+        push(actor, 'RESOURCE_GAIN', `📥 ${gainParts.join('　')}`);
+      } else if (d1 + d2 !== 7) {
+        // 7（盗賊）以外で誰も得られなかった場合のみ明示（7は盗賊フローで案内）。
+        push(actor, 'RESOURCE_GAIN', '📥 だれも資源を得られなかった');
       }
       break;
     }

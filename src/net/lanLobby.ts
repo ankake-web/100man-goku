@@ -162,18 +162,41 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     const codeInput = document.createElement('input');
     codeInput.type = 'text';
     codeInput.className = 'home-input lan-code-input';
-    codeInput.maxLength = 4;
+    // 長さ制限は sanitize 側の slice(0,4) で行う。native maxLength を併用すると
+    // 記号入りのペースト（例 "ab-12"）が先頭4文字で切られてから整形され、
+    // 有効文字が削れてしまうため、ここでは付けない。
     codeInput.placeholder = 'ルームコード';
-    codeInput.addEventListener('input', () => {
-      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    // スマホの自動補正/予測変換による二重入力（A→AA 等）を防ぐ。
+    codeInput.setAttribute('autocapitalize', 'characters');
+    codeInput.setAttribute('autocomplete', 'off');
+    codeInput.setAttribute('autocorrect', 'off');
+    codeInput.spellcheck = false;
+    codeInput.inputMode = 'text';
+    // value 全体を A-Z0-9 のみへ正規化する（手書きで old+typedChar を継ぎ足さない）。
+    // IME変換中（isComposing）は書き換えず、確定後にのみ整えることで二重化を防ぐ。
+    // 値が変わらないなら代入もしない（カーソル飛び・再入力ループを防ぐ）。
+    const sanitizeCode = (): void => {
+      const cleaned = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+      if (cleaned !== codeInput.value) codeInput.value = cleaned;
+    };
+    codeInput.addEventListener('input', (e) => {
+      if ((e as InputEvent).isComposing) return; // 変換中は確定を待つ
+      sanitizeCode();
     });
+    codeInput.addEventListener('compositionend', sanitizeCode);
     const joinBtn = document.createElement('button');
     joinBtn.className = 'home-online-btn';
     joinBtn.textContent = '参加';
-    joinBtn.addEventListener('click', async () => {
+    const submitJoin = async (): Promise<void> => {
+      sanitizeCode();
       const code = codeInput.value.trim().toUpperCase();
       if (code.length < 4) { view.error = 'ルームコードを入力してください'; render(); return; }
       if (await ensureClient()) client!.send({ t: 'join', code, name: getName() });
+    };
+    joinBtn.addEventListener('click', () => { void submitJoin(); });
+    // 送信だけは keydown で扱う（Enter キーで参加）。
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); void submitJoin(); }
     });
     joinRow.appendChild(codeInput);
     joinRow.appendChild(joinBtn);

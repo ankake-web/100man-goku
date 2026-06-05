@@ -306,6 +306,8 @@ function renderVertices(
     player1: '#e03030', player2: '#3060e0',
     player3: '#a855f7', player4: '#f0a020',
   };
+  // タッチ端末では建物をひと回り大きく描いて、開拓地/都市の差を見やすくする。
+  const bs = isTouchDevice() ? 1.22 : 1.0;
 
   for (const vertex of Object.values(state.vertices)) {
     const vx = vertex.pixel.x + ox;
@@ -320,33 +322,51 @@ function renderVertices(
     if (vertex.building) {
       const color = buildingColor[vertex.building.playerId] ?? '#aaa';
       const stroke = isValid ? '#00ff88' : '#fff';
-      const sw = isValid ? 2.5 : 1.5;
+      const sw = (isValid ? 2.5 : 1.5) * bs;
+      // 頂点中心(vx,vy)基準で dx,dy を bs 倍した座標文字列を返す。
+      const P = (dx: number, dy: number): string => `${(vx + dx * bs).toFixed(1)},${(vy + dy * bs).toFixed(1)}`;
 
       if (vertex.building.type === 'settlement') {
-        // 家の形：壁(rect) + 屋根(triangle)
+        // 開拓地：小さな家（壁 + 三角屋根）。都市よりひと回り小さい。
         const wall = svgEl('rect');
-        setAttrs(wall, { x: vx - 6, y: vy - 3, width: 12, height: 8,
+        setAttrs(wall, { x: vx - 6 * bs, y: vy - 3 * bs, width: 12 * bs, height: 8 * bs,
           fill: color, stroke, 'stroke-width': sw });
         const roof = svgEl('polygon');
-        roof.setAttribute('points', `${vx},${vy - 11} ${vx - 8},${vy - 2} ${vx + 8},${vy - 2}`);
+        roof.setAttribute('points', `${P(0, -11)} ${P(-8, -2)} ${P(8, -2)}`);
         setAttrs(roof, { fill: color, stroke, 'stroke-width': sw });
         vg.appendChild(wall);
         vg.appendChild(roof);
       } else {
-        // 都市：大きな壁 + 塔(縦長rect) + 小旗
+        // 都市：開拓地より明確に大きい「城」型。
+        //   影 → 横長の城壁 → 城壁上部の鋸歯(銃眼) → 金色の王冠。
+        // 城壁はプレイヤーカラー、王冠は金色固定（「格上げ済み」の共通サイン）。
+        const shadow = svgEl('ellipse');
+        setAttrs(shadow, { cx: vx, cy: vy + 6.8 * bs, rx: 11.5 * bs, ry: 2.7 * bs,
+          fill: 'rgba(0,0,0,0.30)' });
+        vg.appendChild(shadow);
+
         const wall = svgEl('rect');
-        setAttrs(wall, { x: vx - 9, y: vy - 5, width: 18, height: 10,
+        setAttrs(wall, { x: vx - 11 * bs, y: vy - 2 * bs, width: 22 * bs, height: 9 * bs, rx: 1,
           fill: color, stroke, 'stroke-width': sw });
-        const tower = svgEl('rect');
-        setAttrs(tower, { x: vx - 3, y: vy - 13, width: 7, height: 9,
-          fill: color, stroke, 'stroke-width': sw });
-        // 王冠っぽいジグザグ上部
-        const crown = svgEl('polygon');
-        crown.setAttribute('points',
-          `${vx - 3},${vy - 12} ${vx - 1},${vy - 16} ${vx + 1},${vy - 12} ${vx + 3},${vy - 16} ${vx + 4},${vy - 12}`);
-        setAttrs(crown, { fill: color, stroke, 'stroke-width': sw });
         vg.appendChild(wall);
-        vg.appendChild(tower);
+
+        // 城壁上部の鋸歯（3つの銃眼=メルロン）。城らしさを出す。
+        const merlons = svgEl('polygon');
+        merlons.setAttribute('points', [
+          P(-11, -2), P(-11, -7), P(-7.5, -7), P(-7.5, -4),
+          P(-3, -4), P(-3, -7), P(3, -7), P(3, -4),
+          P(7.5, -4), P(7.5, -7), P(11, -7), P(11, -2),
+        ].join(' '));
+        setAttrs(merlons, { fill: color, stroke, 'stroke-width': sw });
+        vg.appendChild(merlons);
+
+        // 金色の王冠（都市の識別マーク）。プレイヤーカラーとは別色で「都市」を一目で示す。
+        const crown = svgEl('polygon');
+        crown.setAttribute('points', [
+          P(-5, -8), P(-5, -11.5), P(-2.5, -9), P(0, -13.5), P(2.5, -9), P(5, -11.5), P(5, -8),
+        ].join(' '));
+        setAttrs(crown, { fill: '#ffd24a', stroke: '#7a5800', 'stroke-width': Math.max(1, 1 * bs),
+          'stroke-linejoin': 'round' });
         vg.appendChild(crown);
       }
     } else {

@@ -307,7 +307,7 @@ describe('LAN per-viewer log', () => {
     expect(forP2).not.toContain('あなた');
   });
 
-  it('shows only the viewer’s own resource gains on ROLL_DICE (no leak of others)', () => {
+  it('shows every player’s dice production (public) and labels the viewer as あなた', () => {
     const prev = tradeReadyState({}, {});
     // ダイス後の状態を手で作る: player1 が wood+1、player2 が wool+1 を得た想定
     const next: GameState = {
@@ -324,12 +324,14 @@ describe('LAN per-viewer log', () => {
     const action: Action = { type: 'ROLL_DICE' };
     const forP1 = buildActionLog(prev, action, next, 'player1').map(e => e.message).join('|');
     const forP2 = buildActionLog(prev, action, next, 'player2').map(e => e.message).join('|');
-    // player1 視点: 自分の wood 獲得のみ。player2 の wool は出ない。
+    // ダイス生産は公開情報: どちらの視点でも両者の獲得が見える。
     expect(forP1).toContain('🌲×1');
-    expect(forP1).not.toContain('🐑');
-    // player2 視点: 自分の wool 獲得のみ。player1 の wood は出ない。
+    expect(forP1).toContain('🐑×1');
+    expect(forP2).toContain('🌲×1');
     expect(forP2).toContain('🐑×1');
-    expect(forP2).not.toContain('🌲');
+    // 自分の獲得は「あなた」表記、相手は名前表記（取り違えない）。
+    expect(forP1).toContain('あなた 🌲×1'); // player1 視点では player1 が「あなた」
+    expect(forP2).toContain('あなた 🐑×1'); // player2 視点では player2 が「あなた」
   });
 });
 

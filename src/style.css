@@ -1561,6 +1561,9 @@ h1 {
   border-radius: 18px;
   box-shadow: 0 0 38px var(--win-color, #ffd700), 0 16px 50px rgba(0,0,0,0.7);
   animation: victPop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1);
+  /* スコアボードで縦に伸びても画面内に収め、スクロールで全員分を読めるようにする */
+  max-height: 92vh;
+  overflow-y: auto;
 }
 @keyframes victPop { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 .victory-trophy {
@@ -1583,9 +1586,62 @@ h1 {
   font-size: 1.4rem; font-weight: bold; color: #ffd700; margin-bottom: 4px;
   text-shadow: 0 2px 6px rgba(0,0,0,0.6);
 }
-.victory-reason { font-size: 0.95rem; color: rgba(255,255,255,0.82); margin-bottom: 16px; }
-.victory-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.victory-reason { font-size: 0.95rem; color: rgba(255,255,255,0.82); margin-bottom: 12px; }
+/* 操作ボタンはスクロールしても下端に貼り付けて押しやすくする */
+.victory-btns {
+  display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  position: sticky; bottom: 0;
+  margin-top: 14px; padding-top: 12px;
+  background: linear-gradient(rgba(18,19,27,0), rgba(18,19,27,0.97) 42%);
+}
 .victory-btns .btn-nav { padding: 10px 18px; font-size: 0.9rem; }
+
+/* ===== 終了後スコアボード（item6/7: 順位・最終VP・内訳・講評） ===== */
+.score-board {
+  margin: 6px 0 2px;
+  text-align: left;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.score-board-title {
+  text-align: center;
+  font-size: 0.8rem; letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.55);
+}
+.score-row {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-left: 4px solid var(--row-color, #888);
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.04);
+}
+.score-row.winner {
+  background: linear-gradient(rgba(255,215,0,0.14), rgba(255,215,0,0.05));
+  border-color: rgba(255,215,0,0.55);
+  border-left-color: var(--row-color, #ffd700);
+}
+.score-row.self { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22); }
+.score-head { display: flex; align-items: center; gap: 8px; }
+.score-rank { font-size: 1.05rem; min-width: 1.7em; text-align: center; flex: 0 0 auto; }
+.score-rank.rank-1 { font-size: 1.25rem; }
+.score-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); flex: 0 0 auto; }
+.score-name {
+  font-weight: 700; font-size: 0.95rem; flex: 1 1 auto;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.score-vp { color: #ffd700; font-weight: 900; font-size: 1.05rem; flex: 0 0 auto; }
+.score-bd { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.score-chip {
+  font-size: 0.72rem; padding: 2px 6px; border-radius: 6px;
+  background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.9);
+}
+.score-chip.bonus { background: rgba(255,215,0,0.18); color: #ffe9a0; }
+.score-comment {
+  margin-top: 6px; font-size: 0.8rem; line-height: 1.35;
+  color: rgba(255,255,255,0.82);
+  border-top: 1px dashed rgba(255,255,255,0.12); padding-top: 5px;
+}
+.score-comment::before { content: '“'; opacity: 0.55; }
+.score-comment::after  { content: '”'; opacity: 0.55; }
 
 /* 紙吹雪 */
 .confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
@@ -1913,5 +1969,110 @@ h1 {
 }
 .turn-order-sep {
   color: rgba(255,255,255,0.3);
+}
+
+/* ============================================================
+   手番バナー（item3: 自分の手番を分かりやすく）
+   ============================================================ */
+.turn-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 8px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border: 1.5px solid var(--turn-color, #888);
+  background: linear-gradient(rgba(0,0,0,0.32), rgba(0,0,0,0.32)), var(--turn-color, #444);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.turn-banner-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.7); flex: 0 0 auto;
+}
+.turn-banner-text { font-size: 1.05rem; }
+/* 自分の手番: より目立たせ、やわらかく点滅（強すぎない） */
+.turn-banner.mine {
+  box-shadow: 0 0 14px var(--turn-color, #3b7fe2);
+  animation: turnBannerPulse 1.7s ease-in-out infinite;
+}
+.turn-banner.mine .turn-banner-text::after { content: ' ▶'; opacity: 0.9; }
+.turn-banner.other .turn-banner-text { font-weight: 700; }
+@keyframes turnBannerPulse {
+  0%,100% { box-shadow: 0 0 8px var(--turn-color, #3b7fe2); }
+  50%     { box-shadow: 0 0 18px var(--turn-color, #3b7fe2); }
+}
+
+/* 自分の手番中はプレイヤーパネルも軽く強調 */
+.player-panel.your-turn { animation: yourTurnPulse 1.8s ease-in-out infinite; }
+@keyframes yourTurnPulse {
+  0%,100% { box-shadow: 0 0 8px rgba(255,255,255,0.25); }
+  50%     { box-shadow: 0 0 16px rgba(255,255,255,0.55); }
+}
+
+/* ============================================================
+   得点演出（item5: VP獲得 / 称号獲得）
+   ============================================================ */
+.vp-pop, .bonus-pop {
+  position: fixed;
+  transform: translate(-50%, 0);
+  z-index: 5000;
+  pointer-events: none;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.vp-pop {
+  color: #ffd700;
+  font-size: 1.1rem;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.85);
+  animation: vpPop 1.25s ease-out forwards;
+}
+.bonus-pop {
+  color: #1a1205;
+  font-size: 0.92rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffe07a, #ffb300);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.55);
+  animation: bonusPop 1.85s ease-out forwards;
+}
+@keyframes vpPop {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.7); }
+  25%  { opacity: 1; transform: translate(-50%, -8px) scale(1.15); }
+  60%  { opacity: 1; transform: translate(-50%, -20px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -40px) scale(1); }
+}
+@keyframes bonusPop {
+  0%   { opacity: 0; transform: translate(-50%, 6px) scale(0.6); }
+  18%  { opacity: 1; transform: translate(-50%, -10px) scale(1.12); }
+  75%  { opacity: 1; transform: translate(-50%, -24px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -44px) scale(1); }
+}
+.player-panel.vp-gain-flash { animation: vpFlash 0.9s ease-out; }
+@keyframes vpFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+  30%  { box-shadow: 0 0 18px 3px rgba(255,215,0,0.85); }
+  100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+}
+.player-panel.bonus-flash { animation: bonusFlash 1.45s ease-out; }
+@keyframes bonusFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+  20%  { box-shadow: 0 0 22px 5px rgba(255,215,0,0.9); }
+  100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+}
+
+/* 動きを抑える設定では点滅・派手な演出を止める */
+@media (prefers-reduced-motion: reduce) {
+  .turn-banner.mine,
+  .player-panel.your-turn { animation: none; }
+}
+
+/* 横持ちコンパクト時: 手番バナーの高さを抑える（盤面を圧迫しない） */
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 1199.98px) {
+  .turn-banner { margin: 0 0 5px; padding: 4px 9px; gap: 6px; }
+  .turn-banner-text { font-size: 0.92rem; }
+  .turn-banner-dot { width: 11px; height: 11px; }
 }
 

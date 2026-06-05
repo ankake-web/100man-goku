@@ -25,7 +25,8 @@ import type { BuildMode } from './renderer/events';
 import { chooseAction } from './engine/ai';
 import type { AiOpts } from './engine/ai';
 import { buildActionLog, MAX_LOG_ENTRIES, RES_EMOJI } from './engine/log';
-import { calcVP } from './engine/scoring';
+import { calcVP, calcPublicVP } from './engine/scoring';
+import { buildPlayerRecap } from './engine/recap';
 
 // ============================================================
 // ホーム画面設定
@@ -1039,7 +1040,7 @@ const SE_MIN_INTERVAL: Record<string, number> = {
 };
 
 export type SEType = 'click'|'dice'|'resource'|'build'|'tradeOk'|'tradeNg'|'devCard'|'robber'|'turnStart'|'victory'
-  |'sevenRoll'|'discardWarn'|'discardLose';
+  |'sevenRoll'|'discardWarn'|'discardLose'|'vpGain'|'bonusGain'|'yourTurn';
 
 function playSE(type: SEType): void {
   if (!_seEnabled) return;
@@ -1128,6 +1129,22 @@ function playSE(type: SEType): void {
         // 資源を失う: 短い下降音（控えめ）
         note(392, 0.10, 'triangle', 0.38, 0.00);
         note(294, 0.16, 'triangle', 0.30, 0.07);
+        break;
+      case 'vpGain':
+        // 得点獲得: 明るく短い2音の上昇（建設SEに少し遅れて「+点」を知らせる）
+        note(784, 0.10, 'sine', 0.42, 0.00);
+        note(1047, 0.16, 'sine', 0.38, 0.07);
+        break;
+      case 'bonusGain':
+        // 称号獲得（最長交易路/最大騎士力）: 少し派手な3音ファンファーレ
+        note(659, 0.14, 'triangle', 0.5, 0.00);
+        note(880, 0.14, 'triangle', 0.5, 0.10);
+        note(1175, 0.26, 'triangle', 0.46, 0.20);
+        break;
+      case 'yourTurn':
+        // 自分の手番開始: やわらかい2音チャイム（他人の手番開始と区別）
+        note(660, 0.10, 'sine', 0.4, 0.00);
+        note(990, 0.16, 'sine', 0.36, 0.08);
         break;
     }
   } catch { /* ignore */ }
@@ -1498,6 +1515,79 @@ const VICTORY_REASON: Record<string, string> = {
   BUY_DEV_CARD:     '勝利点カードで勝利！',
 };
 
+// 終了画面の順位ラベル。
+const RANK_LABEL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉', 4: '4位' };
+
+function scoreChip(text: string, bonus = false): HTMLSpanElement {
+  const s = document.createElement('span');
+  s.className = `score-chip${bonus ? ' bonus' : ''}`;
+  s.textContent = text;
+  return s;
+}
+
+// 終了後スコアボード: 全員の順位・名前・最終VP・公開内訳・プレイ講評を表示する。
+// 表示VPは「自分・勝者は内部VP（VPカード込み）、それ以外は公開VPのみ」。
+// 講評・内訳は公開情報のみ（相手の非公開VPカード内容はばらさない＝秘匿維持）。
+function buildVictoryScoreboard(): HTMLDivElement {
+  const me = selfPlayerId();
+  const rows = state.playerOrder.map(pid => {
+    const isRevealed = pid === me || pid === state.winner;
+    const vp = isRevealed ? calcVP(state, pid) : calcPublicVP(state, pid);
+    return { pid, vp, isRevealed, recap: buildPlayerRecap(state, pid) };
+  });
+  // 表示VPの降順。同点はゲーム手番順で安定させる。
+  rows.sort((a, b) => b.vp - a.vp || state.playerOrder.indexOf(a.pid) - state.playerOrder.indexOf(b.pid));
+
+  const wrap = document.createElement('div');
+  wrap.className = 'score-board';
+  const title = document.createElement('div');
+  title.className = 'score-board-title';
+  title.textContent = '最終結果';
+  wrap.appendChild(title);
+
+  rows.forEach((row, i) => {
+    const p = state.players[row.pid];
+    if (!p) return;
+    const color = PLAYER_HEX[row.pid] ?? '#aaa';
+    const rank = i + 1;
+    const rowEl = document.createElement('div');
+    rowEl.className = `score-row${row.pid === state.winner ? ' winner' : ''}${row.pid === me ? ' self' : ''}`;
+    rowEl.style.setProperty('--row-color', color);
+
+    const head = document.createElement('div');
+    head.className = 'score-head';
+    const rankEl = document.createElement('span');
+    rankEl.className = `score-rank rank-${rank}`;
+    rankEl.textContent = RANK_LABEL[rank] ?? `${rank}位`;
+    const dot = document.createElement('span'); dot.className = 'score-dot'; dot.style.background = color;
+    const name = document.createElement('span'); name.className = 'score-name';
+    name.textContent = `${p.name}${p.type === 'ai' ? '（CPU）' : ''}${row.pid === me ? '〔あなた〕' : ''}`;
+    const vpEl = document.createElement('span'); vpEl.className = 'score-vp'; vpEl.textContent = `★${row.vp}`;
+    head.append(rankEl, dot, name, vpEl);
+    rowEl.appendChild(head);
+
+    const r = row.recap;
+    const bd = document.createElement('div');
+    bd.className = 'score-bd';
+    if (r.settlements > 0) bd.appendChild(scoreChip(`🏠×${r.settlements}`));
+    if (r.cities > 0)      bd.appendChild(scoreChip(`🏙×${r.cities}`));
+    if (r.hasLongestRoad)  bd.appendChild(scoreChip('🛤最長+2', true));
+    if (r.hasLargestArmy)  bd.appendChild(scoreChip('⚔最大+2', true));
+    // VPカード枚数は自分・勝者のみ開示（他プレイヤーは秘匿のまま）。
+    const vpCards = row.isRevealed ? p.devCards.filter(c => c.type === 'victory_point').length : 0;
+    if (vpCards > 0) bd.appendChild(scoreChip(`★カード×${vpCards}`));
+    if (bd.childElementCount > 0) rowEl.appendChild(bd);
+
+    const cm = document.createElement('div');
+    cm.className = 'score-comment';
+    cm.textContent = r.comment;
+    rowEl.appendChild(cm);
+
+    wrap.appendChild(rowEl);
+  });
+  return wrap;
+}
+
 function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
   if (!state) return;
@@ -1553,6 +1643,9 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   reasonEl.className = 'victory-reason';
   reasonEl.textContent = reason;
   modal.appendChild(reasonEl);
+
+  // 全員の順位・最終VP・内訳・プレイ講評（スマホ縦でも読めるよう縦並び＋スクロール）。
+  modal.appendChild(buildVictoryScoreboard());
 
   const btnRow = document.createElement('div');
   btnRow.className = 'victory-btns';
@@ -1809,6 +1902,80 @@ function triggerResourceAnimation(
   }
 }
 
+// 自分のプレイヤーID（LAN=viewer、単一端末=human）。手番強調・得点演出の基準。
+function selfPlayerId(): PlayerId | undefined {
+  if (netMode) return viewerPlayerId ?? undefined;
+  return state?.playerOrder.find(p => state.players[p]?.type === 'human');
+}
+
+// 得点(VP)が増えたプレイヤーのパネルを光らせ「+N VP」をポップ表示する。
+// 自分は VPカード込み、相手は公開VPのみで判定する（相手の非公開VPカードは演出しない＝秘匿維持）。
+function triggerVpGainEffects(prevState: GameState, newState: GameState): void {
+  if (lastConfig?.cpuSpeed === 'instant') return;
+  const me = selfPlayerId();
+  for (const pid of newState.playerOrder) {
+    const before = pid === me ? calcVP(prevState, pid) : calcPublicVP(prevState, pid);
+    const after  = pid === me ? calcVP(newState,  pid) : calcPublicVP(newState,  pid);
+    const delta = after - before;
+    if (delta > 0) popVpGain(pid, delta);
+  }
+  // 称号の移動（公開情報）は専用の少し派手な演出＋ファンファーレSE。
+  if (prevState.longestRoadHolder !== newState.longestRoadHolder && newState.longestRoadHolder) {
+    flashBonus(newState.longestRoadHolder, '🛤 最長交易路！');
+  }
+  if (prevState.largestArmyHolder !== newState.largestArmyHolder && newState.largestArmyHolder) {
+    flashBonus(newState.largestArmyHolder, '⚔ 最大騎士力！');
+  }
+}
+
+// プレイヤーパネル上に「+N VP」を浮かせ、パネルを短時間発光させる。
+function popVpGain(pid: PlayerId, delta: number): void {
+  const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
+  if (!panelEl) return;
+  const rect = panelEl.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.className = 'vp-pop';
+  pop.textContent = `+${delta}VP`;
+  pop.style.left = `${rect.left + rect.width / 2}px`;
+  pop.style.top = `${rect.top + 8}px`;
+  document.body.appendChild(pop);
+  setTimeout(() => pop.remove(), 1300);
+  panelEl.classList.add('vp-gain-flash');
+  setTimeout(() => panelEl.classList.remove('vp-gain-flash'), 900);
+  // 建設SEと重ならないよう少し遅らせて「+点」を知らせる。
+  setTimeout(() => playSE('vpGain'), 220);
+}
+
+// 称号獲得の演出（パネル発光＋ラベルポップ＋ファンファーレSE）。
+function flashBonus(pid: PlayerId, label: string): void {
+  const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
+  if (panelEl) {
+    panelEl.classList.add('bonus-flash');
+    setTimeout(() => panelEl.classList.remove('bonus-flash'), 1500);
+    const rect = panelEl.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'bonus-pop';
+    pop.textContent = label;
+    pop.style.left = `${rect.left + rect.width / 2}px`;
+    pop.style.top = `${rect.top - 2}px`;
+    document.body.appendChild(pop);
+    setTimeout(() => pop.remove(), 1900);
+  }
+  setTimeout(() => playSE('bonusGain'), 260);
+}
+
+// 自分の手番が始まった瞬間に、やわらかいチャイムで知らせる（他人の手番開始と区別）。
+function maybeYourTurnCue(prevState: GameState, newState: GameState): void {
+  if (newState.phase === 'GAME_OVER') return;
+  const me = selfPlayerId();
+  if (!me) return;
+  const prevCur = prevState.playerOrder[prevState.currentPlayerIndex];
+  const newCur = newState.playerOrder[newState.currentPlayerIndex];
+  if (newCur === me && prevCur !== me) {
+    setTimeout(() => playSE('yourTurn'), 140);
+  }
+}
+
 // ダイスのロール演出（擬似3D）。盤面中央で2つのサイコロが転がり、最初は速く→徐々に
 // 減速→最後に確定。出目はピップ（点）で描画する。完了後に onDone を呼ぶ。
 // 演出時間は速度設定に応じて調整（最速は0=スキップ）。ゲーム結果には一切影響しない。
@@ -2003,6 +2170,8 @@ function dispatch(action: Action): void {
         highlightProducingTiles(diceTotal);
       }
       triggerResourceAnimation(prevState, state, action.type, diceTotal);
+      triggerVpGainEffects(prevState, state);
+      maybeYourTurnCue(prevState, state);
       // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
       if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
         scheduleCpuTradeResponse();
@@ -2274,6 +2443,8 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
       highlightProducingTiles(diceTotal);
     }
     triggerResourceAnimation(prevState, state, action?.type ?? 'SYSTEM', diceTotal);
+    triggerVpGainEffects(prevState, state);
+    maybeYourTurnCue(prevState, state);
   };
 
   if (action?.type === 'ROLL_DICE' && state.lastDiceRoll) {

@@ -1105,7 +1105,27 @@ export function renderUI(
   const player = state.players[pid]!;
   const color = PLAYER_COLORS[pid] ?? '#aaa';
 
-  const turnPanel = el('div', 'turn-panel');
+  // 自分の手番か（LAN=viewerId、単一端末=human）。手番の所在を大きく明示する。
+  const selfPid: PlayerId | undefined = viewerId ?? state.playerOrder.find(p => state.players[p]?.type === 'human');
+  const isMyTurn = state.phase !== 'GAME_OVER' && selfPid != null && pid === selfPid;
+  const isCpuTurn = player.type === 'ai';
+
+  const turnPanel = el('div', `turn-panel${isMyTurn ? ' mine-turn' : ''}`);
+
+  // 手番バナー: 「あなたのターン」/「○○のターン（CPU）」を最上部に大きく表示。
+  // 横持ちでも高さを取りすぎないよう CSS 側で1行・コンパクトにする。
+  if (state.phase !== 'GAME_OVER') {
+    const banner = el('div', `turn-banner ${isMyTurn ? 'mine' : isCpuTurn ? 'cpu' : 'other'}`);
+    banner.style.setProperty('--turn-color', color);
+    const bdot = el('span', 'turn-banner-dot');
+    bdot.style.background = color;
+    const btxt = el('span', 'turn-banner-text');
+    btxt.textContent = isMyTurn ? 'あなたのターン'
+      : isCpuTurn ? `${player.name} のターン（CPU）`
+      : `${player.name} のターン`;
+    banner.append(bdot, btxt);
+    turnPanel.appendChild(banner);
+  }
 
   const infoRow = el('div', 'turn-info-row');
   const dot = el('span', 'color-dot');
@@ -1248,7 +1268,7 @@ function buildPlayerPanel(
   // 単一端末プレイ（viewerId 未指定）では従来どおり human=自分。
   const isSelf = viewerId != null ? (pId === viewerId) : (player.type === 'human');
 
-  const div = el('div', `player-panel${isActive ? ' active' : ''}${isWinner ? ' winner-glow' : ''}`);
+  const div = el('div', `player-panel${isActive ? ' active' : ''}${isActive && isSelf && state.phase !== 'GAME_OVER' ? ' your-turn' : ''}${isWinner ? ' winner-glow' : ''}`);
   div.dataset.pid = pId;  // リソースアニメーション用
   const color = PLAYER_COLORS[pId] ?? '#aaa';
   // プレイヤーカラーを反映（控えめ）：暗いベースに淡い着色＋濃い枠線。

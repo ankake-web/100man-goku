@@ -4,7 +4,8 @@
 //
 // 目的：buildActionLog が「非公開情報」を文字列へ漏らさないことを保証する。
 //   - CPUの捨て札／盗み取りは枚数のみ（資源の種類を出さない）
-//   - CPUの資源獲得では手札内訳を出さない
+//   - ダイス生産（このロールの増加分）は公開情報なので全員分を出してよい
+//     （ただし手札の既存ストック・内訳までは漏らさない）
 //   - 人間プレイヤー自身の獲得は内訳を出してよい（本人向け情報）
 //   - 勝利ログにVPカード名や内部VP数値を出さない
 // 文言の完全一致ではなく「秘匿すべき文字列が含まれないこと」を重視する。
@@ -118,29 +119,41 @@ describe('buildActionLog: 秘匿仕様', () => {
     expect(gainEntry!.message).toContain('あなた');
   });
 
-  it('4. CPUの資源獲得では手札内訳（種類・枚数）が漏れない', () => {
-    // CPU(player1)が手番でダイス。CPUは wood×3 を得るが、人間は何も得ない。
+  it('4. ダイス生産はCPU分も公開してよいが、手札の既存ストックは漏らさない', () => {
+    // CPU(player1)が手番でダイス。CPUはこのロールで wood×3 を得る。
+    // ただし CPU は以前から ore×2 を持っている（既存ストック）。人間は何も得ない。
     const prev = cpuTurnState({ currentPlayerIndex: 0 });
-    const next: GameState = {
+    const prevWithStock: GameState = {
       ...prev,
-      lastDiceRoll: [2, 4],
       players: {
         ...prev.players,
         player1: makePlayer('player1', {
           name: 'CPU α', type: 'ai', aiDifficulty: 'normal',
-          hand: { wood: 3, brick: 0, wool: 0, grain: 0, ore: 0 },
+          hand: { wood: 0, brick: 0, wool: 0, grain: 0, ore: 2 }, // 既存ストック
         }),
       },
     };
-    const entries = buildActionLog(prev, { type: 'ROLL_DICE' }, next);
-    const text = joinMessages(entries);
-
-    // CPUの獲得内訳ログは存在しないはず（RESOURCE_GAINは人間のみ）
+    const next: GameState = {
+      ...prevWithStock,
+      lastDiceRoll: [2, 4],
+      players: {
+        ...prevWithStock.players,
+        player1: makePlayer('player1', {
+          name: 'CPU α', type: 'ai', aiDifficulty: 'normal',
+          hand: { wood: 3, brick: 0, wool: 0, grain: 0, ore: 2 }, // wood×3 を新たに獲得
+        }),
+      },
+    };
+    const entries = buildActionLog(prevWithStock, { type: 'ROLL_DICE' }, next);
     const gain = entries.find(e => e.type === 'RESOURCE_GAIN');
-    expect(gain).toBeUndefined();
-    // ダイスログ自体に資源内訳が漏れていないこと
-    expectNoResourceEmoji(text);
-    for (const n of RES_NAMES_JA) expect(text).not.toContain(n);
+    // このロールでの増加分（公開情報）は出る: CPU名 + wood×3
+    expect(gain).toBeDefined();
+    expect(gain!.message).toContain(RES_EMOJI.wood);
+    expect(gain!.message).toContain('CPU α');
+    // 視点は人間(player2)なので CPU を「あなた」と取り違えない
+    expect(gain!.message).not.toContain('あなた');
+    // 既存ストック（ore×2）は増加分ではないので漏れない
+    expect(gain!.message).not.toContain(RES_EMOJI.ore);
   });
 
   it('5. CPU勝利ログにVPカード名・内部VP数値が出ない', () => {
