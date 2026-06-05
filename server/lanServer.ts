@@ -68,12 +68,17 @@ const MIN_PLAYERS = 2;
 const CPU_STEP_MS = 850;
 const CPU_AFTER_ROLL_MS = 1700;
 
+// 切断したメンバーを保持して再接続を待つ猶予(ms)。これを過ぎたら解放する。
+const DISCONNECT_GRACE_MS = 90_000;
+
 interface Member {
-  ws: WebSocket;
+  ws: WebSocket | null;       // 切断中は null
   id: PlayerId;
   name: string;
   isHost: boolean;
   connected: boolean;
+  token: string;              // 再接続用の秘密トークン
+  graceTimer: ReturnType<typeof setTimeout> | null; // 切断後の解放タイマー
 }
 
 interface Room {
@@ -89,8 +94,12 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
-function send(ws: WebSocket, msg: ServerMessage): void {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+function send(ws: WebSocket | null, msg: ServerMessage): void {
+  if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function genToken(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 function genCode(): string {
@@ -309,9 +318,9 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           const code = genCode();
           room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, memberLogs: {} };
           rooms.set(code, room);
-          me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true };
+          me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);
-          send(ws, { t: 'joined', code, you: me.id, isHost: true });
+          send(ws, { t: 'joined', code, you: me.id, isHost: true, token: me.token, started: false });
           broadcastLobby(room, currentUrls());
           break;
         }
@@ -323,10 +332,36 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           const slot = nextSlot(target);
           if (!slot) { send(ws, { t: 'error', message: 'ルームが満員です（最大4人）' }); return; }
           room = target;
-          me = { ws, id: slot, name: assignName(msg.name, target), isHost: false, connected: true };
+          me = { ws, id: slot, name: assignName(msg.name, target), isHost: false, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);
-          send(ws, { t: 'joined', code: room.code, you: me.id, isHost: false });
+          send(ws, { t: 'joined', code: room.code, you: me.id, isHost: false, token: me.token, started: false });
           broadcastLobby(room, currentUrls());
+          break;
+        }
+        case 'resume': {
+          // 再接続: 同一プレイヤー(token一致)として復帰する。新規プレイヤーは増やさない。
+          if (room) return;
+          const target = rooms.get((msg.code || '').toUpperCase());
+          if (!target) { send(ws, { t: 'error', message: '接続が切れました。ルームに入り直してください', fatal: true }); return; }
+          const member = target.members.find(m => m.id === msg.you && m.token === msg.token);
+          if (!member) { send(ws, { t: 'error', message: '接続が切れました。ルームに入り直してください', fatal: true }); return; }
+          // 二重接続: 古い接続があれば無効化（新しい接続を正とする）。
+          if (member.ws && member.ws !== ws) { try { member.ws.close(); } catch { /* noop */ } }
+          if (member.graceTimer) { clearTimeout(member.graceTimer); member.graceTimer = null; }
+          member.ws = ws;
+          member.connected = true;
+          room = target;
+          me = member;
+          send(ws, { t: 'joined', code: target.code, you: member.id, isHost: member.isHost, token: member.token, started: target.started });
+          if (target.started && target.state) {
+            // ゲーム中: 現在の視点別マスク state ＋ 自分視点ログで再同期。
+            send(ws, { t: 'started', you: member.id, state: { ...maskStateFor(target.state, member.id), log: target.memberLogs[member.id] ?? [] } });
+            // 復帰を他プレイヤーへ通知＋CPU駆動を再評価（手番待ち解消の場合に備える）。
+            notifyReconnect(target, member.name);
+            scheduleCpuTick(target, CPU_STEP_MS);
+          } else {
+            broadcastLobby(target, currentUrls());
+          }
           break;
         }
         case 'rename': {
@@ -411,32 +446,49 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
 
     ws.on('close', () => {
       if (!room || !me) return;
+      // この ws が現在のメンバーの ws でない（既に別接続に置き換わった）なら無視。
+      if (me.ws !== ws) return;
+      me.connected = false;
+      me.ws = null;
       if (!room.started) {
-        // 開始前: スロットを解放（残りメンバーの id は据え置き＝各端末の you が安定）
-        room.members = room.members.filter(m => m !== me);
-        if (room.members.length === 0) {
-          rooms.delete(room.code);
-          return;
-        }
-        // ホストが抜けたら残りの先頭をホストに昇格
-        if (me.isHost && !room.members.some(m => m.isHost)) {
-          room.members[0]!.isHost = true;
-        }
+        // 開始前: 即削除せず猶予を持たせ、同一端末の再接続(resume)で復帰できるようにする。
         broadcastLobby(room, currentUrls());
+        scheduleMemberRelease(room, me);
       } else {
-        // 開始後: 切断を記録。残りの人間へ配信は継続（CPUは動き続ける）。
-        me.connected = false;
-        // 人間が全員いなくなったら CPU 駆動を止めてルームを破棄（リーク防止）。
+        // 開始後: 切断を記録。残りの人間へ配信は継続。
         if (connectedHumans(room) === 0) {
+          // 観戦者ゼロなら CPU 駆動を一時停止（再接続で再開）。ルームは猶予中は保持。
           if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
-          rooms.delete(room.code);
         } else {
-          // 残りの人間に切断を知らせる（ログ＋現在stateを再配信）。
           notifyDisconnect(room, me.name);
         }
+        scheduleMemberRelease(room, me);
       }
     });
   });
+}
+
+// 切断メンバーを猶予後に解放する（再接続が来なければ枠を空ける）。
+function scheduleMemberRelease(room: Room, member: Member): void {
+  if (member.graceTimer) clearTimeout(member.graceTimer);
+  member.graceTimer = setTimeout(() => {
+    member.graceTimer = null;
+    if (member.connected) return; // 既に再接続済み
+    room.members = room.members.filter(m => m !== member);
+    if (!room.started) {
+      // ホストが抜けたままなら残りの先頭をホストに昇格
+      if (member.isHost && room.members.length > 0 && !room.members.some(m => m.isHost)) {
+        room.members[0]!.isHost = true;
+      }
+    }
+    // 誰もいなくなったら CPU を止めてルーム破棄
+    if (room.members.length === 0) {
+      if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
+      rooms.delete(room.code);
+      return;
+    }
+    if (!room.started) broadcastLobby(room, lanHostUrls(5173));
+  }, DISCONNECT_GRACE_MS);
 }
 
 function sanitizeName(raw: string): string {
@@ -452,19 +504,21 @@ function assignName(raw: string, room: Room, exclude?: Member): string {
   return resolveUniqueName(requested, existing);
 }
 
-// ゲーム中の切断を、残りの人間プレイヤーへ通知する（システムログ＋現在stateの再配信）。
-function notifyDisconnect(room: Room, name: string): void {
+// ゲーム中の切断/再接続を、接続中の人間へシステムログ＋現在stateで知らせる。
+function notifySystem(room: Room, message: string): void {
   if (!room.state) return;
   const entry: LogEntry = {
     turn: room.state.globalTurnNumber,
     playerId: room.state.playerOrder[room.state.currentPlayerIndex] ?? 'player1',
     type: 'SYSTEM',
-    message: `🔌 ${name} が切断しました`,
+    message,
   };
   for (const m of room.members) {
-    if (!m.connected) continue;
+    if (!m.connected || !m.ws) continue;
     const log = [...(room.memberLogs[m.id] ?? []), entry].slice(-MAX_LOG_ENTRIES);
     room.memberLogs[m.id] = log;
     send(m.ws, { t: 'state', state: { ...maskStateFor(room.state, m.id), log } });
   }
 }
+function notifyDisconnect(room: Room, name: string): void { notifySystem(room, `🔌 ${name} が切断しました`); }
+function notifyReconnect(room: Room, name: string): void { notifySystem(room, `🔄 ${name} が再接続しました`); }

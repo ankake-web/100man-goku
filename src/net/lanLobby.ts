@@ -10,6 +10,8 @@ import { LanClient } from './lanClient';
 import type { ServerMessage, LobbyPlayer } from './protocol';
 import type { GameState, PlayerId, PlayerColor } from '../types';
 import { attachNameField, savePlayerName } from './nameField';
+import { saveResume, clearResume } from './resume';
+import type { ResumeInfo } from './resume';
 
 const COLOR_HEX: Record<PlayerColor, string> = {
   red: '#e23b3b', blue: '#3b7fe2', purple: '#9b5bd6', orange: '#e2913b',
@@ -32,7 +34,7 @@ interface LobbyView {
   error: string;
 }
 
-export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): void {
+export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, resume?: ResumeInfo): void {
   container.innerHTML = '';
 
   let client: LanClient | null = null;
@@ -40,7 +42,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
     code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false,
     cpuCount: 0, maxCpu: 3, error: '',
   };
-  let stage: 'idle' | 'lobby' = 'idle';
+  let stage: 'idle' | 'lobby' | 'resuming' = 'idle';
 
   const root = document.createElement('div');
   root.className = 'lan-lobby';
@@ -51,17 +53,29 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
     switch (msg.t) {
       case 'joined':
         view.you = msg.you; view.isHost = msg.isHost; view.code = msg.code; view.error = '';
-        stage = 'lobby'; render(); break;
+        // 再接続情報を保存（リロード/一時切断で同一プレイヤー復帰）。
+        saveResume({ code: msg.code, you: msg.you, token: msg.token });
+        // started=true なら 'started' 受信でゲームへ遷移するのでロビーは描かない。
+        if (!msg.started) { stage = 'lobby'; render(); }
+        break;
       case 'lobby':
         view.code = msg.code; view.players = msg.players;
         view.hostUrls = msg.hostUrls; view.canStart = msg.canStart;
         view.cpuCount = msg.cpuCount; view.maxCpu = msg.maxCpu;
-        if (stage === 'lobby') render(); break;
+        if (stage === 'lobby' || stage === 'resuming') { stage = 'lobby'; render(); }
+        break;
       case 'started':
         if (client) cb.onGameStart(msg.state, msg.you, client);
         break;
       case 'error':
-        view.error = msg.message; render(); break;
+        if (msg.fatal) {
+          // 再接続失敗など: 保存情報を破棄して入室前(idle)へ戻す。
+          clearResume();
+          client?.close(); client = null;
+          stage = 'idle';
+        }
+        view.error = msg.message; render();
+        break;
     }
   };
 
@@ -83,12 +97,28 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
   function render(): void {
     root.innerHTML = '';
     if (stage === 'idle') renderIdle();
-    else renderLobby();
+    else if (stage === 'resuming') {
+      const r = document.createElement('div');
+      r.className = 'lan-wait';
+      r.textContent = '🔄 再接続中…';
+      root.appendChild(r);
+    } else renderLobby();
     if (view.error) {
       const err = document.createElement('div');
       err.className = 'lan-error';
       err.textContent = `⚠ ${view.error}`;
       root.appendChild(err);
+    }
+  }
+
+  // 再接続（resume 情報があれば、同一プレイヤーとして復帰を試みる）。
+  async function startResume(info: ResumeInfo): Promise<void> {
+    stage = 'resuming'; view.error = ''; render();
+    if (await ensureClient()) {
+      client!.send({ t: 'resume', code: info.code, you: info.you, token: info.token });
+    } else {
+      clearResume();
+      stage = 'idle'; render();
     }
   }
 
@@ -285,4 +315,6 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks): v
   }
 
   render();
+  // 再接続情報があれば自動で復帰を試みる（リロード/一時切断からの復帰）。
+  if (resume) void startResume(resume);
 }

@@ -10,9 +10,11 @@ import { createInitialGameState } from './engine/createState';
 import type { PlayerSpec } from './engine/createState';
 import { applyAction } from './engine/game';
 import { renderLanLobby } from './net/lanLobby';
-import type { LanClient } from './net/lanClient';
+import { LanClient } from './net/lanClient';
 import { generateRandomPlayerName } from './net/names';
 import { attachNameField, savePlayerName } from './net/nameField';
+import { saveResume, loadResume, clearResume } from './net/resume';
+import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions } from './renderer/board';
@@ -55,6 +57,7 @@ function renderHome(
   container: HTMLElement,
   onStart: (cfg: HomeConfig) => void,
   onLanStart: (state: GameState, viewerId: PlayerId, client: LanClient) => void,
+  resume?: ResumeInfo,
 ): void {
   container.innerHTML = '';
 
@@ -252,7 +255,8 @@ function renderHome(
   const onlineForm = document.createElement('div');
   onlineForm.className = 'home-form';
   // ロビーUIは専用モジュールが描画する（CPU対戦フォームには非干渉）。
-  renderLanLobby(onlineForm, { onGameStart: onLanStart });
+  // resume があれば自動で再接続を試みる（リロード/一時切断からの復帰）。
+  renderLanLobby(onlineForm, { onGameStart: onLanStart }, resume);
 
   card.appendChild(cpuForm);
   card.appendChild(onlineForm);
@@ -2077,6 +2081,8 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
   // 以降のサーバメッセージ（状態更新・切断等）は main 側で処理する。
   client.setHandler(handleNetMessage);
+  // 予期しない切断時は再接続を試みる（致命扱いにしない）。
+  client.setOnClose(attemptReconnect);
 
   // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
   if (!boardEventsAttached) {
@@ -2089,26 +2095,95 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   gameTitle.style.display = 'none';
   appDiv.style.display = '';
 
+  hideReconnecting();
   redraw();
+}
+
+// ============================================================
+// LAN 再接続（一時切断・リロード復帰）
+// ============================================================
+
+let reconnectTries = 0;
+const MAX_RECONNECT = 6;
+
+function showReconnecting(): void {
+  let el = document.getElementById('reconnect-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'reconnect-banner';
+    el.textContent = '🔄 再接続中…';
+    document.body.appendChild(el);
+  }
+  el.style.display = '';
+}
+function hideReconnecting(): void {
+  const el = document.getElementById('reconnect-banner');
+  if (el) el.style.display = 'none';
+}
+
+// ゲーム中に WebSocket が切れたとき、保存した resume 情報で同一プレイヤー復帰を試みる。
+function attemptReconnect(): void {
+  if (!netMode) return;
+  const info = loadResume();
+  if (!info) { reconnectFailed(); return; }
+  reconnectTries++;
+  if (reconnectTries > MAX_RECONNECT) { reconnectFailed(); return; }
+  showReconnecting();
+  const client = new LanClient(handleNetMessage);
+  client.setOnClose(() => {
+    // 再接続中にまた切れたらバックオフして再試行。
+    const delay = Math.min(500 * reconnectTries, 3000);
+    window.setTimeout(attemptReconnect, delay);
+  });
+  client.connect().then(() => {
+    lanClient = client;
+    client.send({ t: 'resume', code: info.code, you: info.you, token: info.token });
+  }).catch(() => {
+    const delay = Math.min(500 * reconnectTries, 3000);
+    window.setTimeout(attemptReconnect, delay);
+  });
+}
+
+function reconnectFailed(): void {
+  if (!netMode) return;
+  netMode = false;
+  reconnectTries = 0;
+  clearResume();
+  hideReconnecting();
+  window.alert('接続が切れました。ルームに入り直してください。');
+  returnToHome();
 }
 
 function handleNetMessage(msg: import('./net/protocol').ServerMessage): void {
   switch (msg.t) {
+    case 'joined':
+      // 再接続成功（resume）でも届く。トークンを保存し、再接続UIを閉じる。
+      viewerPlayerId = msg.you;
+      saveResume({ code: msg.code, you: msg.you, token: msg.token });
+      reconnectTries = 0;
+      hideReconnecting();
+      break;
     case 'started':
-      // 再開始（理論上）: viewer と state を更新
+      // 開始 or 再接続復帰: viewer と state を更新（再接続時はゲーム画面へ復帰）。
+      reconnectTries = 0;
+      hideReconnecting();
+      if (!netMode) { startLanGame(msg.state, msg.you, lanClient!); break; }
       viewerPlayerId = msg.you;
       state = msg.state;
       redraw();
       break;
     case 'state':
       // サーバが適用済みの正本（マスク済み）。演出はアクション種別で再現する。
+      hideReconnecting();
       applyNetState(msg.action, msg.state);
       break;
     case 'error':
       if (msg.fatal) {
-        // 接続断など致命的: ホームへ戻す（多重防止に netMode を先に落とす）。
+        // サーバが resume を拒否した等（接続は開いている）。再接続せずホームへ。
         if (netMode) {
           netMode = false;
+          clearResume();
+          hideReconnecting();
           window.alert(`LAN対戦: ${msg.message}`);
           returnToHome();
         }
@@ -2279,12 +2354,16 @@ function returnToHome(): void {
     netMode = false;
     viewerPlayerId = null;
   }
+  // 明示的にホームへ戻ったので再接続情報は破棄（自動復帰しない）。
+  reconnectTries = 0;
+  hideReconnecting();
+  clearResume();
 
   appDiv.style.display = 'none';
   gameTitle.style.display = 'none';
   homeDiv.style.display = '';
 
-  // ホーム画面を再レンダリング（前回の設定を引き継ぐ）
+  // ホーム画面を再レンダリング（前回の設定を引き継ぐ。resume は渡さない）。
   renderHome(homeDiv, startGame, startLanGame);
 }
 
@@ -2307,4 +2386,5 @@ document.addEventListener('click', (e) => {
   }
 });
 
-renderHome(homeDiv, startGame, startLanGame);
+// 起動時: 保存された resume 情報があれば自動で再接続を試みる（リロード復帰）。
+renderHome(homeDiv, startGame, startLanGame, loadResume() ?? undefined);

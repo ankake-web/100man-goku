@@ -1170,6 +1170,15 @@ export function renderUI(
   titles.append(t1, t2, t3);
   turnPanel.appendChild(titles);
 
+  // 直近に起きた公開イベントだけを1行で表示（履歴一覧は出さない）。
+  // state.log は視点別マスク済み（buildActionLog が公開情報のみ生成）なので秘匿安全。
+  const lastLog = state.log.length > 0 ? state.log[state.log.length - 1] : null;
+  if (lastLog) {
+    const ev = el('div', 'last-event');
+    ev.textContent = lastLog.message;
+    turnPanel.appendChild(ev);
+  }
+
   const btns = buildActionButtons(
     state, player, pid, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch, viewerId, lanMode,
   );

@@ -33,11 +33,13 @@ export type ClientMessage =
   | { t: 'rename'; name: string }                       // 名前変更（ロビー中）
   | { t: 'setCpu'; count: number }                       // CPU 人数設定（ホストのみ）
   | { t: 'start' }                                       // ホストがゲーム開始
+  | { t: 'resume'; code: string; you: PlayerId; token: string } // 再接続（同一プレイヤーとして復帰）
   | { t: 'action'; action: Action };                     // 操作（MVP3 以降）
 
 // ---- サーバ → クライアント ----
 export type ServerMessage =
-  | { t: 'joined'; code: string; you: PlayerId; isHost: boolean }   // 入室確定＋自分のID
+  // token = 再接続用の秘密トークン（localStorage に保存して resume 時に提示）
+  | { t: 'joined'; code: string; you: PlayerId; isHost: boolean; token: string; started: boolean }
   | { t: 'lobby';  code: string; hostUrls: string[]; players: LobbyPlayer[];
       canStart: boolean; cpuCount: number; maxCpu: number }         // maxCpu=今追加できるCPU上限
   | { t: 'started'; you: PlayerId; state: GameState }               // 開始（state はマスク済み）

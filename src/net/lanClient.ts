@@ -13,6 +13,7 @@ export type LanHandler = (msg: ServerMessage) => void;
 export class LanClient {
   private ws: WebSocket | null = null;
   private handler: LanHandler;
+  private onClose: (() => void) | null = null;
   private closedByUs = false;
 
   constructor(handler: LanHandler) {
@@ -22,6 +23,11 @@ export class LanClient {
   /** 受信ハンドラを差し替える（ロビー → ゲーム本体へ受け渡す際に使用）。 */
   setHandler(handler: LanHandler): void {
     this.handler = handler;
+  }
+
+  /** 予期しない切断時のコールバックを設定（設定時は fatal エラーを投げず再接続に委ねる）。 */
+  setOnClose(cb: () => void): void {
+    this.onClose = cb;
   }
 
   /** 同一オリジンの /lan へ接続。open で resolve、失敗で reject。 */
@@ -39,9 +45,10 @@ export class LanClient {
         this.handler(msg);
       };
       ws.onclose = () => {
-        if (!this.closedByUs) {
-          this.handler({ t: 'error', message: 'サーバとの接続が切れました', fatal: true });
-        }
+        if (this.closedByUs) return;
+        // 再接続コールバックがあれば委ねる（fatal にしない）。無ければ従来どおり致命扱い。
+        if (this.onClose) this.onClose();
+        else this.handler({ t: 'error', message: 'サーバとの接続が切れました', fatal: true });
       };
     });
   }
