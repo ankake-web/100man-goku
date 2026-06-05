@@ -34,9 +34,6 @@ const PLAYER_COLORS: Record<string, string> = {
   player4: '#f0a020',
 };
 
-// ログ履歴パネルの開閉状態（再描画をまたいで保持）
-let logPanelOpen = true;
-
 // この幅以上でプレイヤーパネルを盤面の四隅に配置する（未満は盤面下に縦並び）
 const CORNER_LAYOUT_MIN_WIDTH = 1200;
 
@@ -1194,23 +1191,8 @@ export function renderUI(
 
   container.appendChild(turnPanel);
 
-  // ログ履歴パネル（折りたたみ可能・最新が上）。公開情報のみ（生成側で秘匿済み）。
-  if (state.log.length > 0) {
-    const logPanel = el('details', 'game-log-panel');
-    logPanel.open = logPanelOpen;
-    logPanel.addEventListener('toggle', () => { logPanelOpen = logPanel.open; });
-    const sum = el('summary', 'game-log-summary');
-    sum.textContent = '📜 ログ履歴';
-    logPanel.appendChild(sum);
-    const list = el('div', 'game-log-list');
-    for (const e of [...state.log].slice(-15).reverse()) {
-      const row = el('div', `game-log-row log-${e.type.toLowerCase()}`);
-      row.textContent = e.message;
-      list.appendChild(row);
-    }
-    logPanel.appendChild(list);
-    container.appendChild(logPanel);
-  }
+  // ログ履歴パネルは画面表示しない（スマホ実プレイで邪魔なため UI から削除）。
+  // 公開情報ログの生成（buildActionLog）と state.log・視点別配信は従来どおり維持する。
 
   const allPanels = el('div', 'player-panels');
   for (const pId of state.playerOrder) {
