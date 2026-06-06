@@ -1242,6 +1242,10 @@ export function renderUI(
     boardArea?.classList.remove('corner-panels');
     container.appendChild(allPanels);
   }
+
+  // スマホ縦持ち時のみ、盤面四隅にミニプレイヤーパネルを重ねる（資源アニメの着地先）。
+  // 表示/非表示は CSS のメディアクエリ（縦持ち×タッチ）で制御する。
+  renderMiniPanels(state, viewerId);
 }
 
 // 四隅レイアウトを使うか: 広い画面 or 横持ちスマホ（横長かつ低い高さ）。
@@ -1249,6 +1253,65 @@ function useCornerLayout(): boolean {
   const w = window.innerWidth, h = window.innerHeight;
   if (w >= CORNER_LAYOUT_MIN_WIDTH) return true;
   return w > h && h <= 600; // landscape phone
+}
+
+// スマホ縦持ち用ミニパネルの四隅割り当て（人数別にバランスよく配置）。
+const MINI_CORNERS: Record<number, string[]> = {
+  1: ['corner-tl'],
+  2: ['corner-tl', 'corner-tr'],
+  3: ['corner-tl', 'corner-tr', 'corner-bl'],
+  4: ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'],
+};
+
+// 盤面四隅のミニプレイヤーパネルを #board-area に重ねて描画する（縦持ちスマホ専用）。
+// 表示する公開情報のみ: 名前 / VP / 手札枚数 / 現手番 / 最長・最大の小アイコン。
+// 他プレイヤーの手札内訳・発展カード内容は出さない（手札は枚数のみ＝公開情報）。
+function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
+  const boardArea = document.getElementById('board-area');
+  if (!boardArea) return;
+  boardArea.querySelector('.mini-panels')?.remove();
+
+  const order = state.playerOrder;
+  const corners = MINI_CORNERS[order.length] ?? MINI_CORNERS[4]!;
+  const currentPid = state.playerOrder[state.currentPlayerIndex];
+  const selfPid = viewerId ?? state.playerOrder.find(p => state.players[p]?.type === 'human');
+
+  const wrap = el('div', 'mini-panels');
+  order.forEach((pid, i) => {
+    const p = state.players[pid];
+    if (!p) return;
+    const isSelf = viewerId != null ? pid === viewerId : p.type === 'human';
+    const isWinner = state.phase === 'GAME_OVER' && pid === state.winner;
+    // 自分・勝者は内部VP（VPカード込み）、他プレイヤーは公開VPのみ（秘匿維持）。
+    const vp = (isSelf || isWinner) ? calcVP(state, pid as PlayerId) : calcPublicVP(state, pid as PlayerId);
+    const handTotal = isSelf
+      ? RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0)
+      : (p.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0));
+    const isCurrent = pid === currentPid && state.phase !== 'GAME_OVER';
+    const mine = pid === selfPid;
+    const color = PLAYER_COLORS[pid] ?? '#aaa';
+
+    const panel = el('div', `mini-panel ${corners[i] ?? 'corner-tl'}${isCurrent ? ' current' : ''}${isCurrent && mine ? ' mine' : ''}`);
+    panel.dataset.pid = pid;
+    panel.style.setProperty('--mini-color', color);
+
+    const dot = el('span', 'mini-dot');
+    dot.style.background = color;
+    const name = el('span', 'mini-name');
+    name.textContent = p.name;
+    const stat = el('span', 'mini-stat');
+    stat.textContent = `${vp}VP 🃏${handTotal}`;
+    panel.append(dot, name, stat);
+
+    if (p.hasLongestRoad || p.hasLargestArmy) {
+      const badges = el('span', 'mini-badges');
+      if (p.hasLongestRoad) { const bdg = el('span', 'mini-badge'); bdg.textContent = '🛤'; badges.appendChild(bdg); }
+      if (p.hasLargestArmy) { const bdg = el('span', 'mini-badge'); bdg.textContent = '⚔'; badges.appendChild(bdg); }
+      panel.appendChild(badges);
+    }
+    wrap.appendChild(panel);
+  });
+  boardArea.appendChild(wrap);
 }
 
 // ============================================================

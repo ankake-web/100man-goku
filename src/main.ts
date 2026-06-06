@@ -1437,7 +1437,7 @@ const RES_FLY_MS = 1300;       // 飛行時間（ゆっくり）
 const RES_FLY_STAGGER = 300;   // アイコン1個ずつの間隔（0.3秒）
 function spawnResFlyer(
   glyph: string,
-  panelEl: HTMLElement,
+  target: { x: number; y: number },   // 着地先（ビューポート座標。.res-fly は position:fixed）
   origin: { x: number; y: number },
   delay: number,
 ): void {
@@ -1445,19 +1445,24 @@ function spawnResFlyer(
     const span = document.createElement('span');
     span.className = 'res-fly';
     span.textContent = glyph;
-    // 起点位置をセット（絶対座標）
+    // 起点位置をセット
     span.style.left = `${origin.x}px`;
     span.style.top  = `${origin.y}px`;
-    // 終点位置（対象プレイヤーパネル中央）をCSS変数でセット
-    const pr = panelEl.getBoundingClientRect();
-    const tx = pr.left + pr.width / 2 - origin.x;
-    const ty = pr.top  + pr.height / 2 - origin.y;
-    span.style.setProperty('--tx', `${tx}px`);
-    span.style.setProperty('--ty', `${ty}px`);
+    // 終点位置（着地先中央）への移動量をCSS変数でセット
+    span.style.setProperty('--tx', `${target.x - origin.x}px`);
+    span.style.setProperty('--ty', `${target.y - origin.y}px`);
     document.body.appendChild(span);
     requestAnimationFrame(() => requestAnimationFrame(() => { span.classList.add('fly-in'); }));
     setTimeout(() => { span.remove(); playSE('resource'); }, RES_FLY_MS);
   }, delay);
+}
+
+// 資源アニメの着地先。縦持ちスマホでは盤面四隅のミニパネル（表示中のもの）へ、
+// それ以外（PC/横持ち）では従来どおり通常のプレイヤーパネルへ飛ばす。
+function flyTargetFor(pid: string): HTMLElement | null {
+  const mini = document.querySelector(`.mini-panel[data-pid="${pid}"]`) as HTMLElement | null;
+  if (mini && mini.getBoundingClientRect().width > 0) return mini; // 表示中なら優先
+  return document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
 }
 
 /** タイルの画面中心座標を返す */
@@ -1921,15 +1926,19 @@ function triggerResourceAnimation(
       ? RESOURCE_TYPES.map(r => ({ r, n: production[pid]?.[r] ?? 0 })).filter(g => g.n > 0)
       : handDiffGains(oldState, newState, pid);
     if (gains.length === 0) continue;
-    const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
-    if (!panelEl) continue;
+    const targetEl = flyTargetFor(pid);
+    if (!targetEl) continue;
+    // 着地先の中央座標を“今”確定させる（再描画でミニパネルが作り直されても飛行は崩れない）。
+    const tr = targetEl.getBoundingClientRect();
+    if (tr.width === 0 && tr.height === 0) continue;
+    const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
 
     let count = 0;
     for (const { r, n } of gains) {
       const origin = isDice ? originForGain(diceTotal!, pid, r) : getBoardCenter();
       for (let i = 0; i < n && count < MAX_PER_PLAYER; i++) {
         const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-        spawnResFlyer(RES_EMOJI[r], panelEl, jitter, delay);
+        spawnResFlyer(RES_EMOJI[r], target, jitter, delay);
         delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
         count++;
       }

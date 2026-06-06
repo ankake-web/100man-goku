@@ -2099,3 +2099,54 @@ h1 {
   .turn-banner-dot { width: 11px; height: 11px; }
 }
 
+/* ============================================================
+   スマホ縦持ち専用: 盤面四隅のミニプレイヤーパネル（資源アニメの着地先）
+   通常のプレイヤーパネルは削除せず、縦持ち時の盤面上ミニ表示として追加する。
+   ============================================================ */
+.mini-panels {
+  display: none;            /* 既定は非表示。縦持ち×タッチのみ表示する */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;     /* 盤面タップ・建設候補の操作を邪魔しない */
+  z-index: 4;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .mini-panels { display: block; }
+}
+.mini-panel {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 44vw;          /* 上段2枚が重ならない幅に制限 */
+  padding: 3px 7px;
+  border-radius: 9px;
+  background: rgba(12,14,20,0.62);
+  border: 1px solid var(--mini-color, #888);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+  font-size: clamp(0.6rem, 3vw, 0.78rem);
+  line-height: 1.2;
+  white-space: nowrap;      /* VP・手札枚数は改行しない */
+  color: #fff;
+}
+.corner-tl { top: 5px;    left: 5px; }
+.corner-tr { top: 5px;    right: 5px; }
+.corner-bl { bottom: 5px; left: 5px; }
+.corner-br { bottom: 5px; right: 5px; }
+.mini-dot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.6); flex: 0 0 auto; }
+.mini-name {
+  font-weight: 700; min-width: 0; max-width: 9ch;   /* 長い名前は省略 */
+  overflow: hidden; text-overflow: ellipsis;
+}
+.mini-stat { color: #ffd700; font-weight: 700; flex: 0 0 auto; }
+.mini-badges { display: inline-flex; gap: 1px; flex: 0 0 auto; }
+.mini-badge { font-size: 0.9em; }
+/* 現手番は枠を強調、自分の手番はやさしく点滅して分かりやすく */
+.mini-panel.current { border-color: #fff; box-shadow: 0 0 8px var(--mini-color, #fff), 0 1px 4px rgba(0,0,0,0.5); }
+.mini-panel.mine { animation: miniMinePulse 1.7s ease-in-out infinite; }
+@keyframes miniMinePulse {
+  0%,100% { box-shadow: 0 0 6px var(--mini-color, #fff), 0 1px 4px rgba(0,0,0,0.5); }
+  50%     { box-shadow: 0 0 15px var(--mini-color, #fff), 0 1px 4px rgba(0,0,0,0.5); }
+}
+@media (prefers-reduced-motion: reduce) { .mini-panel.mine { animation: none; } }
+
