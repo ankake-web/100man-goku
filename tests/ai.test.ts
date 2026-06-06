@@ -463,3 +463,77 @@ describe('AI フルゲームシミュレーション', () => {
     expect(s.phase).toBe('GAME_OVER');
   });
 });
+
+// ============================================================
+// グループD: 進歩カードのプレイ & rng 注入（M4）
+// ============================================================
+
+describe('Group D: AI plays progress dev cards when stuck', () => {
+  // 開拓地1つ＋手詰まり手札＋指定カードを持つ normal CPU 状態を作る。
+  function stuckWithCard(card: DevCard, hand = makeHand()): GameState {
+    const base = makeGameState({
+      turnPhase: 'TRADE_BUILD',
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'normal', hand, devCards: [card] }),
+        player2: makePlayer('player2', { hand: makeHand({ ore: 3 }) }),
+      },
+    });
+    const vid = Object.keys(base.vertices)[0]!;
+    return {
+      ...base,
+      vertices: { ...base.vertices, [vid]: { ...base.vertices[vid]!, building: { type: 'settlement', playerId: 'player1' } } },
+    };
+  }
+
+  it('手詰まりの CPU は街道建設カードを使う（無料で道を引けるとき）', () => {
+    const s = stuckWithCard(makeDevCard('road_building', 0));
+    expect(chooseAction(s, 'player1')).toEqual({ type: 'PLAY_ROAD_BUILDING' });
+  });
+
+  it('豊作カードで都市に2枚以内で届くなら使い、不足資源を指定する', () => {
+    // 都市コスト grain2+ore3。grain2+ore1 所持 → ore が2枚不足。
+    const s = stuckWithCard(makeDevCard('year_of_plenty', 0), makeHand({ grain: 2, ore: 1 }));
+    const action = chooseAction(s, 'player1');
+    expect(action?.type).toBe('PLAY_YEAR_OF_PLENTY');
+    if (action?.type === 'PLAY_YEAR_OF_PLENTY') expect(action.resources).toEqual(['ore', 'ore']);
+  });
+
+  it('独占カードは目標に最も不足している資源を指定する', () => {
+    // 都市コスト grain2+ore3。grain2 のみ所持 → ore が最大不足。
+    const s = stuckWithCard(makeDevCard('monopoly', 0), makeHand({ grain: 2 }));
+    const action = chooseAction(s, 'player1');
+    expect(action?.type).toBe('PLAY_MONOPOLY');
+    if (action?.type === 'PLAY_MONOPOLY') expect(action.resource).toBe('ore');
+  });
+
+  it('そのターンに既に発展カードを使っていれば進歩カードは使わない（1ターン1枚）', () => {
+    const base = stuckWithCard(makeDevCard('road_building', 0));
+    const s: GameState = { ...base, devCardPlayedThisTurn: true };
+    expect(chooseAction(s, 'player1')?.type).not.toBe('PLAY_ROAD_BUILDING');
+  });
+
+  it('進歩カードを使う一手はエンジンに受理される（合法性）', () => {
+    const s = stuckWithCard(makeDevCard('year_of_plenty', 0), makeHand({ grain: 2, ore: 1 }));
+    const action = chooseAction(s, 'player1')!;
+    expect(() => applyAction(s, action, createRng(1))).not.toThrow();
+  });
+});
+
+describe('Group D: AI rng injection (M4)', () => {
+  function weakSetup(): GameState {
+    return makeGameState({
+      phase: 'SETUP_FORWARD', turnPhase: 'PRE_ROLL', setupSubPhase: 'PLACE_SETTLEMENT',
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'weak' }),
+        player2: makePlayer('player2'),
+      },
+    });
+  }
+
+  it('weak CPU の初期配置は注入シードで再現可能（同シード→同じ選択）', () => {
+    const a = chooseAction(weakSetup(), 'player1', { rng: createRng(123) });
+    const b = chooseAction(weakSetup(), 'player1', { rng: createRng(123) });
+    expect(a?.type).toBe('BUILD_SETTLEMENT');
+    expect(a).toEqual(b);
+  });
+});

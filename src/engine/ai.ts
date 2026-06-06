@@ -2,7 +2,7 @@
 // src/engine/ai.ts — AIプレイヤー（難易度対応）
 // ============================================================
 
-import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand } from '../types';
+import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
 import { canBuildRoad, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
@@ -106,14 +106,17 @@ export function findCpuTradeOpportunity(
 export interface AiOpts {
   /** true の場合、このターンのプレイヤー間交易提案をスキップ */
   skipPlayerTrade?: boolean;
+  /** 乱数生成器（テスト/LAN で注入可能。未指定は Math.random）。CPU判断を再現可能にする。 */
+  rng?: () => number;
 }
 
 export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Action | null {
   if (state.phase === 'GAME_OVER') return null;
+  const rng = opts?.rng ?? Math.random;
 
   if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
     if (state.playerOrder[state.currentPlayerIndex] !== pid) return null;
-    return chooseSetupAction(state, pid);
+    return chooseSetupAction(state, pid, rng);
   }
 
   if (state.phase !== 'MAIN') return null;
@@ -129,8 +132,8 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
 
   switch (state.turnPhase) {
     case 'PRE_ROLL':    return choosePreRollAction(state, pid);
-    case 'ROBBER':      return chooseRobberAction(state, pid);
-    case 'TRADE_BUILD': return chooseTradeBuildAction(state, pid, opts?.skipPlayerTrade ?? false);
+    case 'ROBBER':      return chooseRobberAction(state, pid, rng);
+    case 'TRADE_BUILD': return chooseTradeBuildAction(state, pid, opts?.skipPlayerTrade ?? false, rng);
     default:            return null;
   }
 }
@@ -139,7 +142,7 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
 // セットアップフェーズ
 // ============================================================
 
-function chooseSetupAction(state: GameState, pid: PlayerId): Action | null {
+function chooseSetupAction(state: GameState, pid: PlayerId, rng: () => number): Action | null {
   const difficulty = getDifficulty(state, pid);
 
   if (state.setupSubPhase === 'PLACE_SETTLEMENT') {
@@ -149,7 +152,7 @@ function chooseSetupAction(state: GameState, pid: PlayerId): Action | null {
     if (valid.length === 0) return null;
 
     const chosen = difficulty === 'weak'
-      ? valid[Math.floor(Math.random() * valid.length)]!
+      ? valid[Math.floor(rng() * valid.length)]!
       : valid.reduce((a, b) =>
           vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b,
         );
@@ -165,7 +168,7 @@ function chooseSetupAction(state: GameState, pid: PlayerId): Action | null {
     return {
       type: 'BUILD_ROAD',
       edgeId: difficulty === 'weak'
-        ? valid[Math.floor(Math.random() * valid.length)]!
+        ? valid[Math.floor(rng() * valid.length)]!
         : valid[0]!,
     };
   }
@@ -224,7 +227,7 @@ function chooseDiscard(state: GameState, pid: PlayerId): Action | null {
 // ROBBER フェーズ
 // ============================================================
 
-function chooseRobberAction(state: GameState, pid: PlayerId): Action {
+function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number): Action {
   const difficulty = getDifficulty(state, pid);
   const currentRobberTileId = Object.values(state.tiles).find(t => t.hasRobber)?.id;
 
@@ -236,7 +239,7 @@ function chooseRobberAction(state: GameState, pid: PlayerId): Action {
   if (difficulty === 'weak') {
     // 弱: 候補からランダム。候補がなければ現在地以外の任意タイル。
     const tileId = candidates.length > 0
-      ? candidates[Math.floor(Math.random() * candidates.length)]!
+      ? candidates[Math.floor(rng() * candidates.length)]!
       : fallbackTileId(state, currentRobberTileId);
     return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
   }
@@ -283,7 +286,7 @@ function chooseRobberAction(state: GameState, pid: PlayerId): Action {
 // TRADE_BUILD フェーズ
 // ============================================================
 
-function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade = false): Action {
+function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
   // 街道建設カード使用中: 無料道を置く（置けなければ効果完了）
   if (state.roadBuildingRoadsRemaining > 0) {
     const roadEdge = Object.keys(state.edges).find(eid => canBuildRoad(state, pid, eid));
@@ -292,14 +295,14 @@ function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade
   }
 
   const difficulty = getDifficulty(state, pid);
-  if (difficulty === 'weak') return chooseTradeBuildWeak(state, pid);
-  if (difficulty === 'strong') return chooseTradeBuildStrong(state, pid, skipPlayerTrade);
-  return chooseTradeBuildNormal(state, pid, skipPlayerTrade);
+  if (difficulty === 'weak') return chooseTradeBuildWeak(state, pid, rng);
+  if (difficulty === 'strong') return chooseTradeBuildStrong(state, pid, skipPlayerTrade, rng);
+  return chooseTradeBuildNormal(state, pid, skipPlayerTrade, rng);
 }
 
 // ---- 弱: 可能なアクションからランダム ----
 
-function chooseTradeBuildWeak(state: GameState, pid: PlayerId): Action {
+function chooseTradeBuildWeak(state: GameState, pid: PlayerId, rng: () => number): Action {
   const player = state.players[pid]!;
   const possible: Action[] = [];
 
@@ -322,7 +325,7 @@ function chooseTradeBuildWeak(state: GameState, pid: PlayerId): Action {
   }
 
   if (possible.length > 0) {
-    return possible[Math.floor(Math.random() * possible.length)]!;
+    return possible[Math.floor(rng() * possible.length)]!;
   }
 
   // 資源不足で建設不可の場合: バンク交易を試みる（ゲームの収束を保証）
@@ -384,7 +387,76 @@ function victoryPush(state: GameState, pid: PlayerId): Action | null {
   return null;
 }
 
-function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade = false): Action {
+// ---- 進歩カード（豊作/独占/街道建設）の使用判断 ----
+// 1ターン1枚制限・購入ターン制限を守る。建設で手詰まりのとき局面を進めるために使う。
+
+function playableDev(state: GameState, pid: PlayerId, type: DevCardType): boolean {
+  if (state.devCardPlayedThisTurn) return false;
+  const p = state.players[pid];
+  return !!p?.devCards.some(c => c.type === type && c.purchasedOnTurn < state.globalTurnNumber);
+}
+
+// pid が次に狙う建設目標のコスト一覧（都市→開拓地→発展カードの優先順）。
+function goalCosts(state: GameState, pid: PlayerId): ResourceHand[] {
+  const p = state.players[pid]!;
+  const goals: ResourceHand[] = [];
+  const hasUpgradable = Object.values(state.vertices).some(
+    v => v.building?.type === 'settlement' && v.building.playerId === pid,
+  );
+  if (hasUpgradable && p.remainingCities > 0) goals.push(BUILD_COSTS.city as ResourceHand);
+  if (p.remainingSettlements > 0) goals.push(BUILD_COSTS.settlement as ResourceHand);
+  goals.push(BUILD_COSTS.dev_card as ResourceHand);
+  return goals;
+}
+
+// 手持ちの進歩カードのうち局面を前進させられる一手を返す（無ければ null）。
+// 相手の手札は覗かず、自分の建設目標に基づいて判断する（findCpuTradeOpportunity と同方針）。
+function chooseProgressCardAction(state: GameState, pid: PlayerId): Action | null {
+  if (state.devCardPlayedThisTurn) return null;
+  const player = state.players[pid]!;
+
+  // 街道建設: 道駒が残り、無料で置ける辺があるなら使う（無料2本・最長交易路狙い）。
+  // 判定は「無料モードを模した state」で行う（通常の canBuildRoad は資源コストを要求し、
+  // 手詰まり時に false になってしまうため）。
+  if (playableDev(state, pid, 'road_building') && player.remainingRoads > 0) {
+    const freeState: GameState = { ...state, roadBuildingRoadsRemaining: 1 };
+    if (Object.keys(state.edges).some(eid => canBuildRoad(freeState, pid, eid))) {
+      return { type: 'PLAY_ROAD_BUILDING' };
+    }
+  }
+
+  // 豊作: あと2枚以内で目標(都市/開拓地/発展)に届くなら不足分を取得する。
+  if (playableDev(state, pid, 'year_of_plenty')) {
+    for (const cost of goalCosts(state, pid)) {
+      const need: ResourceType[] = [];
+      for (const r of RESOURCE_TYPES) {
+        const miss = (cost[r] ?? 0) - player.hand[r];
+        for (let i = 0; i < miss; i++) need.push(r);
+      }
+      if (need.length >= 1 && need.length <= 2) {
+        const pick: [ResourceType, ResourceType] = need.length === 2 ? [need[0]!, need[1]!] : [need[0]!, need[0]!];
+        return { type: 'PLAY_YEAR_OF_PLENTY', resources: pick };
+      }
+    }
+  }
+
+  // 独占: 目標に最も不足している資源を集める（相手手札は覗かない）。
+  if (playableDev(state, pid, 'monopoly')) {
+    for (const cost of goalCosts(state, pid)) {
+      let bestR: ResourceType | null = null;
+      let bestMiss = 0;
+      for (const r of RESOURCE_TYPES) {
+        const miss = (cost[r] ?? 0) - player.hand[r];
+        if (miss > bestMiss) { bestMiss = miss; bestR = r; }
+      }
+      if (bestR) return { type: 'PLAY_MONOPOLY', resource: bestR };
+    }
+  }
+
+  return null;
+}
+
+function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
   const player = state.players[pid]!;
 
   // 勝利が近いなら勝利に直結する手を最優先
@@ -418,8 +490,12 @@ function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade
     }
   }
 
+  // 建設で手詰まりのとき、手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
+  const progress = chooseProgressCardAction(state, pid);
+  if (progress) return progress;
+
   // バンク交易より先に人間への交易提案を試みる（テンポ重視で控えめな頻度）
-  if (!skipPlayerTrade && Math.random() < CPU_TRADE_OFFER_CHANCE.normal) {
+  if (!skipPlayerTrade && rng() < CPU_TRADE_OFFER_CHANCE.normal) {
     const opp = findCpuTradeOpportunity(state, pid);
     if (opp) {
       const giveHand: Partial<ResourceHand> = { [opp.give]: 1 };
@@ -436,7 +512,7 @@ function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade
 
 // ---- 強: VP効率最大化 ----
 
-function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade = false): Action {
+function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
   const player = state.players[pid]!;
 
   // 0. 勝利が近いなら勝利に直結する手を最優先（建設 or バンク交易で資源補充）
@@ -462,7 +538,7 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   }
 
   // 3. 人間への交易提案（バンク交易より優先・テンポ重視で控えめ）
-  if (!skipPlayerTrade && Math.random() < CPU_TRADE_OFFER_CHANCE.strong) {
+  if (!skipPlayerTrade && rng() < CPU_TRADE_OFFER_CHANCE.strong) {
     const opp = findCpuTradeOpportunity(state, pid);
     if (opp) {
       const giveHand: Partial<ResourceHand> = { [opp.give]: 1 };
@@ -488,7 +564,11 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
     return { type: 'BUY_DEV_CARD' };
   }
 
-  // 7. 余剰を貯め込まない: 余った資源をバンク交易で発展カード等に変換（建設可能化）
+  // 7. 手詰まりなら手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
+  const progress = chooseProgressCardAction(state, pid);
+  if (progress) return progress;
+
+  // 8. 余剰を貯め込まない: 余った資源をバンク交易で発展カード等に変換（建設可能化）
   const useSurplus = tryBankTrade(state, pid);
   if (useSurplus) return useSurplus;
 

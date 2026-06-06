@@ -64,7 +64,7 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
       isCpu(state, p) && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8,
     );
     if (dpid) {
-      const action = chooseAction(state, dpid);
+      const action = chooseAction(state, dpid, { rng });
       if (action) return { pid: dpid, action };
     }
     return null; // 人間の捨て札待ち
@@ -74,7 +74,7 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
   const cur = state.playerOrder[state.currentPlayerIndex];
   if (cur && isCpu(state, cur)) {
     // CPU は自分からプレイヤー間交易を提案しない（スタール回避）
-    const action = chooseAction(state, cur, { skipPlayerTrade: true });
+    const action = chooseAction(state, cur, { skipPlayerTrade: true, rng });
     if (action) return { pid: cur, action };
     // フォールバック: 何も選べない場合でも進行させる
     return { pid: cur, action: cpuFallbackAction(state, cur) };
