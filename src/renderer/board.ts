@@ -154,22 +154,38 @@ function renderTile(
     g.appendChild(dots);
   }
 
-  // 強盗コマ（どろぼう風アイコン）。数字チップ(中央)と丸かぶりしないよう少し下にずらす。
+  // 強盗コマ: フード付きの黒いコマ（影＋不気味な光る目）。数字チップと丸かぶりしないよう下にずらす。
   if (tile.hasRobber) {
     const ry = cy + ROBBER_DY;
+    const touch = isTouchDevice();
+    const rs = touch ? 1.15 : 1.0;                 // 盗賊スケール
     const rg = svgEl('g');
     rg.classList.add('robber');
-    const bg = svgEl('circle');
-    setAttrs(bg, { cx, cy: ry, r: 14, fill: 'rgba(18,18,24,0.9)', stroke: '#000', 'stroke-width': 1.5 });
-    rg.appendChild(bg);
-    const icon = svgEl('text');
-    setAttrs(icon, {
-      x: cx, y: ry + 1,
-      'font-size': 18, 'text-anchor': 'middle', 'dominant-baseline': 'central',
-      'pointer-events': 'none',
-    });
-    icon.textContent = '🦹';
-    rg.appendChild(icon);
+    const P = (dx: number, dy: number): string => `${(cx + dx * rs).toFixed(1)},${(ry + dy * rs).toFixed(1)}`;
+
+    // 影
+    const shadow = svgEl('ellipse');
+    setAttrs(shadow, { cx, cy: ry + 10 * rs, rx: 8.5 * rs, ry: 2.4 * rs, fill: 'rgba(0,0,0,0.38)' });
+    rg.appendChild(shadow);
+
+    // フード付きの黒マント（雫型: 頭の丸み→裾が広がる）
+    const cloak = svgEl('path');
+    cloak.setAttribute('d',
+      `M ${P(-7.5, 9)} Q ${P(-8.5, -2)} ${P(-4, -7)} Q ${P(0, -10.5)} ${P(4, -7)} Q ${P(8.5, -2)} ${P(7.5, 9)} Z`);
+    setAttrs(cloak, { fill: '#15151c', stroke: '#000', 'stroke-width': 1.6 * rs, 'stroke-linejoin': 'round' });
+    rg.appendChild(cloak);
+
+    // フード内側の影
+    const face = svgEl('ellipse');
+    setAttrs(face, { cx, cy: ry - 2.5 * rs, rx: 3.8 * rs, ry: 4.4 * rs, fill: 'rgba(0,0,0,0.6)' });
+    rg.appendChild(face);
+
+    // 不気味に光る目（2点）
+    for (const ex of [-1.8, 1.8]) {
+      const eye = svgEl('circle');
+      setAttrs(eye, { cx: cx + ex * rs, cy: ry - 2.5 * rs, r: 0.95 * rs, fill: '#ffcf4d' });
+      rg.appendChild(eye);
+    }
     g.appendChild(rg);
   }
 
@@ -327,15 +343,23 @@ function renderVertices(
       const P = (dx: number, dy: number): string => `${(vx + dx * bs).toFixed(1)},${(vy + dy * bs).toFixed(1)}`;
 
       if (vertex.building.type === 'settlement') {
-        // 開拓地：小さな家（壁 + 三角屋根）。都市よりひと回り小さい。
+        // 開拓地：小さくて分かりやすい家（影 + 丸みのある壁 + 三角屋根 + ドア）。都市より小さい。
+        const shadow = svgEl('ellipse');
+        setAttrs(shadow, { cx: vx, cy: vy + 6.3 * bs, rx: 7.5 * bs, ry: 2 * bs, fill: 'rgba(0,0,0,0.28)' });
+        vg.appendChild(shadow);
         const wall = svgEl('rect');
-        setAttrs(wall, { x: vx - 6 * bs, y: vy - 3 * bs, width: 12 * bs, height: 8 * bs,
-          fill: color, stroke, 'stroke-width': sw });
-        const roof = svgEl('polygon');
-        roof.setAttribute('points', `${P(0, -11)} ${P(-8, -2)} ${P(8, -2)}`);
-        setAttrs(roof, { fill: color, stroke, 'stroke-width': sw });
+        setAttrs(wall, { x: vx - 6.5 * bs, y: vy - 2.5 * bs, width: 13 * bs, height: 8.5 * bs, rx: 1.5 * bs,
+          fill: color, stroke, 'stroke-width': sw, 'paint-order': 'stroke' });
         vg.appendChild(wall);
+        const roof = svgEl('polygon');
+        roof.setAttribute('points', `${P(0, -11)} ${P(-8.5, -2)} ${P(8.5, -2)}`);
+        setAttrs(roof, { fill: color, stroke, 'stroke-width': sw, 'stroke-linejoin': 'round', 'paint-order': 'stroke' });
         vg.appendChild(roof);
+        // ドア（家らしさ＋視認性）
+        const door = svgEl('rect');
+        setAttrs(door, { x: vx - 1.8 * bs, y: vy + 1.2 * bs, width: 3.6 * bs, height: 4.8 * bs, rx: 0.8 * bs,
+          fill: 'rgba(0,0,0,0.4)' });
+        vg.appendChild(door);
       } else {
         // 都市：開拓地より明確に大きい「城」型。
         //   影 → 横長の城壁 → 城壁上部の鋸歯(銃眼) → 金色の王冠。
@@ -362,6 +386,14 @@ function renderVertices(
         ].join(' '));
         setAttrs(merlons, { fill: color, stroke: cityStroke, 'stroke-width': citySw, 'paint-order': 'stroke' });
         vg.appendChild(merlons);
+
+        // 窓（建物らしさ）。城壁に小さな明かり取りを3つ並べる。
+        for (const wx of [-6.5, 0, 6.5]) {
+          const win = svgEl('rect');
+          setAttrs(win, { x: vx + (wx - 1.2) * bs, y: vy + 0.8 * bs, width: 2.4 * bs, height: 4 * bs, rx: 0.6 * bs,
+            fill: 'rgba(0,0,0,0.45)' });
+          vg.appendChild(win);
+        }
 
         // 金色の王冠（都市の識別マーク）。プレイヤーカラーとは別色で「都市」を一目で示す。
         const crown = svgEl('polygon');
@@ -422,10 +454,19 @@ export function renderBoard(
   const { ox, oy } = boardOffset(state, vbx + W / 2, vby + H / 2);
   const size = HEX_SIZE;
 
-  // --- 海背景（viewBox 全体を覆う） ---
+  // --- 海背景（viewBox 全体を覆う。スケール対象外＝水色の海・余白・外枠は不変） ---
   const sea = svgEl('rect');
   setAttrs(sea, { x: vbx, y: vby, width: W, height: H, fill: '#1a6ea8', rx: 12 });
   svgEl_.appendChild(sea);
+
+  // タッチ端末では盤面コンテンツ（タイル/数字/建物/港/盗賊）だけを viewBox 中心まわりに
+  // 少しだけ拡大して見やすくする。海背景(sea)は対象外なので水色の余白・外枠は不変。
+  const content = svgEl('g');
+  const boardZoom = isTouchDevice() ? 1.06 : 1.0;
+  if (boardZoom !== 1) {
+    const cx = vbx + W / 2, cy = vby + H / 2;
+    content.setAttribute('transform', `translate(${cx} ${cy}) scale(${boardZoom}) translate(${-cx} ${-cy})`);
+  }
 
   // --- タイル（最下層） ---
   const tileGroup = svgEl('g');
@@ -433,10 +474,10 @@ export function renderBoard(
   for (const tile of Object.values(state.tiles)) {
     tileGroup.appendChild(renderTile(tile, ox, oy, size, opts));
   }
-  svgEl_.appendChild(tileGroup);
+  content.appendChild(tileGroup);
 
   // --- 辺（道）。港ラベルより先に描いて、港表示を道より前面にする ---
-  svgEl_.appendChild(renderEdges(state, ox, oy, opts));
+  content.appendChild(renderEdges(state, ox, oy, opts));
 
   // --- 港（道より後＝前面に描画して、2:1/3:1 や資源アイコンを読めるようにする） ---
   const harborGroup = svgEl('g');
@@ -444,8 +485,10 @@ export function renderBoard(
   for (const harbor of state.harbors) {
     harborGroup.appendChild(renderHarbor(harbor, state, ox, oy));
   }
-  svgEl_.appendChild(harborGroup);
+  content.appendChild(harborGroup);
 
   // --- 頂点（建物。最前面） ---
-  svgEl_.appendChild(renderVertices(state, ox, oy, opts));
+  content.appendChild(renderVertices(state, ox, oy, opts));
+
+  svgEl_.appendChild(content);
 }

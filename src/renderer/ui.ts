@@ -63,7 +63,7 @@ const DEV_CARD_CHIP_NAMES: Record<string, string> = {
   road_building:   '🛤道路建設',
   year_of_plenty:  '🌾年の豊穣',
   monopoly:        '🏛独占',
-  victory_point:   '★VP',
+  victory_point:   '★',
 };
 
 // ============================================================
@@ -1136,7 +1136,7 @@ export function renderUI(
   infoRow.appendChild(nameEl);
   const vpEl = el('span', 'turn-vp');
   // CPU の内部VP（VPカード込み）は他プレイヤーには非公開
-  vpEl.textContent = `★ ${player.type === 'human' ? calcVP(state, pid) : calcPublicVP(state, pid)}点`;
+  vpEl.textContent = `★${player.type === 'human' ? calcVP(state, pid) : calcPublicVP(state, pid)}`;
   infoRow.appendChild(vpEl);
   turnPanel.appendChild(infoRow);
 
@@ -1300,7 +1300,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     const name = el('span', 'mini-name');
     name.textContent = p.name;
     const stat = el('span', 'mini-stat');
-    stat.textContent = `${vp}VP 🃏${handTotal}`;
+    stat.textContent = `★${vp} 🃏${handTotal}`;
     panel.append(dot, name, stat);
 
     if (p.hasLongestRoad || p.hasLargestArmy) {
@@ -1404,7 +1404,7 @@ function buildPlayerPanel(
     if (showVpCards) {
       const item = el('span', 'vp-item');
       item.textContent = `★×${bd.vpCards}`;
-      item.title = `VPカード ${bd.vpCards}VP`;
+      item.title = `★カード ${bd.vpCards}点`;
       vpRow.appendChild(item);
     }
     div.appendChild(vpRow);
@@ -1470,7 +1470,7 @@ function buildPlayerPanel(
         const chipCls = isVP ? 'vp' : playable > 0 ? 'playable' : 'new-card';
         const chip = el('span', `dev-card-chip ${chipCls}`);
         chip.textContent = `${DEV_CARD_CHIP_NAMES[type] ?? type}${total > 1 ? ` ×${total}` : ''}`;
-        chip.title = isVP ? 'VP カード（常時効果）'
+        chip.title = isVP ? '勝利点カード（常時効果）'
           : playable > 0 ? '使用可能（PRE_ROLLに使用）'
           : '今ターン購入（次ターンから使用可）';
         devPanel.appendChild(chip);

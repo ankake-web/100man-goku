@@ -1642,7 +1642,7 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
 
   const vpEl = document.createElement('div');
   vpEl.className = 'victory-vp';
-  vpEl.textContent = `★ ${vp}点 到達`;
+  vpEl.textContent = `★${vp} 到達`;
   modal.appendChild(vpEl);
 
   const reasonEl = document.createElement('div');
@@ -1979,7 +1979,7 @@ function popVpGain(pid: PlayerId, delta: number): void {
   const rect = panelEl.getBoundingClientRect();
   const pop = document.createElement('div');
   pop.className = 'vp-pop';
-  pop.textContent = `+${delta}VP`;
+  pop.textContent = `+${delta}★`;
   pop.style.left = `${rect.left + rect.width / 2}px`;
   pop.style.top = `${rect.top + 8}px`;
   document.body.appendChild(pop);
