@@ -7,6 +7,7 @@ import { applyAction, buildDevDeck } from '../src/engine/game';
 import { makeHand, BUILD_COSTS, LARGEST_ARMY_MIN } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
 import type { GameState, EdgeId, VertexId, DevCard, PlayerId } from '../src/types';
+import { findPendingDiscarder } from '../src/engine/robber';
 
 // ============================================================
 // テストユーティリティ
@@ -191,15 +192,24 @@ describe('MOVE_ROBBER', () => {
     expect(next.turnPhase).toBe('TRADE_BUILD');
   });
 
-  it('steals resource from target player', () => {
-    const s = makeGameState({
+  it('steals resource from target player (adjacent to the robber tile)', () => {
+    const base = makeGameState({
       turnPhase: 'ROBBER',
       players: {
         player1: makePlayer('player1', { hand: makeHand() }),
         player2: makePlayer('player2', { hand: makeHand({ wood: 2 }) }),
       },
     });
-    const newTile = Object.values(s.tiles).find(t => !t.hasRobber)!;
+    const newTile = Object.values(base.tiles).find(t => !t.hasRobber)!;
+    // 盗む相手は移動先タイルに隣接していなければならない → player2 の建物を隣接頂点に置く
+    const vid = base.tileToVertices[newTile.id]![0]!;
+    const s: GameState = {
+      ...base,
+      vertices: {
+        ...base.vertices,
+        [vid]: { ...base.vertices[vid]!, building: { type: 'settlement', playerId: 'player2' } },
+      },
+    };
     const next = applyAction(
       s,
       { type: 'MOVE_ROBBER', tileId: newTile.id, stealFromPlayerId: 'player2' },
@@ -1240,5 +1250,176 @@ describe('turnPhase validation — BUILD_ROAD with road building card', () => {
       s = applyAction(s, { type: 'BUILD_ROAD', edgeId: e2 });
       expect(s.roadBuildingRoadsRemaining).toBe(0);
     }
+  });
+});
+
+// ============================================================
+// グループA: エンジン側ルール強制ガード（不正操作の拒否）
+// ============================================================
+
+describe('Group A: engine rule-enforcement guards', () => {
+  // --- MOVE_ROBBER: フェーズ/同一タイル/隣接性 ---
+  it('MOVE_ROBBER は PRE_ROLL では拒否（無料・反復の盗賊移動を防止 / C1）', () => {
+    const s = makeGameState({ turnPhase: 'PRE_ROLL', diceRolledThisTurn: false });
+    const target = Object.values(s.tiles).find(t => !t.hasRobber)!;
+    expect(() => applyAction(s, { type: 'MOVE_ROBBER', tileId: target.id, stealFromPlayerId: null }))
+      .toThrow('not in ROBBER phase');
+  });
+
+  it('MOVE_ROBBER は TRADE_BUILD でも拒否（C1）', () => {
+    const s = makeGameState({ turnPhase: 'TRADE_BUILD' });
+    const target = Object.values(s.tiles).find(t => !t.hasRobber)!;
+    expect(() => applyAction(s, { type: 'MOVE_ROBBER', tileId: target.id, stealFromPlayerId: null }))
+      .toThrow('not in ROBBER phase');
+  });
+
+  it('MOVE_ROBBER は現在地と同じタイルへの移動を拒否（必ず別ヘクス / Low）', () => {
+    const s = makeGameState({ turnPhase: 'ROBBER' });
+    const robberTile = Object.values(s.tiles).find(t => t.hasRobber)!;
+    expect(() => applyAction(s, { type: 'MOVE_ROBBER', tileId: robberTile.id, stealFromPlayerId: null }))
+      .toThrow('different tile');
+  });
+
+  it('MOVE_ROBBER は移動先に隣接しない相手からの強奪を拒否（H2）', () => {
+    // makeGameState は建物ゼロなので player2 はどのタイルにも隣接しない
+    const s = makeGameState({
+      turnPhase: 'ROBBER',
+      players: {
+        player1: makePlayer('player1', { hand: makeHand() }),
+        player2: makePlayer('player2', { hand: makeHand({ wood: 3 }) }),
+      },
+    });
+    const target = Object.values(s.tiles).find(t => !t.hasRobber)!;
+    expect(() => applyAction(s, { type: 'MOVE_ROBBER', tileId: target.id, stealFromPlayerId: 'player2' }))
+      .toThrow('not adjacent');
+  });
+
+  // --- END_TURN: フェーズガード ---
+  it('END_TURN は PRE_ROLL では拒否（ダイス飛ばしを防止 / H4）', () => {
+    const s = makeGameState({ turnPhase: 'PRE_ROLL', diceRolledThisTurn: false });
+    expect(() => applyAction(s, { type: 'END_TURN' })).toThrow('MAIN TRADE_BUILD');
+  });
+
+  it('END_TURN は DISCARD 中は拒否（7の捨て札逃れを防止 / H4）', () => {
+    const s = makeGameState({ turnPhase: 'DISCARD' });
+    expect(() => applyAction(s, { type: 'END_TURN' })).toThrow('MAIN TRADE_BUILD');
+  });
+
+  it('END_TURN は SETUP 中は拒否（蛇行順の破壊を防止 / H4）', () => {
+    const s = makeGameState({ phase: 'SETUP_FORWARD', turnPhase: 'PRE_ROLL', setupSubPhase: 'PLACE_SETTLEMENT' });
+    expect(() => applyAction(s, { type: 'END_TURN' })).toThrow('MAIN TRADE_BUILD');
+  });
+
+  // --- DECLARE_VICTORY: turnPhase ガード ---
+  it('DECLARE_VICTORY は TRADE_BUILD 以外では十分なVPでも拒否（Low）', () => {
+    const vpCards = Array.from({ length: 10 }, (_, i) => ({ id: `vp${i}`, type: 'victory_point' as const, purchasedOnTurn: 0 }));
+    const s = makeGameState({
+      turnPhase: 'PRE_ROLL',
+      players: { player1: makePlayer('player1', { devCards: vpCards }), player2: makePlayer('player2') },
+    });
+    expect(() => applyAction(s, { type: 'DECLARE_VICTORY' })).toThrow('MAIN TRADE_BUILD');
+  });
+
+  // --- DISCARD_RESOURCES: 枚数/所持/フェーズ検証（M3 / Low） ---
+  function discardState() {
+    return makeGameState({
+      turnPhase: 'DISCARD',
+      players: { player1: makePlayer('player1', { hand: makeHand({ wood: 8 }) }), player2: makePlayer('player2') },
+    });
+  }
+  it('DISCARD_RESOURCES は過少な枚数を拒否', () => {
+    expect(() => applyAction(discardState(), { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 3 } }))
+      .toThrow('floor(hand/2)');
+  });
+  it('DISCARD_RESOURCES は過剰な枚数を拒否', () => {
+    expect(() => applyAction(discardState(), { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 5 } }))
+      .toThrow('floor(hand/2)');
+  });
+  it('DISCARD_RESOURCES は所持していない資源を拒否', () => {
+    expect(() => applyAction(discardState(), { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { brick: 4 } }))
+      .toThrow('floor(hand/2)');
+  });
+  it('DISCARD_RESOURCES は DISCARD フェーズ外を拒否', () => {
+    const s = makeGameState({ turnPhase: 'TRADE_BUILD', players: { player1: makePlayer('player1', { hand: makeHand({ wood: 8 }) }), player2: makePlayer('player2') } });
+    expect(() => applyAction(s, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 4 } }))
+      .toThrow('not in DISCARD phase');
+  });
+  it('DISCARD_RESOURCES はちょうど floor(hand/2) を許可（回帰）', () => {
+    const next = applyAction(discardState(), { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 4 } });
+    expect(next.players.player1!.hand.wood).toBe(4);
+  });
+
+  // --- CONFIRM_TRADE: 承諾していない/対象外への成立強制を防ぐ（H3） ---
+  function offeredState(targets: PlayerId[] = ['player2']) {
+    let s = makeGameState({
+      turnPhase: 'TRADE_BUILD',
+      players: {
+        player1: makePlayer('player1', { hand: makeHand({ wood: 1 }) }),
+        player2: makePlayer('player2', { hand: makeHand({ brick: 1 }) }),
+        player3: makePlayer('player3', { hand: makeHand({ brick: 1 }) }),
+      },
+      playerOrder: ['player1', 'player2', 'player3'],
+    });
+    s = applyAction(s, { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: targets });
+    return s;
+  }
+  it('CONFIRM_TRADE は REJECT した相手には成立せず TRADE_CANCELLED（資源不変 / H3）', () => {
+    let s = offeredState();
+    s = applyAction(s, { type: 'RESPOND_TRADE', response: { playerId: 'player2', status: 'REJECT' } });
+    const after = applyAction(s, { type: 'CONFIRM_TRADE', responderId: 'player2' });
+    expect(after.pendingTrade?.state).toBe('TRADE_CANCELLED');
+    expect(after.players.player1!.hand.wood).toBe(1);
+    expect(after.players.player2!.hand.brick).toBe(1);
+  });
+  it('CONFIRM_TRADE は未応答の相手には成立せず TRADE_CANCELLED（H3）', () => {
+    const s = offeredState();
+    const after = applyAction(s, { type: 'CONFIRM_TRADE', responderId: 'player2' });
+    expect(after.pendingTrade?.state).toBe('TRADE_CANCELLED');
+    expect(after.players.player1!.hand.wood).toBe(1);
+  });
+  it('CONFIRM_TRADE は交易対象外の相手には成立せず TRADE_CANCELLED（H3）', () => {
+    let s = offeredState(['player2']);                 // 対象は player2 のみ
+    s = applyAction(s, { type: 'RESPOND_TRADE', response: { playerId: 'player3', status: 'ACCEPT' } });
+    const after = applyAction(s, { type: 'CONFIRM_TRADE', responderId: 'player3' }); // 対象外
+    expect(after.pendingTrade?.state).toBe('TRADE_CANCELLED');
+    expect(after.players.player3!.hand.brick).toBe(1);
+  });
+});
+
+// ============================================================
+// グループC: 捨て札の二重捨て防止（M2 回帰）
+// ============================================================
+
+describe('Group C: discard double-discard prevention (M2)', () => {
+  it('findPendingDiscarder は捨て済みプレイヤーを除外して次の対象を返す', () => {
+    const s = makeGameState({
+      turnPhase: 'DISCARD',
+      discardedThisRound: ['player1'],
+      players: {
+        player1: makePlayer('player1', { hand: makeHand({ wood: 8 }) }), // 8枚だが捨て済み
+        player2: makePlayer('player2', { hand: makeHand({ brick: 10 }) }),
+      },
+    });
+    expect(findPendingDiscarder(s)).toBe('player2');               // player1 は除外される
+    const done: GameState = { ...s, discardedThisRound: ['player1', 'player2'] };
+    expect(findPendingDiscarder(done)).toBeUndefined();            // 全員済みなら対象なし
+  });
+
+  it('同一プレイヤーの二重捨てをエンジンが拒否する（捨てて8枚残っても再要求を弾く）', () => {
+    let s = makeGameState({
+      turnPhase: 'DISCARD',
+      players: {
+        player1: makePlayer('player1', { hand: makeHand({ wood: 16 }) }),
+        player2: makePlayer('player2', { hand: makeHand({ brick: 10 }) }),
+      },
+    });
+    // player1 が floor(16/2)=8 枚捨てる → 残8枚だが「捨て済み」
+    s = applyAction(s, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 8 } });
+    expect(s.turnPhase).toBe('DISCARD');           // player2 がまだ未捨て → DISCARD 継続
+    expect(s.discardedThisRound).toContain('player1');
+    expect(findPendingDiscarder(s)).toBe('player2'); // 再プロンプト対象は player2 のみ
+    // player1 を再度捨てさせようとすると拒否される（余分なカード喪失の防止）
+    expect(() => applyAction(s, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 4 } }))
+      .toThrow('already discarded');
   });
 });

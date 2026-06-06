@@ -549,8 +549,11 @@ describe('プレイヤー順が初期配置順・ターン順に反映される'
     expect(s.playerOrder[s.currentPlayerIndex]).toBe('player2');
     s = applyAction(s, { type: 'END_TURN' });
     expect(s.playerOrder[s.currentPlayerIndex]).toBe('player3');
+    // END_TURN は MAIN/TRADE_BUILD でのみ許可されるため、手番順検証用に再び TRADE_BUILD へ戻す
+    s = { ...s, turnPhase: 'TRADE_BUILD' };
     s = applyAction(s, { type: 'END_TURN' });
     expect(s.playerOrder[s.currentPlayerIndex]).toBe('player1');
+    s = { ...s, turnPhase: 'TRADE_BUILD' };
     s = applyAction(s, { type: 'END_TURN' });
     // 一巡して先頭へ
     expect(s.playerOrder[s.currentPlayerIndex]).toBe('player2');

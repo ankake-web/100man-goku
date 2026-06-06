@@ -567,3 +567,44 @@ describe('Secrecy regression: discard / robber steal do not leak contents', () =
     expect(RESOURCE_TYPES.reduce((a, r) => a + (third.players.player2?.hand[r] ?? 0), 0)).toBe(0);
   });
 });
+
+// ============================================================
+// グループA: LAN 権威パスでの不正操作拒否（エンジンガードがサーバ経路を守る）
+// ============================================================
+
+describe('Group A: LAN rejects illegal actions via the authoritative engine', () => {
+  it('MOVE_ROBBER in PRE_ROLL is rejected — no free robber/steal over LAN (C1)', () => {
+    const base = tradeReadyState({}, { wood: 3 });
+    const preRoll: GameState = { ...base, turnPhase: 'PRE_ROLL', diceRolledThisTurn: false };
+    const target = Object.values(preRoll.tiles).find(t => !t.hasRobber)!;
+    const after = fullServerApply(preRoll, 'player1', { type: 'MOVE_ROBBER', tileId: target.id, stealFromPlayerId: 'player2' }, createRng(1));
+    expect(after.turnPhase).toBe('PRE_ROLL');          // フェーズ不変
+    expect(after.players.player2!.hand.wood).toBe(3);  // 強奪されていない
+  });
+
+  it('MOVE_ROBBER stealing from a non-adjacent player is rejected over LAN (H2)', () => {
+    const base = tradeReadyState({}, { wood: 3 });
+    const robberId = Object.keys(base.tiles).find(t => base.tiles[t]!.hasRobber)!;
+    const target = Object.keys(base.tiles).find(t => t !== robberId && base.tiles[t]!.type !== 'desert')!;
+    const s: GameState = { ...base, turnPhase: 'ROBBER', diceRolledThisTurn: true };
+    const after = fullServerApply(s, 'player1', { type: 'MOVE_ROBBER', tileId: target, stealFromPlayerId: 'player2' }, createRng(1));
+    expect(after.players.player2!.hand.wood).toBe(3);  // 隣接していないので奪えない
+  });
+
+  it('END_TURN that skips the dice roll is rejected over LAN (H4)', () => {
+    const base = tradeReadyState({}, {});
+    const preRoll: GameState = { ...base, turnPhase: 'PRE_ROLL', diceRolledThisTurn: false };
+    const after = fullServerApply(preRoll, 'player1', { type: 'END_TURN' }, createRng(1));
+    expect(after.turnPhase).toBe('PRE_ROLL');
+    expect(after.currentPlayerIndex).toBe(preRoll.currentPlayerIndex); // 手番は進まない
+  });
+
+  it('CONFIRM_TRADE against a player who rejected does not swap resources over LAN (H3)', () => {
+    let s = tradeReadyState({ wood: 2 }, { brick: 2 });
+    s = fullServerApply(s, 'player1', { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: ['player2'] }, createRng(1));
+    s = fullServerApply(s, 'player2', { type: 'RESPOND_TRADE', response: { playerId: 'player2', status: 'REJECT' } }, createRng(1));
+    const after = fullServerApply(s, 'player1', { type: 'CONFIRM_TRADE', responderId: 'player2' }, createRng(1));
+    expect(after.players.player1!.hand.wood).toBe(2);   // 交換されていない
+    expect(after.players.player2!.hand.brick).toBe(2);
+  });
+});

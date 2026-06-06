@@ -157,6 +157,12 @@ export function confirmTrade(state: GameState, responderId: PlayerId): GameState
   const trade = state.pendingTrade;
   if (!trade) return state;
 
+  // 成立できるのは「交易対象に含まれ、かつ ACCEPT した相手」のみ。
+  // 拒否した相手・対象外の相手への一方的な成立強制（resource の強奪）を防ぐ。
+  if (!trade.targetPlayerIds.includes(responderId) || trade.responses[responderId]?.status !== 'ACCEPT') {
+    return { ...state, pendingTrade: { ...trade, state: 'TRADE_CANCELLED' } };
+  }
+
   const initiator = state.players[trade.initiatorId];
   const responder = state.players[responderId];
   if (!initiator || !responder) {

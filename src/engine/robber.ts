@@ -30,6 +30,19 @@ export function discardCount(state: GameState, playerId: PlayerId): number {
 }
 
 /**
+ * 7 の捨て札フェーズで「まだ捨てておらず、手札が最低枚数(8)以上の」次の対象プレイヤーを返す。
+ * 既に捨てたプレイヤー(discardedThisRound)は除外する。該当なしは undefined。
+ *
+ * UI・サーバ・エンジンが同じ判定を共有することで、捨て終えた人（捨てた結果ちょうど8枚
+ * 残ったケース等）への再プロンプト＝二重捨てを防ぐ。
+ */
+export function findPendingDiscarder(state: GameState): PlayerId | undefined {
+  return state.playerOrder.find(
+    p => !(state.discardedThisRound ?? []).includes(p) && handTotal(state, p) >= ROBBER_HAND_DISCARD_MIN,
+  );
+}
+
+/**
  * 指定プレイヤーが指定の資源を捨て、バンクに返す。
  * resources は捨てる枚数の差分（超過分は無視しない — 呼び出し側がバリデーション済み前提）。
  */

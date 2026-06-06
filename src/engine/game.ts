@@ -13,7 +13,7 @@ import {
   canBuildCity, buildCity,
   hasEnoughResources,
 } from './actions';
-import { moveRobber, discardResources, stealResource } from './robber';
+import { moveRobber, discardResources, stealResource, getRobbablePlayerIds, discardCount } from './robber';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcLongestRoad, calcVP } from './scoring';
 
@@ -107,8 +107,24 @@ export function applyAction(
     // DISCARD_RESOURCES
     // ----------------------------------------------------------
     case 'DISCARD_RESOURCES': {
+      if (state.turnPhase !== 'DISCARD') throw new Error('DISCARD_RESOURCES: not in DISCARD phase');
       const { playerId, resources } = action;
-      let next = discardResources(state, playerId, resources as Partial<Record<ResourceType, number>>);
+      const discarder = state.players[playerId];
+      if (!discarder) throw new Error('DISCARD_RESOURCES: unknown player');
+      // 二重捨て防止: 既に今回の7で捨てたプレイヤーは再度捨てさせない
+      // （捨てた結果ちょうど8枚残ってもUI等から再要求されうるため、エンジンで弾く）。
+      if ((state.discardedThisRound ?? []).includes(playerId))
+        throw new Error('DISCARD_RESOURCES: already discarded this round');
+      // 捨て札は「ちょうど floor(手札/2) 枚・所持範囲内」をエンジンが一元的に検証する
+      // （UI/AI/サーバの各所に散っていたルールの正本を discardCount に集約）。
+      const required = discardCount(state, playerId);
+      const res = resources as Partial<Record<ResourceType, number>>;
+      const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+      const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= discarder.hand[r]);
+      if (required === 0 || discardSum !== required || !withinHand)
+        throw new Error('DISCARD_RESOURCES: must discard exactly floor(hand/2) cards you own');
+
+      let next = discardResources(state, playerId, res);
 
       // 今回の7でそのプレイヤーが捨てたことを記録
       const discardedThisRound = [...(next.discardedThisRound ?? []), playerId];
@@ -129,10 +145,21 @@ export function applyAction(
     // MOVE_ROBBER
     // ----------------------------------------------------------
     case 'MOVE_ROBBER': {
+      // 強盗を動かせるのは ROBBER フェーズ（7 を出した後／騎士カード使用後）のみ。
+      // これが無いと PRE_ROLL 中に無料で（しかも繰り返し）盗賊移動＋強奪ができてしまう。
+      if (state.turnPhase !== 'ROBBER') throw new Error('MOVE_ROBBER: not in ROBBER phase');
       const { tileId, stealFromPlayerId } = action;
+
+      // 強盗は必ず現在地とは別ヘクスへ移動する（標準ルール）。
+      const currentRobberTileId = Object.keys(state.tiles).find(tid => state.tiles[tid]!.hasRobber);
+      if (currentRobberTileId === tileId) throw new Error('MOVE_ROBBER: must move to a different tile');
+
       let next = moveRobber(state, tileId);
 
       if (stealFromPlayerId != null) {
+        // 盗む相手は「移動先タイルに隣接する建物を持つ相手」に限る（盤面と無関係な強奪を防ぐ）。
+        if (!getRobbablePlayerIds(next, tileId, pid).includes(stealFromPlayerId))
+          throw new Error('MOVE_ROBBER: steal target is not adjacent to the robber tile');
         next = stealResource(next, pid, stealFromPlayerId, rng);
       }
 
@@ -493,6 +520,10 @@ export function applyAction(
     // END_TURN
     // ----------------------------------------------------------
     case 'END_TURN': {
+      // ターン終了は MAIN の TRADE_BUILD（ダイスを振り、強盗/捨て札を解決済み）でのみ。
+      // これが無いと PRE_ROLL でダイスを飛ばしたり、SETUP/7処理中に勝手に手番を進められる。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
+        throw new Error('END_TURN: must be in MAIN TRADE_BUILD phase');
       const nextIndex = (state.currentPlayerIndex + 1) % state.playerOrder.length;
       return {
         ...state,
@@ -511,7 +542,8 @@ export function applyAction(
     // DECLARE_VICTORY
     // ----------------------------------------------------------
     case 'DECLARE_VICTORY': {
-      if (state.phase !== 'MAIN') throw new Error('DECLARE_VICTORY: not in MAIN phase');
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
+        throw new Error('DECLARE_VICTORY: must be in MAIN TRADE_BUILD phase');
       if (calcVP(state, pid) < VP_TABLE.target) throw new Error('DECLARE_VICTORY: insufficient VP');
       return { ...state, winner: pid, phase: 'GAME_OVER' };
     }
