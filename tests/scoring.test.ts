@@ -440,61 +440,67 @@ describe('updateLongestRoad', () => {
   // 仕様書 §7-2: 同点・場外処理
   // ----------------------------------------------------------------
 
-  // 実際の道をN本「方向付き」に連続で繋げるヘルパー（分岐せず1本のパスを作る）
-  function buildChain(state: GameState, pid: PlayerId, count: number, startEid?: EdgeId): { state: GameState; built: number } {
-    let cur = state;
-    const eids: EdgeId[] = [];
-    const first = startEid ?? Object.keys(cur.edges).find(e => cur.edges[e]!.road == null)!;
-    if (!first || cur.edges[first]!.road != null) return { state: cur, built: 0 };
-    eids.push(first);
-    cur = { ...cur, edges: { ...cur.edges, [first]: { ...cur.edges[first]!, road: { playerId: pid } } } };
-    let tip: VertexId = cur.edges[first]!.vertexIds[1]!;
-    for (let i = 1; i < count; i++) {
-      const v = cur.vertices[tip];
-      const next = v?.adjacentEdgeIds.find(e => !eids.includes(e as EdgeId) && cur.edges[e]!.road == null) as EdgeId | undefined;
-      if (!next) break;
-      eids.push(next);
-      cur = { ...cur, edges: { ...cur.edges, [next]: { ...cur.edges[next]!, road: { playerId: pid } } } };
-      const ne = cur.edges[next]!;
-      tip = (ne.vertexIds[0] === tip ? ne.vertexIds[1] : ne.vertexIds[0])!;
+  // road==null の辺のみを使い、pid 用に「ちょうど n 辺の単純パス（分岐・頂点再訪なし）」を
+  // DFS+バックトラックで必ず見つけて敷く。見つからなければ null。
+  // 既存の道を避けるので、複数プレイヤーぶんを順に呼べば互いに辺を共有しない独立パスになる
+  // （建物は無いので頂点を跨いでも各自の最長は自分の辺だけで決まる）。
+  function buildSimplePath(s: GameState, pid: PlayerId, n: number): { state: GameState; eids: EdgeId[] } | null {
+    const free = (e: EdgeId) => s.edges[e]!.road == null;
+    const dfs = (tip: VertexId, usedEdges: Set<EdgeId>, usedVerts: Set<VertexId>): EdgeId[] | null => {
+      if (usedEdges.size === n) return [...usedEdges];
+      const v = s.vertices[tip];
+      if (!v) return null;
+      for (const e of v.adjacentEdgeIds as EdgeId[]) {
+        if (usedEdges.has(e) || !free(e)) continue;
+        const ed = s.edges[e]!;
+        const other = (ed.vertexIds[0] === tip ? ed.vertexIds[1] : ed.vertexIds[0])!;
+        if (usedVerts.has(other)) continue; // 単純パス（頂点を再訪しない）
+        usedEdges.add(e); usedVerts.add(other);
+        const res = dfs(other, usedEdges, usedVerts);
+        if (res) return res;
+        usedEdges.delete(e); usedVerts.delete(other);
+      }
+      return null;
+    };
+    for (const start of Object.keys(s.edges) as EdgeId[]) {
+      if (!free(start)) continue;
+      const ed = s.edges[start]!;
+      for (const head of [ed.vertexIds[1]!, ed.vertexIds[0]!] as VertexId[]) {
+        const tail = (ed.vertexIds[0] === head ? ed.vertexIds[1] : ed.vertexIds[0])!;
+        const res = dfs(head, new Set<EdgeId>([start]), new Set<VertexId>([tail, head]));
+        if (res) return { state: placeRoads(s, res, pid), eids: res };
+      }
     }
-    return { state: cur, built: eids.length };
+    return null;
+  }
+
+  // 確実にパスを敷き、長さも検証する（条件付きスキップではなく明示的に失敗させる）。
+  function layPath(s: GameState, pid: PlayerId, n: number): GameState {
+    const r = buildSimplePath(s, pid, n);
+    expect(r, `failed to lay a ${n}-road simple path for ${pid}`).not.toBeNull();
+    const next = r!.state;
+    expect(calcLongestRoad(next, pid)).toBe(n);
+    return next;
   }
 
   it('[仕様1] A(5本保持), B(5本) → Aが保持', () => {
     let s = makeGameState({ longestRoadHolder: 'player1' });
-    const r1 = buildChain(s, 'player1', 5);
-    s = r1.state;
-    if (r1.built < 5) return;
-    // player2 は別の辺から始まる5本 (p1の辺と異なるエリアから)
-    const allEdges = Object.keys(s.edges);
-    const p2Start = allEdges.find(e => s.edges[e]!.road == null && !s.edges[e]!.adjacentEdgeIds.some(ae => s.edges[ae]!.road != null)) ?? allEdges[30]!;
-    const r2 = buildChain(s, 'player2', 5, p2Start);
-    s = r2.state;
-    if (r2.built < 5) return;
+    s = layPath(s, 'player1', 5);
+    s = layPath(s, 'player2', 5);
     const next = updateLongestRoad(s);
-    const p1 = next.players['player1']!.longestRoadLength;
-    const p2 = next.players['player2']!.longestRoadLength;
-    if (p1 >= 5 && p2 >= 5 && p1 === p2) {
-      expect(next.longestRoadHolder).toBe('player1');
-    }
+    expect(next.players['player1']!.longestRoadLength).toBe(5);
+    expect(next.players['player2']!.longestRoadLength).toBe(5);
+    expect(next.longestRoadHolder).toBe('player1'); // 同点では保持者が継続
   });
 
   it('[仕様2] A(5本保持), B(6本) → Bが奪う', () => {
     let s = makeGameState({ longestRoadHolder: 'player1' });
-    const r1 = buildChain(s, 'player1', 5);
-    s = r1.state;
-    if (r1.built < 5) return;
-    const p2Start = Object.keys(s.edges).find(e => s.edges[e]!.road == null) ?? '';
-    const r2 = buildChain(s, 'player2', 6, p2Start);
-    s = r2.state;
-    if (r2.built < 6) return;
+    s = layPath(s, 'player1', 5);
+    s = layPath(s, 'player2', 6);
     const next = updateLongestRoad(s);
-    const p2 = next.players['player2']!.longestRoadLength;
-    const p1 = next.players['player1']!.longestRoadLength;
-    if (p2 > p1 && p2 >= 5) {
-      expect(next.longestRoadHolder).toBe('player2');
-    }
+    expect(next.players['player1']!.longestRoadLength).toBe(5);
+    expect(next.players['player2']!.longestRoadLength).toBe(6);
+    expect(next.longestRoadHolder).toBe('player2'); // 上回ったので奪取
   });
 
   it('[仕様5] A保持だったが分断, A(4本), B,C(5本ずつ) → null', () => {
@@ -508,67 +514,34 @@ describe('updateLongestRoad', () => {
       },
       playerOrder: ['player1', 'player2', 'player3'],
     });
-    // player1: 4本のみ（保持者から転落）
-    const r1 = buildChain(s, 'player1', 4);
-    s = r1.state;
-    // player2: 5本
-    const r2Start = Object.keys(s.edges).find(e => s.edges[e]!.road == null) ?? '';
-    const r2 = buildChain(s, 'player2', 5, r2Start);
-    s = r2.state;
-    // player3: 5本
-    const r3Start = Object.keys(s.edges).find(e => s.edges[e]!.road == null) ?? '';
-    const r3 = buildChain(s, 'player3', 5, r3Start);
-    s = r3.state;
-    if (r2.built < 5 || r3.built < 5) return; // ボード上に辺が足りなければスキップ
+    s = layPath(s, 'player1', 4); // 保持者だが4本に転落
+    s = layPath(s, 'player2', 5);
+    s = layPath(s, 'player3', 5);
     const next = updateLongestRoad(s);
-    const p2 = next.players['player2']!.longestRoadLength;
-    const p3 = next.players['player3']!.longestRoadLength;
-    if (p2 >= 5 && p3 >= 5 && p2 === p3) {
-      expect(next.longestRoadHolder).toBeNull();
-    }
+    // 保持者が最長(4<5)を失い、新最長5が2人同点 → 場外
+    expect(next.longestRoadHolder).toBeNull();
   });
 
   it('[仕様6] A保持, A,B(5本同点) → A保持', () => {
     let s = makeGameState({ longestRoadHolder: 'player1' });
-    const r1 = buildChain(s, 'player1', 5);
-    s = r1.state;
-    if (r1.built < 5) return;
-    // player2 の5本チェーン（player1 と同じ長さ）
-    const p2Start = Object.keys(s.edges).find(e => s.edges[e]!.road == null && !s.edges[e]!.adjacentEdgeIds.some(ae => s.edges[ae]!.road != null)) ?? '';
-    const r2 = buildChain(s, 'player2', 5, p2Start);
-    s = r2.state;
-    if (r2.built < 5) return;
+    s = layPath(s, 'player1', 5);
+    s = layPath(s, 'player2', 5);
     const next = updateLongestRoad(s);
-    const p1 = next.players['player1']!.longestRoadLength;
-    const p2 = next.players['player2']!.longestRoadLength;
-    if (p1 >= 5 && p1 === p2) {
-      // 保持者(player1)が同点 → 保持継続
-      expect(next.longestRoadHolder).toBe('player1');
-    }
+    expect(next.players['player1']!.longestRoadLength).toBe(5);
+    expect(next.players['player2']!.longestRoadLength).toBe(5);
+    // 保持者(player1)が同点に並ばれても維持
+    expect(next.longestRoadHolder).toBe('player1');
   });
 
   it('[要件2] 保持者なし、AとBが5本同点 → longestRoadHolder が null', () => {
     // 保持者がいない状態でAとBが同時に5本の場合、誰にも渡らない
     let s = makeGameState({ longestRoadHolder: null });
-    const r1 = buildChain(s, 'player1', 5);
-    s = r1.state;
-    if (r1.built < 5) return;
-    // player2 は player1 と切り離れた辺から開始
-    const p2Start = Object.keys(s.edges).find(e =>
-      s.edges[e]!.road == null &&
-      !s.edges[e]!.adjacentEdgeIds.some(ae => s.edges[ae]!.road != null),
-    );
-    if (!p2Start) return;
-    const r2 = buildChain(s, 'player2', 5, p2Start);
-    s = r2.state;
-    if (r2.built < 5) return;
+    s = layPath(s, 'player1', 5);
+    s = layPath(s, 'player2', 5);
     const next = updateLongestRoad(s);
-    const p1 = next.players['player1']!.longestRoadLength;
-    const p2 = next.players['player2']!.longestRoadLength;
-    // 両者が5本以上かつ同点の場合のみアサート
-    if (p1 >= 5 && p2 >= 5 && p1 === p2) {
-      expect(next.longestRoadHolder).toBeNull();
-    }
+    expect(next.players['player1']!.longestRoadLength).toBe(5);
+    expect(next.players['player2']!.longestRoadLength).toBe(5);
+    expect(next.longestRoadHolder).toBeNull(); // 保持者なし＋同点 → 場外
   });
 
   it('[要件7] A(5本保持)、BとCが6本同点 → longestRoadHolder が null', () => {
@@ -582,33 +555,14 @@ describe('updateLongestRoad', () => {
       },
       playerOrder: ['player1', 'player2', 'player3'],
     });
-    const r1 = buildChain(s, 'player1', 5);
-    s = r1.state;
-    if (r1.built < 5) return;
-    const p2Start = Object.keys(s.edges).find(e =>
-      s.edges[e]!.road == null &&
-      !s.edges[e]!.adjacentEdgeIds.some(ae => s.edges[ae]!.road != null),
-    );
-    if (!p2Start) return;
-    const r2 = buildChain(s, 'player2', 6, p2Start);
-    s = r2.state;
-    if (r2.built < 6) return;
-    const p3Start = Object.keys(s.edges).find(e =>
-      s.edges[e]!.road == null &&
-      !s.edges[e]!.adjacentEdgeIds.some(ae => s.edges[ae]!.road != null),
-    );
-    if (!p3Start) return;
-    const r3 = buildChain(s, 'player3', 6, p3Start);
-    s = r3.state;
-    if (r3.built < 6) return;
+    s = layPath(s, 'player1', 5);
+    s = layPath(s, 'player2', 6);
+    s = layPath(s, 'player3', 6);
     const next = updateLongestRoad(s);
-    const p1 = next.players['player1']!.longestRoadLength;
-    const p2 = next.players['player2']!.longestRoadLength;
-    const p3 = next.players['player3']!.longestRoadLength;
-    // BとCが共に6本以上かつ同点で、Aがそれより短い場合のみアサート
-    if (p2 >= 6 && p3 >= 6 && p2 === p3 && p1 < p2) {
-      expect(next.longestRoadHolder).toBeNull();
-    }
+    expect(next.players['player2']!.longestRoadLength).toBe(6);
+    expect(next.players['player3']!.longestRoadLength).toBe(6);
+    // 保持者(5)が上回られ、新最長6が2人同点 → 場外
+    expect(next.longestRoadHolder).toBeNull();
   });
 
   it('[仕様7] 誰も5本以上でなくなった → longestRoadHolder は null', () => {

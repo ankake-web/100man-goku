@@ -280,4 +280,72 @@ describe('computeDiceProduction', () => {
   it('7では何も産出しない', () => {
     expect(computeDiceProduction(twoPlayerForest6(), 7)).toEqual({});
   });
+
+  // ----------------------------------------------------------------
+  // E-7/E-8/E-9: バンク枯渇ルール（複数人 vs 単独）
+  // ----------------------------------------------------------------
+
+  it('E-7: 複数プレイヤーの需要合計がバンク在庫を超える資源は誰も受け取らない', () => {
+    // player1=開拓地(1) + player2=都市(2) → wood 需要は計3
+    const base = twoPlayerForest6();
+    const s: GameState = { ...base, bank: { ...base.bank, wood: 2 } }; // 在庫2 < 需要3
+    const prod = computeDiceProduction(s, 6);
+    expect(prod['player1']?.wood ?? 0).toBe(0);
+    expect(prod['player2']?.wood ?? 0).toBe(0);
+  });
+
+  it('E-8: 単独プレイヤーは在庫不足でも在庫分だけ受け取る（複数人ルールと対比）', () => {
+    // player2 の建物を外して player1 単独需要(都市=2)にする
+    const base = twoPlayerForest6();
+    const tid = '0,0';
+    const vIds = base.tileToVertices[tid]!;
+    const single: GameState = {
+      ...base,
+      vertices: {
+        ...base.vertices,
+        // player1 を都市にして需要2、player2 の建物は撤去
+        [vIds[0]!]: { ...base.vertices[vIds[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vIds[2]!]: { ...base.vertices[vIds[2]!]!, building: null },
+      },
+    };
+    // 在庫1 < 需要2 でも、単独なので在庫分(1)を受け取る
+    const s1: GameState = { ...single, bank: { ...single.bank, wood: 1 } };
+    expect(computeDiceProduction(s1, 6)['player1']?.wood).toBe(1);
+    // 在庫0なら0
+    const s0: GameState = { ...single, bank: { ...single.bank, wood: 0 } };
+    expect(computeDiceProduction(s0, 6)['player1']?.wood ?? 0).toBe(0);
+  });
+
+  it('E-9: 在庫不足の資源は全員0でも、別資源は通常どおり配布される', () => {
+    const base = makeGameState({
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    });
+    const woodTid = '0,0';
+    const woodV = base.tileToVertices[woodTid]!;
+    // wood タイルと頂点を共有しない別タイルを grain 用に選ぶ
+    const grainTid = Object.keys(base.tiles).find(t =>
+      t !== woodTid && (base.tileToVertices[t] ?? []).every(v => !woodV.includes(v)),
+    )!;
+    const grainV = base.tileToVertices[grainTid]!;
+    const s: GameState = {
+      ...base,
+      bank: { ...base.bank, wood: 2 }, // wood 需要3 > 在庫2 → 全員0
+      tiles: {
+        ...base.tiles,
+        [woodTid]:  { ...base.tiles[woodTid]!,  type: 'forest', number: 6, hasRobber: false },
+        [grainTid]: { ...base.tiles[grainTid]!, type: 'field',  number: 6, hasRobber: false },
+      },
+      vertices: {
+        ...base.vertices,
+        [woodV[0]!]:  { ...base.vertices[woodV[0]!]!,  building: { type: 'settlement', playerId: 'player1' } },
+        [woodV[2]!]:  { ...base.vertices[woodV[2]!]!,  building: { type: 'city',       playerId: 'player2' } },
+        [grainV[0]!]: { ...base.vertices[grainV[0]!]!, building: { type: 'settlement', playerId: 'player1' } },
+      },
+    };
+    const prod = computeDiceProduction(s, 6);
+    expect(prod['player1']?.wood ?? 0).toBe(0); // wood は在庫不足で配布なし
+    expect(prod['player2']?.wood ?? 0).toBe(0);
+    expect(prod['player1']?.grain).toBe(1);     // grain は通常どおり配布
+  });
 });
