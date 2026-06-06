@@ -977,21 +977,37 @@ let _bgmEnabled  = false;
 let _bgmVolume   = 0.07;  // かなり控えめ
 let _bgmLoopId   = 0;
 let _bgmOscs: OscillatorNode[] = [];
-let _bgmMaster: GainNode | null = null;   // フェード制御用のマスターゲイン
+let _bgmMaster: GainNode | null = null;   // 手続き生成BGMのマスターゲイン（フェード用）
+let _bgmAudio: HTMLAudioElement | null = null;            // 実音源プレイヤー（使用時）
+let _bgmFadeTimer: ReturnType<typeof setInterval> | null = null;
+// 実音源の音量（控えめ）。スライダー(_bgmVolume)に比例させる。
+function bgmAudioVol(): number { return Math.min(1, _bgmVolume * 3.5); }
+// 実音源の音量を ms かけて to へフェードする。
+function fadeAudio(audio: HTMLAudioElement, to: number, ms: number, onDone?: () => void): void {
+  if (_bgmFadeTimer) { clearInterval(_bgmFadeTimer); _bgmFadeTimer = null; }
+  const from = audio.volume;
+  const steps = 14; let i = 0;
+  _bgmFadeTimer = setInterval(() => {
+    i++;
+    try { audio.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps))); } catch { /**/ }
+    if (i >= steps) { if (_bgmFadeTimer) { clearInterval(_bgmFadeTimer); _bgmFadeTimer = null; } onDone?.(); }
+  }, Math.max(10, ms / steps));
+}
 
-// ---- BGM 3種（手続き生成＝著作権フリーのオリジナル旋律）。実音源は同梱せず、
-//      差し替え可能な構造のみ用意。実音源候補と規約メモは docs/BGM候補.md を参照。 ----
+// ---- BGM 3種。実音源(public/bgm)を優先再生し、未配置/読込失敗時は手続き生成BGMへ
+//      フォールバックする。実音源候補・利用規約メモは docs/BGM候補.md / public/bgm/README.md。 ----
 interface BgmTrack {
   name: string;
+  file?: string;                    // 実音源パス(public配下)。無い/読めない時は seq で代替。
   beatSec: number;
   melody: OscillatorType;
   bass: OscillatorType;
-  seq: [number, number, number][]; // [freq_hz, dur_beats, vol_ratio]
+  seq: [number, number, number][]; // 手続き生成フォールバック [freq_hz, dur_beats, vol_ratio]
 }
 const BGM_TRACKS: BgmTrack[] = [
   {
-    // 0: 開拓の朝 — 明るくほのぼの（Cメジャー・ペンタ寄り）
-    name: '開拓の朝', beatSec: 0.55, melody: 'sine', bass: 'triangle',
+    // 0: 開拓の朝 — 明るくほのぼの（実音源候補: PeriTune「Village_Fete」）
+    name: '開拓の朝', file: '/bgm/village_fete.mp3', beatSec: 0.55, melody: 'sine', bass: 'triangle',
     seq: [
       [261.6,1,0.8],[329.6,1,0.7],[392.0,1,0.8],[523.3,1,0.6],
       [440.0,1,0.7],[392.0,1,0.6],[329.6,2,0.5],
@@ -1002,8 +1018,8 @@ const BGM_TRACKS: BgmTrack[] = [
     ],
   },
   {
-    // 1: 港町の酒場 — 中世・ケルト風の軽快なリール（Aドリアン）
-    name: '港町の酒場', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
+    // 1: 港町の酒場 — 中世・ケルト風（実音源候補: PeriTune「Portside Café」）
+    name: '港町の酒場', file: '/bgm/portside_cafe.mp3', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
     seq: [
       [440.0,1,0.7],[523.3,1,0.6],[493.9,1,0.65],[440.0,1,0.6],[392.0,1,0.55],[440.0,2,0.6],
       [493.9,1,0.65],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[440.0,1,0.6],[493.9,2,0.6],
@@ -1012,8 +1028,8 @@ const BGM_TRACKS: BgmTrack[] = [
     ],
   },
   {
-    // 2: 静かな夜 — 落ち着いたファンタジー（Aマイナー、ゆっくり・控えめ）
-    name: '静かな夜', beatSec: 0.74, melody: 'sine', bass: 'triangle',
+    // 2: 静かな夜 — 落ち着いたファンタジー（実音源候補: PeriTune「Nocturnal_Bloom」）
+    name: '静かな夜', file: '/bgm/nocturnal_bloom.mp3', beatSec: 0.74, melody: 'sine', bass: 'triangle',
     seq: [
       [440.0,2,0.5],[523.3,2,0.45],[659.3,2,0.5],[587.3,2,0.4],
       [523.3,2,0.45],[493.9,2,0.4],[440.0,3,0.5],[392.0,1,0.35],
@@ -1038,9 +1054,37 @@ let _bgmTrack = loadBgmTrack();
 function bgmStart(): void {
   if (!_bgmEnabled) return;
   bgmStop();
+  const tr = BGM_TRACKS[_bgmTrack] ?? BGM_TRACKS[0]!;
+  // まず実音源(public/bgm)を再生。未配置/読込失敗時は手続き生成BGMへフォールバック。
+  if (tr.file && typeof Audio !== 'undefined') {
+    try {
+      const audio = new Audio(tr.file);
+      audio.loop = true;
+      audio.volume = 0;
+      _bgmAudio = audio;
+      const onFail = (): void => {
+        if (_bgmAudio !== audio) return;   // 既に切替済みなら何もしない（多重起動防止）
+        _bgmAudio = null;
+        try { audio.pause(); } catch { /**/ }
+        bgmStartProcedural(tr);            // 読み込めない曲は手続き生成で代替
+      };
+      audio.addEventListener('error', onFail, { once: true });
+      const playP = audio.play();
+      if (playP && typeof playP.then === 'function') {
+        playP.then(() => { if (_bgmAudio === audio) fadeAudio(audio, bgmAudioVol(), 700); }).catch(onFail);
+      } else {
+        fadeAudio(audio, bgmAudioVol(), 700);
+      }
+      return;
+    } catch { /* 実音源不可 → 手続き生成へ */ }
+  }
+  bgmStartProcedural(tr);
+}
+
+// 手続き生成BGM（実音源フォールバック）。WebAudio オシレータで tr.seq を鳴らす。
+function bgmStartProcedural(tr: BgmTrack): void {
   let ctx: AudioContext;
   try { ctx = getAudioCtx(); } catch { return; } // Audio 不可でもゲームは壊さない
-  const tr = BGM_TRACKS[_bgmTrack] ?? BGM_TRACKS[0]!;
   const totalBeats = tr.seq.reduce((s, [, b]) => s + b, 0);
 
   const masterGain = ctx.createGain();
@@ -1094,6 +1138,11 @@ function bgmStop(): void {
   _bgmOscs.forEach(o => { try { o.stop(); } catch { /**/ } });
   _bgmOscs = [];
   if (_bgmMaster) { try { _bgmMaster.disconnect(); } catch { /**/ } _bgmMaster = null; }
+  if (_bgmFadeTimer) { clearInterval(_bgmFadeTimer); _bgmFadeTimer = null; }
+  if (_bgmAudio) {
+    const a = _bgmAudio; _bgmAudio = null;
+    try { a.pause(); a.removeAttribute('src'); a.load(); } catch { /**/ }
+  }
 }
 
 function bgmSetVolume(v: number): void {
@@ -1105,6 +1154,7 @@ function bgmSetVolume(v: number): void {
       _bgmMaster.gain.setValueAtTime(Math.max(0.0001, v), ctx.currentTime);
     } catch { /**/ }
   }
+  if (_bgmAudio && !_bgmFadeTimer) { try { _bgmAudio.volume = bgmAudioVol(); } catch { /**/ } }
 }
 
 // BGM トラックを切り替える（localStorage 保存＋再生中なら自然にフェード差し替え）。
@@ -1114,16 +1164,18 @@ function setBgmTrack(i: number): void {
   if (i === _bgmTrack) return;
   _bgmTrack = i;
   if (!_bgmEnabled) return;
-  // 現行をフェードアウト → 少し後に新トラックを開始（bgmStart 内で旧オシレータは停止）。
-  try {
-    const ctx = getAudioCtx();
-    if (_bgmMaster) {
+  // 現行をフェードアウト → 少し後に新トラック開始（bgmStart 内で旧音源/旧オシレータは停止）。
+  if (_bgmAudio) {
+    fadeAudio(_bgmAudio, 0, 450);
+  } else if (_bgmMaster) {
+    try {
+      const ctx = getAudioCtx();
       _bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
       _bgmMaster.gain.setValueAtTime(_bgmMaster.gain.value, ctx.currentTime);
       _bgmMaster.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
-    }
-    setTimeout(() => bgmStart(), 520);
-  } catch { bgmStart(); }
+    } catch { /**/ }
+  }
+  setTimeout(() => bgmStart(), 500);
 }
 
 // -------------------------------------------------------

@@ -974,6 +974,11 @@ h1 {
   cursor: pointer;
 }
 .menu-toggle:hover { background: rgba(255,255,255,0.16); color: #fff; }
+/* スマホ縦持ち: メニューを少し小さく（safe-area 考慮・右上維持・押しやすさは確保） */
+@media (orientation: portrait) and (pointer: coarse) {
+  #game-nav { top: max(4px, env(safe-area-inset-top)); right: 6px; gap: 5px; }
+  .menu-toggle { padding: 4px 9px; font-size: 0.74rem; border-radius: 7px; }
+}
 .game-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -2130,11 +2135,12 @@ h1 {
   white-space: nowrap;
   color: #fff;
 }
-/* 上段(P1/P2)はメニューバー(右上固定)を避けて少し下、下段(P3/P4)は少し上へ */
-.corner-tl { top: 42px;    left: 5px; }
-.corner-tr { top: 42px;    right: 5px; }
-.corner-bl { bottom: 26px; left: 5px; }
-.corner-br { bottom: 26px; right: 5px; }
+/* 上下方向に盤面から離す: 上段(P1/P2)はより上へ、下段(P3/P4)はより下へ。左右位置は維持。
+   右上はメニューがあるため P2(corner-tr)のみメニューを避けて少しだけ下げる。 */
+.corner-tl { top: 6px;     left: 5px; }
+.corner-tr { top: 32px;    right: 5px; }
+.corner-bl { bottom: 6px;  left: 5px; }
+.corner-br { bottom: 6px;  right: 5px; }
 .mini-row1, .mini-row2 { display: flex; align-items: center; gap: 4px; max-width: 100%; }
 .mini-dot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.6); flex: 0 0 auto; }
 .mini-name {
