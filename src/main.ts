@@ -9,6 +9,11 @@ import { makeHand, RESOURCE_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constan
 import { createInitialGameState } from './engine/createState';
 import type { PlayerSpec } from './engine/createState';
 import { applyAction } from './engine/game';
+import { findPendingDiscarder } from './engine/robber';
+import {
+  playSE, bgmStart, bgmStop, bgmSetVolume, setBgmTrack, BGM_TRACKS,
+  isBgmEnabled, setBgmEnabled, getBgmVolume, getBgmTrack, isSeEnabled, setSeEnabled,
+} from './audio';
 import { renderLanLobby } from './net/lanLobby';
 import { LanClient } from './net/lanClient';
 import { generateRandomPlayerName, pickCpuNames } from './net/names';
@@ -587,10 +592,7 @@ function redraw(): void {
   // LAN ではマスク済み state のため discardPid は「自分（8枚以上の場合）」に
   // 自然解決し、捨て札UIが各端末で自分の分だけ出る。
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
-    const discardPid = state.playerOrder.find(p => {
-      const h = state.players[p]!.hand;
-      return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
-    });
+    const discardPid = findPendingDiscarder(state);
     if (discardPid && (uiPhase.type !== 'discard' || uiPhase.playerId !== discardPid)) {
       uiPhase = { type: 'discard', playerId: discardPid, selected: makeHand() };
     }
@@ -771,15 +773,15 @@ function updateGameNav(): void {
   bgmRow.className = 'game-menu-row';
   const bgmBtn = document.createElement('button');
   bgmBtn.className = 'game-menu-btn';
-  bgmBtn.textContent = _bgmEnabled ? '🔊 BGM ON' : '🔇 BGM OFF';
+  bgmBtn.textContent = isBgmEnabled() ? '🔊 BGM ON' : '🔇 BGM OFF';
   bgmBtn.addEventListener('click', () => {
-    _bgmEnabled = !_bgmEnabled;
-    if (_bgmEnabled) bgmStart(); else bgmStop();
-    bgmBtn.textContent = _bgmEnabled ? '🔊 BGM ON' : '🔇 BGM OFF';
+    setBgmEnabled(!isBgmEnabled());
+    if (isBgmEnabled()) bgmStart(); else bgmStop();
+    bgmBtn.textContent = isBgmEnabled() ? '🔊 BGM ON' : '🔇 BGM OFF';
   });
   const volSlider = document.createElement('input');
   volSlider.type = 'range'; volSlider.min = '0'; volSlider.max = '100';
-  volSlider.value = String(Math.round(_bgmVolume * 100));
+  volSlider.value = String(Math.round(getBgmVolume() * 100));
   volSlider.className = 'bgm-volume';
   volSlider.title = 'BGM 音量';
   volSlider.addEventListener('input', () => bgmSetVolume(parseInt(volSlider.value) / 100));
@@ -798,7 +800,7 @@ function updateGameNav(): void {
     const opt = document.createElement('option');
     opt.value = String(i);
     opt.textContent = tr.name;
-    if (i === _bgmTrack) opt.selected = true;
+    if (i === getBgmTrack()) opt.selected = true;
     trackSel.appendChild(opt);
   });
   trackSel.addEventListener('change', () => setBgmTrack(parseInt(trackSel.value, 10)));
@@ -808,10 +810,10 @@ function updateGameNav(): void {
   // SE ON/OFF
   const seBtn = document.createElement('button');
   seBtn.className = 'game-menu-btn';
-  seBtn.textContent = _seEnabled ? '🔔 効果音 ON' : '🔕 効果音 OFF';
+  seBtn.textContent = isSeEnabled() ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   seBtn.addEventListener('click', () => {
-    _seEnabled = !_seEnabled;
-    seBtn.textContent = _seEnabled ? '🔔 効果音 ON' : '🔕 効果音 OFF';
+    setSeEnabled(!isSeEnabled());
+    seBtn.textContent = isSeEnabled() ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   });
   dd.appendChild(seBtn);
 
@@ -855,359 +857,6 @@ function updateGameNav(): void {
   gameNav.appendChild(wrap);
 }
 
-// ============================================================
-// BGM + SE（Web Audio API）
-// ============================================================
-
-let _audioCtx: AudioContext | null = null;
-function getAudioCtx(): AudioContext {
-  if (!_audioCtx || _audioCtx.state === 'closed') {
-    _audioCtx = new AudioContext();
-  }
-  return _audioCtx;
-}
-
-// -------------------------------------------------------
-// BGM: Cメジャーペンタトニックの穏やかなメロディ
-// ドローンや不協和音を使わず、酒場風の明るい雰囲気
-// -------------------------------------------------------
-let _bgmEnabled  = false;
-let _bgmVolume   = 0.07;  // かなり控えめ
-let _bgmLoopId   = 0;
-let _bgmOscs: OscillatorNode[] = [];
-let _bgmMaster: GainNode | null = null;   // 手続き生成BGMのマスターゲイン（フェード用）
-let _bgmAudio: HTMLAudioElement | null = null;            // 実音源プレイヤー（使用時）
-let _bgmFadeTimer: ReturnType<typeof setInterval> | null = null;
-// 実音源の音量（控えめ）。スライダー(_bgmVolume)に比例させる。
-function bgmAudioVol(): number { return Math.min(1, _bgmVolume * 3.5); }
-// 実音源の音量を ms かけて to へフェードする。
-function fadeAudio(audio: HTMLAudioElement, to: number, ms: number, onDone?: () => void): void {
-  if (_bgmFadeTimer) { clearInterval(_bgmFadeTimer); _bgmFadeTimer = null; }
-  const from = audio.volume;
-  const steps = 14; let i = 0;
-  _bgmFadeTimer = setInterval(() => {
-    i++;
-    try { audio.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps))); } catch { /**/ }
-    if (i >= steps) { if (_bgmFadeTimer) { clearInterval(_bgmFadeTimer); _bgmFadeTimer = null; } onDone?.(); }
-  }, Math.max(10, ms / steps));
-}
-
-// ---- BGM 3種。実音源(public/bgm)を優先再生し、未配置/読込失敗時は手続き生成BGMへ
-//      フォールバックする。実音源候補・利用規約メモは docs/BGM候補.md / public/bgm/README.md。 ----
-interface BgmTrack {
-  id: string;                       // 保存用の安定ID（並び替えしても保存選択を保てる）
-  name: string;
-  file?: string;                    // 実音源パス(public配下)。無い/読めない時は seq で代替。
-  beatSec: number;
-  melody: OscillatorType;
-  bass: OscillatorType;
-  seq: [number, number, number][]; // 手続き生成フォールバック [freq_hz, dur_beats, vol_ratio]
-}
-// 並びは「港町の酒場」を先頭（=既定）にする。
-const BGM_TRACKS: BgmTrack[] = [
-  {
-    // 港町の酒場（既定）— 中世・ケルト風。実音源候補: PeriTune「Portside Café」
-    id: 'tavern', name: '港町の酒場', file: '/bgm/portside_cafe.mp3', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
-    seq: [
-      [440.0,1,0.7],[523.3,1,0.6],[493.9,1,0.65],[440.0,1,0.6],[392.0,1,0.55],[440.0,2,0.6],
-      [493.9,1,0.65],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[440.0,1,0.6],[493.9,2,0.6],
-      [523.3,1,0.65],[659.3,1,0.7],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[523.3,2,0.6],
-      [440.0,1,0.6],[392.0,1,0.55],[440.0,1,0.6],[523.3,1,0.65],[493.9,1,0.6],[440.0,3,0.6],
-    ],
-  },
-  {
-    // 開拓の朝 — 明るくほのぼの。実音源候補: PeriTune「Village_Fete」
-    id: 'morning', name: '開拓の朝', file: '/bgm/village_fete.mp3', beatSec: 0.55, melody: 'sine', bass: 'triangle',
-    seq: [
-      [261.6,1,0.8],[329.6,1,0.7],[392.0,1,0.8],[523.3,1,0.6],
-      [440.0,1,0.7],[392.0,1,0.6],[329.6,2,0.5],
-      [261.6,1,0.7],[349.2,1,0.6],[392.0,1,0.7],[349.2,1,0.5],
-      [329.6,1,0.6],[293.7,1,0.5],[261.6,2,0.7],
-      [392.0,1,0.6],[440.0,1,0.7],[523.3,1,0.8],[440.0,1,0.6],
-      [392.0,1,0.6],[329.6,1,0.5],[261.6,3,0.4],
-    ],
-  },
-  {
-    // 静かな夜 — 落ち着いたファンタジー。実音源候補: PeriTune「Nocturnal_Bloom」
-    id: 'night', name: '静かな夜', file: '/bgm/nocturnal_bloom.mp3', beatSec: 0.74, melody: 'sine', bass: 'triangle',
-    seq: [
-      [440.0,2,0.5],[523.3,2,0.45],[659.3,2,0.5],[587.3,2,0.4],
-      [523.3,2,0.45],[493.9,2,0.4],[440.0,3,0.5],[392.0,1,0.35],
-      [349.2,2,0.45],[392.0,2,0.4],[440.0,2,0.5],[523.3,2,0.45],
-      [493.9,2,0.4],[440.0,2,0.45],[392.0,3,0.5],[329.6,1,0.35],
-    ],
-  },
-];
-
-// 保存は曲ID（並び替えしても選択が崩れない）。未保存/不正値（旧数値含む）は既定=先頭(港町の酒場)。
-const BGM_TRACK_KEY = 'catan_bgm_track';
-function loadBgmTrack(): number {
-  try {
-    const id = localStorage.getItem(BGM_TRACK_KEY) ?? '';
-    const idx = BGM_TRACKS.findIndex(t => t.id === id);
-    return idx >= 0 ? idx : 0;
-  } catch { return 0; }
-}
-function saveBgmTrack(i: number): void {
-  try { const id = BGM_TRACKS[i]?.id; if (id) localStorage.setItem(BGM_TRACK_KEY, id); } catch { /* 無視 */ }
-}
-let _bgmTrack = loadBgmTrack();
-
-function bgmStart(): void {
-  if (!_bgmEnabled) return;
-  bgmStop();
-  const tr = BGM_TRACKS[_bgmTrack] ?? BGM_TRACKS[0]!;
-  // まず実音源(public/bgm)を再生。未配置/読込失敗時は手続き生成BGMへフォールバック。
-  if (tr.file && typeof Audio !== 'undefined') {
-    try {
-      const audio = new Audio(tr.file);
-      audio.loop = true;
-      audio.volume = 0;
-      _bgmAudio = audio;
-      const onFail = (): void => {
-        if (_bgmAudio !== audio) return;   // 既に切替済みなら何もしない（多重起動防止）
-        _bgmAudio = null;
-        try { audio.pause(); } catch { /**/ }
-        bgmStartProcedural(tr);            // 読み込めない曲は手続き生成で代替
-      };
-      audio.addEventListener('error', onFail, { once: true });
-      const playP = audio.play();
-      if (playP && typeof playP.then === 'function') {
-        playP.then(() => { if (_bgmAudio === audio) fadeAudio(audio, bgmAudioVol(), 700); }).catch(onFail);
-      } else {
-        fadeAudio(audio, bgmAudioVol(), 700);
-      }
-      return;
-    } catch { /* 実音源不可 → 手続き生成へ */ }
-  }
-  bgmStartProcedural(tr);
-}
-
-// 手続き生成BGM（実音源フォールバック）。WebAudio オシレータで tr.seq を鳴らす。
-function bgmStartProcedural(tr: BgmTrack): void {
-  let ctx: AudioContext;
-  try { ctx = getAudioCtx(); } catch { return; } // Audio 不可でもゲームは壊さない
-  const totalBeats = tr.seq.reduce((s, [, b]) => s + b, 0);
-
-  const masterGain = ctx.createGain();
-  // 開始時はフェードイン（切替時に急に鳴り出さない）
-  masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  masterGain.gain.linearRampToValueAtTime(_bgmVolume, ctx.currentTime + 0.8);
-  masterGain.connect(ctx.destination);
-  _bgmMaster = masterGain;
-  const loopId = ++_bgmLoopId;
-
-  // ループは「絶対オーディオ時刻」で連続スケジュールする（setTimeout のドリフトに依存しない）。
-  // 各音は音長いっぱいまで鳴らし(終端でやわらかく減衰)、音間・ループ継ぎ目に無音/クリックを作らない。
-  const loopDur = totalBeats * tr.beatSec;
-  let nextStart = ctx.currentTime + 0.1;
-  function scheduleLoop() {
-    if (_bgmLoopId !== loopId) return;
-    let t = nextStart;
-    for (const [freq, beats, volR] of tr.seq) {
-      const dur = beats * tr.beatSec;
-      // 主旋律
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = tr.melody;
-      osc.frequency.value = freq;
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(volR, t + 0.03);
-      g.gain.setValueAtTime(volR, t + dur * 0.82);
-      g.gain.linearRampToValueAtTime(0.0001, t + dur);  // 終端まで鳴らす＝隙間を作らない
-      osc.connect(g); g.connect(masterGain);
-      osc.start(t); osc.stop(t + dur + 0.02);
-      _bgmOscs.push(osc);
-      // 低音ハーモニー（一オクターブ下、半音量）
-      if (beats >= 2) {
-        const bass = ctx.createOscillator();
-        const bg = ctx.createGain();
-        bass.type = tr.bass;
-        bass.frequency.value = freq / 2;
-        bg.gain.setValueAtTime(0, t);
-        bg.gain.linearRampToValueAtTime(volR * 0.35, t + 0.08);
-        bg.gain.linearRampToValueAtTime(0.0001, t + dur);
-        bass.connect(bg); bg.connect(masterGain);
-        bass.start(t); bass.stop(t + dur + 0.02);
-        _bgmOscs.push(bass);
-      }
-      t += dur;
-    }
-    nextStart = t;  // 次ループは今ループの終端から連続（隙間/重なりなし）
-    // ループ終端の少し前に次ループを先行スケジュール（絶対時刻なのでズレない）。
-    setTimeout(scheduleLoop, Math.max(50, (loopDur - 0.25) * 1000));
-  }
-  scheduleLoop();
-}
-
-function bgmStop(): void {
-  _bgmLoopId++;
-  _bgmOscs.forEach(o => { try { o.stop(); } catch { /**/ } });
-  _bgmOscs = [];
-  if (_bgmMaster) { try { _bgmMaster.disconnect(); } catch { /**/ } _bgmMaster = null; }
-  if (_bgmFadeTimer) { clearInterval(_bgmFadeTimer); _bgmFadeTimer = null; }
-  if (_bgmAudio) {
-    const a = _bgmAudio; _bgmAudio = null;
-    try { a.pause(); a.removeAttribute('src'); a.load(); } catch { /**/ }
-  }
-}
-
-function bgmSetVolume(v: number): void {
-  _bgmVolume = v;
-  if (_bgmMaster) {
-    try {
-      const ctx = getAudioCtx();
-      _bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
-      _bgmMaster.gain.setValueAtTime(Math.max(0.0001, v), ctx.currentTime);
-    } catch { /**/ }
-  }
-  if (_bgmAudio && !_bgmFadeTimer) { try { _bgmAudio.volume = bgmAudioVol(); } catch { /**/ } }
-}
-
-// BGM トラックを切り替える（localStorage 保存＋再生中なら自然にフェード差し替え）。
-function setBgmTrack(i: number): void {
-  i = Math.max(0, Math.min(BGM_TRACKS.length - 1, i));
-  saveBgmTrack(i);
-  if (i === _bgmTrack) return;
-  _bgmTrack = i;
-  if (!_bgmEnabled) return;
-  // 現行をフェードアウト → 少し後に新トラック開始（bgmStart 内で旧音源/旧オシレータは停止）。
-  if (_bgmAudio) {
-    fadeAudio(_bgmAudio, 0, 450);
-  } else if (_bgmMaster) {
-    try {
-      const ctx = getAudioCtx();
-      _bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
-      _bgmMaster.gain.setValueAtTime(_bgmMaster.gain.value, ctx.currentTime);
-      _bgmMaster.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
-    } catch { /**/ }
-  }
-  setTimeout(() => bgmStart(), 500);
-}
-
-// -------------------------------------------------------
-// SE: 短くシンプル、連打・鳴りすぎ防止付き
-// -------------------------------------------------------
-let _seEnabled = true;
-let _seVolume  = 0.28;
-const _seCooldown = new Map<string, number>();  // SE種別 → 最後に鳴らした時刻(ms)
-const SE_MIN_INTERVAL: Record<string, number> = {
-  resource: 80,   // 資源獲得は連続OK（少しずらす）
-  click:    150,
-  discardLose: 250, // 連続で捨てる場合にうるさくならないよう少し間隔を空ける
-  default:  200,
-};
-
-export type SEType = 'click'|'dice'|'resource'|'build'|'tradeOk'|'tradeNg'|'devCard'|'robber'|'turnStart'|'victory'
-  |'sevenRoll'|'discardWarn'|'discardLose'|'vpGain'|'bonusGain'|'yourTurn';
-
-function playSE(type: SEType): void {
-  if (!_seEnabled) return;
-  const now = Date.now();
-  const minInterval = SE_MIN_INTERVAL[type] ?? SE_MIN_INTERVAL['default'] ?? 200;
-  const last = _seCooldown.get(type) ?? 0;
-  if (now - last < minInterval) return;  // 間隔が短すぎる場合はスキップ
-  _seCooldown.set(type, now);
-
-  try {
-    const ctx = getAudioCtx();
-    const mg = ctx.createGain();
-    mg.gain.value = _seVolume;
-    mg.connect(ctx.destination);
-    const t = ctx.currentTime;
-
-    // ノート1個ヘルパー（attack/decay を柔らかく）
-    function note(freq: number, dur: number, tp: OscillatorType = 'sine', vol = 1, delay = 0) {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = tp; osc.frequency.value = freq;
-      const s = t + delay;
-      g.gain.setValueAtTime(0, s);
-      g.gain.linearRampToValueAtTime(vol, s + Math.min(0.03, dur * 0.2));
-      g.gain.exponentialRampToValueAtTime(0.001, s + dur);
-      osc.connect(g); g.connect(mg);
-      osc.start(s); osc.stop(s + dur + 0.01);
-    }
-
-    switch (type) {
-      case 'click':
-        note(900, 0.05, 'sine', 0.5);
-        break;
-      case 'dice':
-        note(320, 0.07, 'triangle', 0.6, 0.00);
-        note(420, 0.07, 'triangle', 0.5, 0.04);
-        note(520, 0.10, 'triangle', 0.4, 0.08);
-        break;
-      case 'resource':
-        note(660, 0.12, 'sine', 0.4);
-        note(880, 0.10, 'sine', 0.25, 0.05);
-        break;
-      case 'build':
-        note(440, 0.10, 'triangle', 0.55);
-        note(554, 0.15, 'triangle', 0.45, 0.07);
-        break;
-      case 'tradeOk':
-        note(523, 0.10, 'sine', 0.5, 0.00);
-        note(659, 0.10, 'sine', 0.5, 0.10);
-        note(784, 0.18, 'sine', 0.5, 0.20);
-        break;
-      case 'tradeNg':
-        note(350, 0.12, 'triangle', 0.45, 0.00);
-        note(280, 0.16, 'triangle', 0.35, 0.08);
-        break;
-      case 'devCard':
-        note(587, 0.10, 'sine', 0.45, 0.00);
-        note(740, 0.12, 'sine', 0.40, 0.08);
-        break;
-      case 'robber':
-        note(220, 0.12, 'triangle', 0.5, 0.00);
-        note(196, 0.20, 'triangle', 0.4, 0.10);
-        break;
-      case 'turnStart':
-        note(523, 0.10, 'sine', 0.35);
-        break;
-      case 'victory': {
-        // 明るいファンファーレ（上昇アルペジオ → 高音で締め）
-        [523, 659, 784, 1047].forEach((f, i) => note(f, 0.32, 'triangle', 0.5, i * 0.10));
-        // 締めの和音（C メジャー）
-        [1047, 1319, 1568].forEach(f => note(f, 0.7, 'triangle', 0.38, 0.46));
-        note(2093, 0.5, 'sine', 0.22, 0.5);
-        break;
-      }
-      case 'sevenRoll':
-        // 7（盗賊）: 少し不穏な下降音
-        note(240, 0.18, 'sawtooth', 0.4, 0.00);
-        note(180, 0.28, 'sawtooth', 0.32, 0.12);
-        break;
-      case 'discardWarn':
-        // 捨て札警告: 短い2音の注意音
-        note(466, 0.10, 'square', 0.3, 0.00);
-        note(349, 0.16, 'square', 0.26, 0.10);
-        break;
-      case 'discardLose':
-        // 資源を失う: 短い下降音（控えめ）
-        note(392, 0.10, 'triangle', 0.38, 0.00);
-        note(294, 0.16, 'triangle', 0.30, 0.07);
-        break;
-      case 'vpGain':
-        // 得点獲得: 明るく短い2音の上昇（建設SEに少し遅れて「+点」を知らせる）
-        note(784, 0.10, 'sine', 0.42, 0.00);
-        note(1047, 0.16, 'sine', 0.38, 0.07);
-        break;
-      case 'bonusGain':
-        // 称号獲得（最長交易路/最大騎士力）: 少し派手な3音ファンファーレ
-        note(659, 0.14, 'triangle', 0.5, 0.00);
-        note(880, 0.14, 'triangle', 0.5, 0.10);
-        note(1175, 0.26, 'triangle', 0.46, 0.20);
-        break;
-      case 'yourTurn':
-        // 自分の手番開始: やわらかい2音チャイム（他人の手番開始と区別）
-        note(660, 0.10, 'sine', 0.4, 0.00);
-        note(990, 0.16, 'sine', 0.36, 0.08);
-        break;
-    }
-  } catch { /* ignore */ }
-}
 
 // ============================================================
 // ディスパッチ
@@ -1399,6 +1048,7 @@ function cpuIsResponsible(): boolean {
   }
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     return state.playerOrder.some(p => state.players[p]?.type === 'ai'
+      && !(state.discardedThisRound ?? []).includes(p)
       && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8);
   }
   const cur = state.playerOrder[state.currentPlayerIndex];
@@ -1452,6 +1102,7 @@ function safeFallbackAction(): Action | null {
   // 捨て札（CPUが対象のとき、大きい山から半数を捨てる）
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     const dpid = state.playerOrder.find(p => state.players[p]?.type === 'ai'
+      && !(state.discardedThisRound ?? []).includes(p)
       && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8);
     if (dpid) {
       const hand = state.players[dpid]!.hand;
@@ -2132,6 +1783,51 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
   cycle();
 }
 
+// ============================================================
+// dispatch / applyNetState 共通: 状態遷移後の演出
+// ============================================================
+
+// 状態更新後の「見せる」処理本体（CPU/交易のスケジューリングは含まない）。
+// redraw → 盗賊スライド → 7のSE → 産出ハイライト → 資源/VP/手番演出、を再現する。
+// dispatch（ローカル）と applyNetState（LAN）の両方から呼び、演出のドリフトを防ぐ。
+function runTransitionFx(
+  prevState: GameState,
+  action: Action | undefined,
+  diceTotal: number | undefined,
+  robberFromTile: string | undefined,
+): void {
+  diceAnimating = false;
+  redraw();
+  if (action?.type === 'MOVE_ROBBER' && robberFromTile) {
+    animateRobberMove(robberFromTile, action.tileId);
+  }
+  // 7（盗賊）が出た瞬間: 専用の不穏SE。捨て札フェーズなら警告SEも（少し遅らせて重複回避）。
+  if (action?.type === 'ROLL_DICE' && diceTotal === 7) {
+    playSE('sevenRoll');
+    if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+      setTimeout(() => playSE('discardWarn'), 360);
+    }
+  }
+  // 7以外: 産出タイルを強調して「どのタイルから資源が出たか」を分かりやすく
+  if (action?.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal !== 7) {
+    highlightProducingTiles(diceTotal);
+  }
+  triggerResourceAnimation(prevState, state, action?.type ?? 'SYSTEM', diceTotal);
+  triggerVpGainEffects(prevState, state);
+  maybeYourTurnCue(prevState, state);
+}
+
+// ROLL_DICE ならダイス演出を見せてから finish、それ以外は即 finish。
+function runWithDiceAnim(action: Action | undefined, finish: () => void): void {
+  if (action?.type === 'ROLL_DICE' && state.lastDiceRoll) {
+    diceAnimating = true;
+    const [d1, d2] = state.lastDiceRoll;
+    playDiceRoll(d1, d2, finish);
+  } else {
+    finish();
+  }
+}
+
 function dispatch(action: Action): void {
   // LAN対戦: ローカル applyAction は禁止（正本はサーバ）。Action はサーバへ送る。
   if (netMode) { netDispatch(action); return; }
@@ -2144,27 +1840,8 @@ function dispatch(action: Action): void {
     // CPU手番ステータス: CPUが行った行動をバナーに反映
     setCpuStatusFromAction(action, prevState);
 
-    // SE
-    switch (action.type) {
-      case 'ROLL_DICE':         playSE('dice'); break;
-      case 'BUILD_ROAD':
-      case 'BUILD_SETTLEMENT':
-      case 'BUILD_CITY':        playSE('build'); break;
-      case 'BUY_DEV_CARD':      playSE('devCard'); break;
-      case 'PLAY_KNIGHT':
-      case 'PLAY_ROAD_BUILDING':
-      case 'PLAY_YEAR_OF_PLENTY':
-      case 'PLAY_MONOPOLY':     playSE('devCard'); break;
-      case 'MOVE_ROBBER':       playSE('robber'); break;
-      case 'CONFIRM_TRADE':     playSE('tradeOk'); break;
-      case 'RESPOND_TRADE':
-        if ((action as { response: { status: string } }).response.status === 'REJECT') playSE('tradeNg');
-        break;
-      case 'END_TURN':          playSE('turnStart'); break;
-      case 'DECLARE_VICTORY':   playSE('victory'); break;
-      // 手札半減（人間/CPU問わず）: 資源を失う系の軽いSE。種類は秘匿のまま。
-      case 'DISCARD_RESOURCES': playSE('discardLose'); break;
-    }
+    // SE（applyNetState と共通の対応表を再利用）
+    playActionSE(action);
     // 勝利確定: 派手な勝利演出（モーダル＋紙吹雪）＋勝利SE。CPUの後続処理は止める。
     if (state.phase === 'GAME_OVER' && prevState.phase !== 'GAME_OVER') {
       if (cpuWatchdog) { clearTimeout(cpuWatchdog); cpuWatchdog = null; }
@@ -2235,27 +1912,9 @@ function dispatch(action: Action): void {
       }
     }
 
-    // 再描画＋次の進行。ROLL_DICE はダイス演出を見せてから資源演出・進行へ。
+    // 再描画＋演出（applyNetState と共通本体）。その後にローカル専用の進行（CPU/交易）を続ける。
     const finish = (): void => {
-      diceAnimating = false;
-      redraw();
-      if (action.type === 'MOVE_ROBBER' && robberFromTile) {
-        animateRobberMove(robberFromTile, action.tileId);
-      }
-      // 7（盗賊）が出た瞬間: 専用の不穏SE。捨て札フェーズなら警告SEも（少し遅らせて重複回避）。
-      if (action.type === 'ROLL_DICE' && diceTotal === 7) {
-        playSE('sevenRoll');
-        if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
-          setTimeout(() => playSE('discardWarn'), 360);
-        }
-      }
-      // 7以外: 産出タイルを強調して「どのタイルから資源が出たか」を分かりやすく
-      if (action.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal !== 7) {
-        highlightProducingTiles(diceTotal);
-      }
-      triggerResourceAnimation(prevState, state, action.type, diceTotal);
-      triggerVpGainEffects(prevState, state);
-      maybeYourTurnCue(prevState, state);
+      runTransitionFx(prevState, action, diceTotal, robberFromTile);
       // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
       if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
         scheduleCpuTradeResponse();
@@ -2265,14 +1924,7 @@ function dispatch(action: Action): void {
         scheduleAiTurn();
       }
     };
-
-    if (action.type === 'ROLL_DICE' && state.lastDiceRoll) {
-      diceAnimating = true;
-      const [d1, d2] = state.lastDiceRoll;
-      playDiceRoll(d1, d2, finish);
-    } else {
-      finish();
-    }
+    runWithDiceAnim(action, finish);
   } catch (err) {
     // 例外が出ても全体は止めない。ウォッチドッグが安全行動で進行を回復する。
     console.warn('applyAction error (recoverable):', err);
@@ -2511,33 +2163,8 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
     uiPhase = { type: 'idle' };
   }
 
-  const finish = (): void => {
-    diceAnimating = false;
-    redraw();
-    if (action?.type === 'MOVE_ROBBER' && robberFromTile) {
-      animateRobberMove(robberFromTile, action.tileId);
-    }
-    if (action?.type === 'ROLL_DICE' && diceTotal === 7) {
-      playSE('sevenRoll');
-      if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
-        setTimeout(() => playSE('discardWarn'), 360);
-      }
-    }
-    if (action?.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal !== 7) {
-      highlightProducingTiles(diceTotal);
-    }
-    triggerResourceAnimation(prevState, state, action?.type ?? 'SYSTEM', diceTotal);
-    triggerVpGainEffects(prevState, state);
-    maybeYourTurnCue(prevState, state);
-  };
-
-  if (action?.type === 'ROLL_DICE' && state.lastDiceRoll) {
-    diceAnimating = true;
-    const [d1, d2] = state.lastDiceRoll;
-    playDiceRoll(d1, d2, finish);
-  } else {
-    finish();
-  }
+  // 再描画＋演出（dispatch と共通本体）。LAN では後続スケジューリングはしない（サーバが駆動）。
+  runWithDiceAnim(action, () => runTransitionFx(prevState, action, diceTotal, robberFromTile));
 }
 
 // LAN: クライアント操作をサーバへ送る（ローカル state は変更しない）。
