@@ -1449,6 +1449,20 @@ h1 {
 .lan-cpu-val { min-width: 1.4em; text-align: center; font-size: 1.2rem; font-weight: bold; }
 .lan-cpu-hint { font-size: 0.76rem; color: rgba(255,255,255,0.5); }
 
+/* LAN: CPU強さ・手番順（セグメント選択。ホストのみ操作可、参加者は表示のみ） */
+.lan-cfg-ctrl { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.lan-cfg-label { font-size: 0.85rem; color: rgba(255,255,255,0.78); min-width: 4.8em; }
+.lan-cfg-seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.lan-cfg-opt {
+  padding: 6px 12px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8);
+  font-size: 0.82rem; cursor: pointer;
+}
+.lan-cfg-opt.active { background: #3b7fe2; border-color: #3b7fe2; color: #fff; font-weight: bold; }
+.lan-cfg-opt:disabled { cursor: default; opacity: 0.55; }
+.lan-cfg-opt.active:disabled { opacity: 1; }
+
 /* LAN: CPU/相手の手番中の待機表示 */
 .lan-turn-wait {
   margin-top: 6px;
@@ -2135,9 +2149,9 @@ h1 {
   white-space: nowrap;
   color: #fff;
 }
-/* 上下方向に盤面から離す: 上段(P1/P2)はより上へ、下段(P3/P4)はより下へ。左右位置は維持。
-   右上はメニューがあるため P2(corner-tr)のみメニューを避けて少しだけ下げる。 */
-.corner-tl { top: 6px;     left: 5px; }
+/* 上段(P1/P2)は同じ高さ(P2基準)に揃える。右上メニューを避けるため P2 の top に P1 も合わせる。
+   下段(P3/P4)はより下へ。左右位置は維持。 */
+.corner-tl { top: 32px;    left: 5px; }
 .corner-tr { top: 32px;    right: 5px; }
 .corner-bl { bottom: 6px;  left: 5px; }
 .corner-br { bottom: 6px;  right: 5px; }

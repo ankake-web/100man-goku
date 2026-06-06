@@ -29,9 +29,10 @@ import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
 import { generateRandomPlayerName, resolveUniqueName, pickCpuName } from '../src/net/names';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
-import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
-import type { PlayerId, PlayerColor, GameState, Action, LogEntry } from '../src/types';
+import type { ClientMessage, ServerMessage, LobbyPlayer, LanOrderMode } from '../src/net/protocol';
+import type { PlayerId, PlayerColor, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
+import type { PlayerOrderMode } from '../src/engine/setup';
 
 // LAN 同期する Action（サーバ側ホワイトリスト）。
 // MVP4 で交易・捨て札・盗賊・発展カード使用・勝利まで全主要操作を許可する。
@@ -59,7 +60,6 @@ function requiredActor(state: GameState, action: Action): PlayerId | null {
 
 const PLAYER_IDS: PlayerId[] = ['player1', 'player2', 'player3', 'player4'];
 const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
-const CPU_DIFFICULTY = 'normal' as const;
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 
@@ -90,6 +90,8 @@ interface Room {
   cpuTimer: ReturnType<typeof setTimeout> | null; // サーバ側CPU駆動タイマー
   // CPU のランダム3文字名。ルームで一度決めたら固定（再接続・人数変更でも維持）。
   cpuNames: string[];
+  cpuDifficulty: AiDifficulty;  // ホスト設定のCPU強さ（弱い/普通/強い）
+  orderMode: LanOrderMode;      // ホスト設定の手番順（ランダム/入室順）
   // 視点別ログ（playerId → ログ配列）。各端末に「自分視点」のログを配信するため。
   memberLogs: Record<string, LogEntry[]>;
 }
@@ -189,6 +191,8 @@ function broadcastLobby(room: Room, urls: string[]): void {
     canStart: humans >= 1 && total >= MIN_PLAYERS && total <= MAX_PLAYERS,
     cpuCount: room.cpuCount,
     maxCpu: Math.max(0, MAX_PLAYERS - humans),
+    cpuDifficulty: room.cpuDifficulty,
+    orderMode: room.orderMode,
   };
   for (const m of room.members) send(m.ws, msg);
 }
@@ -216,17 +220,21 @@ function startGame(room: Room): void {
     color: colorFor(m.id),
     type: 'human' as const,
   }));
-  // CPU は空きスロットへ割り当て（type:'ai'・難易度付き）。名前はルーム固定のランダム3文字名。
+  // CPU は空きスロットへ割り当て（type:'ai'）。難易度はホスト設定、名前はルーム固定のランダム3文字名。
   const cpuNames = cpuNamesFor(room, cpuSlots(room).length);
   const cpuSpecs: PlayerSpec[] = cpuSlots(room).map((id, i) => ({
     id,
     name: cpuNames[i] ?? `CPU${i + 1}`,
     color: colorFor(id),
     type: 'ai' as const,
-    aiDifficulty: CPU_DIFFICULTY,
+    aiDifficulty: room.cpuDifficulty,
   }));
-  // 手番順はランダム（人間・CPU混在）。乱数（ダイス/山札/盤面/CPU判断）はすべてサーバ側。
-  const state = createInitialGameState([...humanSpecs, ...cpuSpecs], 'random', undefined);
+  // 手番順はホスト設定。joined=入室順(spec順をそのまま固定) / random=シャッフル。
+  // 乱数（ダイス/山札/盤面/CPU判断）はすべてサーバ側。
+  const allSpecs = [...humanSpecs, ...cpuSpecs];
+  const orderMode: PlayerOrderMode = room.orderMode === 'joined' ? 'fixed' : 'random';
+  const orderSpec = room.orderMode === 'joined' ? allSpecs.map(s => s.id) : undefined;
+  const state = createInitialGameState(allSpecs, orderMode, orderSpec);
   room.started = true;
   room.state = state;
   room.memberLogs = {};
@@ -332,7 +340,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         case 'create': {
           if (room) return;
           const code = genCode();
-          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], memberLogs: {} };
+          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', memberLogs: {} };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);
@@ -391,6 +399,18 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           if (!room || !me || !me.isHost || room.started) return;
           const n = Number.isFinite(msg.count) ? Math.floor(msg.count) : 0;
           room.cpuCount = n; // clampCpu は broadcastLobby 内で適用
+          broadcastLobby(room, currentUrls());
+          break;
+        }
+        case 'setConfig': {
+          // CPU強さ・手番順の設定はホストのみ・ロビー中のみ。参加者からは変更不可。
+          if (!room || !me || !me.isHost || room.started) return;
+          if (msg.cpuDifficulty === 'weak' || msg.cpuDifficulty === 'normal' || msg.cpuDifficulty === 'strong') {
+            room.cpuDifficulty = msg.cpuDifficulty;
+          }
+          if (msg.orderMode === 'random' || msg.orderMode === 'joined') {
+            room.orderMode = msg.orderMode;
+          }
           broadcastLobby(room, currentUrls());
           break;
         }

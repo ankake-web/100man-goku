@@ -77,11 +77,11 @@ function renderHome(
   const tabs = document.createElement('div');
   tabs.className = 'home-tabs';
 
-  // 既定はオンライン（LAN）対戦タブ。CPU対戦タブも残す。
+  // 既定はオンライン（LAN）対戦タブ。並びはオンラインを先頭(左)、CPU対戦を後ろ(右)にする。
   const tabCpu    = createTab('CPU 対戦',      false);
   const tabOnline = createTab('オンライン対戦', true);
-  tabs.appendChild(tabCpu);
   tabs.appendChild(tabOnline);
+  tabs.appendChild(tabCpu);
   card.appendChild(tabs);
 
   // ---- CPU 対戦フォーム ----（既定はオンラインタブなので初期は非表示）
@@ -267,10 +267,6 @@ function renderHome(
   // ---- ルール説明（折りたたみ。開始ボタンの下に置き、邪魔しない） ----
   screen.appendChild(buildRulePanel());
 
-  // ---- サウンドテストパネル ----
-  const soundPanel = buildSoundTestPanel();
-  screen.appendChild(soundPanel);
-
   container.appendChild(screen);
 
   // ---- イベント ----
@@ -402,104 +398,6 @@ function buildRulePanel(): HTMLDetailsElement {
 
   details.appendChild(body);
   return details;
-}
-
-function buildSoundTestPanel(): HTMLDivElement {
-  const panel = document.createElement('div');
-  panel.className = 'sound-test-panel';
-
-  const summary = document.createElement('details');
-  const sumTitle = document.createElement('summary');
-  sumTitle.className = 'sound-test-title';
-  sumTitle.textContent = '🔊 サウンドテスト';
-  summary.appendChild(sumTitle);
-
-  // 音量・ミュート行
-  const ctrlRow = document.createElement('div');
-  ctrlRow.className = 'sound-test-ctrl';
-
-  // BGM コントロール
-  const bgmLbl = document.createElement('span');
-  bgmLbl.textContent = 'BGM：';
-  ctrlRow.appendChild(bgmLbl);
-
-  const bgmBtn = document.createElement('button');
-  bgmBtn.className = 'st-btn';
-  bgmBtn.textContent = _bgmEnabled ? '▶ 停止' : '▶ 再生';
-  bgmBtn.addEventListener('click', () => {
-    _bgmEnabled = !_bgmEnabled;
-    if (_bgmEnabled) bgmStart(); else bgmStop();
-    bgmBtn.textContent = _bgmEnabled ? '■ 停止' : '▶ 再生';
-  });
-  ctrlRow.appendChild(bgmBtn);
-
-  const bgmVolLbl = document.createElement('label');
-  bgmVolLbl.textContent = ' 音量';
-  const bgmVol = document.createElement('input');
-  bgmVol.type = 'range'; bgmVol.min = '0'; bgmVol.max = '100';
-  bgmVol.value = String(Math.round(_bgmVolume * 100));
-  bgmVol.className = 'st-slider';
-  bgmVol.addEventListener('input', () => bgmSetVolume(parseInt(bgmVol.value) / 100));
-  bgmVolLbl.appendChild(bgmVol);
-  ctrlRow.appendChild(bgmVolLbl);
-
-  // SE コントロール
-  const seLbl = document.createElement('span');
-  seLbl.style.marginLeft = '16px';
-  seLbl.textContent = 'SE：';
-  ctrlRow.appendChild(seLbl);
-
-  const seVolLbl = document.createElement('label');
-  seVolLbl.textContent = '音量';
-  const seVol = document.createElement('input');
-  seVol.type = 'range'; seVol.min = '0'; seVol.max = '100';
-  seVol.value = String(Math.round(_seVolume * 100));
-  seVol.className = 'st-slider';
-  seVol.addEventListener('input', () => { _seVolume = parseInt(seVol.value) / 100; });
-  seVolLbl.appendChild(seVol);
-  ctrlRow.appendChild(seVolLbl);
-
-  const muteBtn = document.createElement('button');
-  muteBtn.className = 'st-btn';
-  muteBtn.textContent = _seEnabled ? '🔔 ON' : '🔕 OFF';
-  muteBtn.addEventListener('click', () => {
-    _seEnabled = !_seEnabled;
-    muteBtn.textContent = _seEnabled ? '🔔 ON' : '🔕 OFF';
-  });
-  ctrlRow.appendChild(muteBtn);
-
-  summary.appendChild(ctrlRow);
-
-  // SE テストボタン
-  const seRow = document.createElement('div');
-  seRow.className = 'sound-test-se-row';
-
-  const seTests: Array<[SEType, string]> = [
-    ['dice',     '🎲 ダイス'],
-    ['build',    '🏠 建設'],
-    ['resource', '🌲 資源獲得'],
-    ['tradeOk',  '✓ 交易成立'],
-    ['tradeNg',  '✗ 交易拒否'],
-    ['devCard',  '🃏 発展カード'],
-    ['robber',   '💀 盗賊'],
-    ['turnStart','⏭ ターン開始'],
-    ['victory',  '🏆 勝利'],
-  ];
-
-  for (const [seType, label] of seTests) {
-    const btn = document.createElement('button');
-    btn.className = 'st-se-btn';
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      _seCooldown.delete(seType); // クールダウンをリセットしてテスト再生
-      playSE(seType);
-    });
-    seRow.appendChild(btn);
-  }
-
-  summary.appendChild(seRow);
-  panel.appendChild(summary);
-  return panel;
 }
 
 function createTab(label: string, active: boolean): HTMLButtonElement {
@@ -997,6 +895,7 @@ function fadeAudio(audio: HTMLAudioElement, to: number, ms: number, onDone?: () 
 // ---- BGM 3種。実音源(public/bgm)を優先再生し、未配置/読込失敗時は手続き生成BGMへ
 //      フォールバックする。実音源候補・利用規約メモは docs/BGM候補.md / public/bgm/README.md。 ----
 interface BgmTrack {
+  id: string;                       // 保存用の安定ID（並び替えしても保存選択を保てる）
   name: string;
   file?: string;                    // 実音源パス(public配下)。無い/読めない時は seq で代替。
   beatSec: number;
@@ -1004,10 +903,21 @@ interface BgmTrack {
   bass: OscillatorType;
   seq: [number, number, number][]; // 手続き生成フォールバック [freq_hz, dur_beats, vol_ratio]
 }
+// 並びは「港町の酒場」を先頭（=既定）にする。
 const BGM_TRACKS: BgmTrack[] = [
   {
-    // 0: 開拓の朝 — 明るくほのぼの（実音源候補: PeriTune「Village_Fete」）
-    name: '開拓の朝', file: '/bgm/village_fete.mp3', beatSec: 0.55, melody: 'sine', bass: 'triangle',
+    // 港町の酒場（既定）— 中世・ケルト風。実音源候補: PeriTune「Portside Café」
+    id: 'tavern', name: '港町の酒場', file: '/bgm/portside_cafe.mp3', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
+    seq: [
+      [440.0,1,0.7],[523.3,1,0.6],[493.9,1,0.65],[440.0,1,0.6],[392.0,1,0.55],[440.0,2,0.6],
+      [493.9,1,0.65],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[440.0,1,0.6],[493.9,2,0.6],
+      [523.3,1,0.65],[659.3,1,0.7],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[523.3,2,0.6],
+      [440.0,1,0.6],[392.0,1,0.55],[440.0,1,0.6],[523.3,1,0.65],[493.9,1,0.6],[440.0,3,0.6],
+    ],
+  },
+  {
+    // 開拓の朝 — 明るくほのぼの。実音源候補: PeriTune「Village_Fete」
+    id: 'morning', name: '開拓の朝', file: '/bgm/village_fete.mp3', beatSec: 0.55, melody: 'sine', bass: 'triangle',
     seq: [
       [261.6,1,0.8],[329.6,1,0.7],[392.0,1,0.8],[523.3,1,0.6],
       [440.0,1,0.7],[392.0,1,0.6],[329.6,2,0.5],
@@ -1018,18 +928,8 @@ const BGM_TRACKS: BgmTrack[] = [
     ],
   },
   {
-    // 1: 港町の酒場 — 中世・ケルト風（実音源候補: PeriTune「Portside Café」）
-    name: '港町の酒場', file: '/bgm/portside_cafe.mp3', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
-    seq: [
-      [440.0,1,0.7],[523.3,1,0.6],[493.9,1,0.65],[440.0,1,0.6],[392.0,1,0.55],[440.0,2,0.6],
-      [493.9,1,0.65],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[440.0,1,0.6],[493.9,2,0.6],
-      [523.3,1,0.65],[659.3,1,0.7],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[523.3,2,0.6],
-      [440.0,1,0.6],[392.0,1,0.55],[440.0,1,0.6],[523.3,1,0.65],[493.9,1,0.6],[440.0,2,0.6],
-    ],
-  },
-  {
-    // 2: 静かな夜 — 落ち着いたファンタジー（実音源候補: PeriTune「Nocturnal_Bloom」）
-    name: '静かな夜', file: '/bgm/nocturnal_bloom.mp3', beatSec: 0.74, melody: 'sine', bass: 'triangle',
+    // 静かな夜 — 落ち着いたファンタジー。実音源候補: PeriTune「Nocturnal_Bloom」
+    id: 'night', name: '静かな夜', file: '/bgm/nocturnal_bloom.mp3', beatSec: 0.74, melody: 'sine', bass: 'triangle',
     seq: [
       [440.0,2,0.5],[523.3,2,0.45],[659.3,2,0.5],[587.3,2,0.4],
       [523.3,2,0.45],[493.9,2,0.4],[440.0,3,0.5],[392.0,1,0.35],
@@ -1039,15 +939,17 @@ const BGM_TRACKS: BgmTrack[] = [
   },
 ];
 
+// 保存は曲ID（並び替えしても選択が崩れない）。未保存/不正値（旧数値含む）は既定=先頭(港町の酒場)。
 const BGM_TRACK_KEY = 'catan_bgm_track';
 function loadBgmTrack(): number {
   try {
-    const v = parseInt(localStorage.getItem(BGM_TRACK_KEY) ?? '', 10);
-    return Number.isInteger(v) && v >= 0 && v < BGM_TRACKS.length ? v : 0;
+    const id = localStorage.getItem(BGM_TRACK_KEY) ?? '';
+    const idx = BGM_TRACKS.findIndex(t => t.id === id);
+    return idx >= 0 ? idx : 0;
   } catch { return 0; }
 }
 function saveBgmTrack(i: number): void {
-  try { localStorage.setItem(BGM_TRACK_KEY, String(i)); } catch { /* localStorage 不可でも無視 */ }
+  try { const id = BGM_TRACKS[i]?.id; if (id) localStorage.setItem(BGM_TRACK_KEY, id); } catch { /* 無視 */ }
 }
 let _bgmTrack = loadBgmTrack();
 
@@ -1095,9 +997,13 @@ function bgmStartProcedural(tr: BgmTrack): void {
   _bgmMaster = masterGain;
   const loopId = ++_bgmLoopId;
 
-  function scheduleLoop(startT: number) {
+  // ループは「絶対オーディオ時刻」で連続スケジュールする（setTimeout のドリフトに依存しない）。
+  // 各音は音長いっぱいまで鳴らし(終端でやわらかく減衰)、音間・ループ継ぎ目に無音/クリックを作らない。
+  const loopDur = totalBeats * tr.beatSec;
+  let nextStart = ctx.currentTime + 0.1;
+  function scheduleLoop() {
     if (_bgmLoopId !== loopId) return;
-    let t = startT;
+    let t = nextStart;
     for (const [freq, beats, volR] of tr.seq) {
       const dur = beats * tr.beatSec;
       // 主旋律
@@ -1106,11 +1012,11 @@ function bgmStartProcedural(tr: BgmTrack): void {
       osc.type = tr.melody;
       osc.frequency.value = freq;
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(volR, t + 0.04);
-      g.gain.setValueAtTime(volR, t + dur * 0.6);
-      g.gain.linearRampToValueAtTime(0, t + dur * 0.95);
+      g.gain.linearRampToValueAtTime(volR, t + 0.03);
+      g.gain.setValueAtTime(volR, t + dur * 0.82);
+      g.gain.linearRampToValueAtTime(0.0001, t + dur);  // 終端まで鳴らす＝隙間を作らない
       osc.connect(g); g.connect(masterGain);
-      osc.start(t); osc.stop(t + dur);
+      osc.start(t); osc.stop(t + dur + 0.02);
       _bgmOscs.push(osc);
       // 低音ハーモニー（一オクターブ下、半音量）
       if (beats >= 2) {
@@ -1120,17 +1026,18 @@ function bgmStartProcedural(tr: BgmTrack): void {
         bass.frequency.value = freq / 2;
         bg.gain.setValueAtTime(0, t);
         bg.gain.linearRampToValueAtTime(volR * 0.35, t + 0.08);
-        bg.gain.linearRampToValueAtTime(0, t + dur * 0.8);
+        bg.gain.linearRampToValueAtTime(0.0001, t + dur);
         bass.connect(bg); bg.connect(masterGain);
-        bass.start(t); bass.stop(t + dur);
+        bass.start(t); bass.stop(t + dur + 0.02);
         _bgmOscs.push(bass);
       }
       t += dur;
     }
-    const loopDur = totalBeats * tr.beatSec;
-    setTimeout(() => scheduleLoop(ctx.currentTime + 0.05), (loopDur - 0.5) * 1000);
+    nextStart = t;  // 次ループは今ループの終端から連続（隙間/重なりなし）
+    // ループ終端の少し前に次ループを先行スケジュール（絶対時刻なのでズレない）。
+    setTimeout(scheduleLoop, Math.max(50, (loopDur - 0.25) * 1000));
   }
-  scheduleLoop(ctx.currentTime + 0.1);
+  scheduleLoop();
 }
 
 function bgmStop(): void {

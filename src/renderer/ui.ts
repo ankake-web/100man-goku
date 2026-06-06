@@ -1254,6 +1254,21 @@ function useCornerLayout(): boolean {
   return w > h && h <= 600; // landscape phone
 }
 
+// 表示幅で文字列を切り詰める（盤上ミニパネル用）。全角=幅2 / 半角英数記号・半角カナ=幅1、
+// 合計が maxWidth(=全角4相当=8) を超える直前で停止。省略記号は付けない。
+export function clipByWidth(s: string, maxWidth = 8): string {
+  let w = 0;
+  let out = '';
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0;
+    const cw = ((code >= 0x20 && code <= 0x7e) || (code >= 0xff61 && code <= 0xff9f)) ? 1 : 2;
+    if (w + cw > maxWidth) break;
+    out += ch;
+    w += cw;
+  }
+  return out;
+}
+
 // スマホ縦持ち用ミニパネルの四隅割り当て（人数別にバランスよく配置）。
 const MINI_CORNERS: Record<number, string[]> = {
   1: ['corner-tl'],
@@ -1299,7 +1314,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     const dot = el('span', 'mini-dot');
     dot.style.background = color;
     const name = el('span', 'mini-name');
-    name.textContent = p.name;
+    name.textContent = clipByWidth(p.name, 8);   // 全角4文字相当で単純切り捨て（省略記号なし）
     row1.append(dot, name);
 
     // 2行目: ★点数 🃏手札枚数（公開情報のみ）＋ 称号アイコン

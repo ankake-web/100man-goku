@@ -7,8 +7,8 @@
 // 既存の CPU 対戦フォームには一切触れない（このモジュールは LAN 専用）。
 
 import { LanClient } from './lanClient';
-import type { ServerMessage, LobbyPlayer } from './protocol';
-import type { GameState, PlayerId, PlayerColor } from '../types';
+import type { ServerMessage, LobbyPlayer, LanOrderMode } from './protocol';
+import type { GameState, PlayerId, PlayerColor, AiDifficulty } from '../types';
 import { attachNameField, savePlayerName } from './nameField';
 import { saveResume, clearResume } from './resume';
 import type { ResumeInfo } from './resume';
@@ -31,6 +31,8 @@ interface LobbyView {
   canStart: boolean;
   cpuCount: number;
   maxCpu: number;
+  cpuDifficulty: AiDifficulty;
+  orderMode: LanOrderMode;
   error: string;
 }
 
@@ -40,7 +42,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
   let client: LanClient | null = null;
   const view: LobbyView = {
     code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false,
-    cpuCount: 0, maxCpu: 3, error: '',
+    cpuCount: 0, maxCpu: 3, cpuDifficulty: 'normal', orderMode: 'random', error: '',
   };
   let stage: 'idle' | 'lobby' | 'resuming' = 'idle';
 
@@ -62,6 +64,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
         view.code = msg.code; view.players = msg.players;
         view.hostUrls = msg.hostUrls; view.canStart = msg.canStart;
         view.cpuCount = msg.cpuCount; view.maxCpu = msg.maxCpu;
+        view.cpuDifficulty = msg.cpuDifficulty; view.orderMode = msg.orderMode;
         if (stage === 'lobby' || stage === 'resuming') { stage = 'lobby'; render(); }
         break;
       case 'started':
@@ -291,6 +294,38 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
       cpuBox.appendChild(hint);
       root.appendChild(cpuBox);
     }
+
+    // CPU強さ・手番順（ホストが設定。参加者はハイライト表示のみ＝変更不可）。
+    const DIFF_OPTS: { value: AiDifficulty; text: string }[] = [
+      { value: 'weak', text: '弱い' }, { value: 'normal', text: '普通' }, { value: 'strong', text: '強い' },
+    ];
+    const ORDER_OPTS: { value: LanOrderMode; text: string }[] = [
+      { value: 'random', text: 'ランダム' }, { value: 'joined', text: '入室順' },
+    ];
+    const segRow = <T extends string>(
+      labelText: string, opts: { value: T; text: string }[], cur: T, onPick: (v: T) => void,
+    ): HTMLDivElement => {
+      const box = document.createElement('div');
+      box.className = 'lan-cfg-ctrl';
+      const lbl = document.createElement('span');
+      lbl.className = 'lan-cfg-label';
+      lbl.textContent = labelText;
+      box.appendChild(lbl);
+      const grp = document.createElement('div');
+      grp.className = 'lan-cfg-seg';
+      for (const o of opts) {
+        const b = document.createElement('button');
+        b.className = `lan-cfg-opt${o.value === cur ? ' active' : ''}`;
+        b.textContent = o.text;
+        if (view.isHost) b.addEventListener('click', () => onPick(o.value));
+        else b.disabled = true;   // 参加者は表示のみ
+        grp.appendChild(b);
+      }
+      box.appendChild(grp);
+      return box;
+    };
+    root.appendChild(segRow('CPU 強さ', DIFF_OPTS, view.cpuDifficulty, v => client?.send({ t: 'setConfig', cpuDifficulty: v })));
+    root.appendChild(segRow('手番順', ORDER_OPTS, view.orderMode, v => client?.send({ t: 'setConfig', orderMode: v })));
 
     // 開始 / 待機
     if (view.isHost) {
