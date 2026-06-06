@@ -24,13 +24,14 @@ import { randomBytes } from 'node:crypto';
 import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
+import { discardCount } from '../src/engine/robber';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
 import { generateRandomPlayerName, resolveUniqueName, pickCpuName } from '../src/net/names';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer, LanOrderMode } from '../src/net/protocol';
-import type { PlayerId, PlayerColor, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
+import type { PlayerId, PlayerColor, PlayerType, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
 import type { PlayerOrderMode } from '../src/engine/setup';
 
@@ -50,7 +51,7 @@ const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
 ]);
 
 // その Action を実行してよいプレイヤー（actor）。送信者の id と一致せねば拒否。
-function requiredActor(state: GameState, action: Action): PlayerId | null {
+export function requiredActor(state: GameState, action: Action): PlayerId | null {
   switch (action.type) {
     case 'DISCARD_RESOURCES': return action.playerId;
     case 'RESPOND_TRADE':     return action.response.playerId;
@@ -70,6 +71,13 @@ const CPU_AFTER_ROLL_MS = 1700;
 
 // 切断したメンバーを保持して再接続を待つ猶予(ms)。これを過ぎたら解放する。
 const DISCONNECT_GRACE_MS = 90_000;
+
+// タイミング設定（テストで短縮値を注入できるようにする。未指定なら上記の本番既定値）。
+export interface LanServerOptions {
+  graceMs?: number;
+  cpuStepMs?: number;
+  cpuAfterRollMs?: number;
+}
 
 interface Member {
   ws: WebSocket | null;       // 切断中は null
@@ -94,9 +102,25 @@ interface Room {
   orderMode: LanOrderMode;      // ホスト設定の手番順（ランダム/入室順）
   // 視点別ログ（playerId → ログ配列）。各端末に「自分視点」のログを配信するため。
   memberLogs: Record<string, LogEntry[]>;
+  // タイミング（attachLanServer のオプションから設定。テストでは短縮値を注入）。
+  graceMs: number;
+  cpuStepMs: number;
+  cpuAfterRollMs: number;
 }
 
 const rooms = new Map<string, Room>();
+
+// テスト専用: 全ルームの保留タイマー(CPU駆動・切断猶予)を止めて Map を空にする。
+// 統合テスト間でタイマーやルームが残留しないようにするための後始末フック。
+export function __resetRoomsForTest(): void {
+  for (const room of rooms.values()) {
+    if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
+    for (const m of room.members) {
+      if (m.graceTimer) { clearTimeout(m.graceTimer); m.graceTimer = null; }
+    }
+  }
+  rooms.clear();
+}
 
 function send(ws: WebSocket | null, msg: ServerMessage): void {
   if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -131,6 +155,16 @@ function colorFor(id: PlayerId): PlayerColor {
 }
 
 const connectedHumans = (room: Room): number => room.members.filter(m => m.connected).length;
+
+// ゲーム中に Player.type を切り替える（切断→AI が代行 / 再接続→人間へ復帰）。
+// room.state を不変更新する。AI 化時の難易度はルームの CPU 設定に合わせる。
+function convertPlayerType(room: Room, pid: PlayerId, type: PlayerType): void {
+  if (!room.state) return;
+  const p = room.state.players[pid];
+  if (!p || p.type === type) return;
+  const updated = type === 'ai' ? { ...p, type, aiDifficulty: room.cpuDifficulty } : { ...p, type };
+  room.state = { ...room.state, players: { ...room.state.players, [pid]: updated } };
+}
 
 // CPU に割り当てる空きスロット（人間が使っていない player1..4 の先頭から cpuCount 個）。
 function cpuSlots(room: Room): PlayerId[] {
@@ -243,7 +277,7 @@ function startGame(room: Room): void {
     send(m.ws, { t: 'started', you: m.id, state: maskStateFor(state, m.id) });
   }
   // 開始直後の手番が CPU の場合に備えて CPU 駆動を起動。
-  scheduleCpuTick(room, CPU_STEP_MS);
+  scheduleCpuTick(room, room.cpuStepMs);
 }
 
 // ============================================================
@@ -267,7 +301,7 @@ function scheduleCpuTick(room: Room, delay: number): void {
     const applied = applyCpuStep(room, step.pid, step.action);
     if (!applied) return; // 適用できず（極めて稀）。人間操作/再接続を待つ。
     // 次の CPU 手番へ。ダイス後は演出ぶん長めに待つ。
-    const nextDelay = applied === 'ROLL_DICE' ? CPU_AFTER_ROLL_MS : CPU_STEP_MS;
+    const nextDelay = applied === 'ROLL_DICE' ? room.cpuAfterRollMs : room.cpuStepMs;
     scheduleCpuTick(room, nextDelay);
   }, delay);
 }
@@ -310,8 +344,12 @@ function applyCpuStep(room: Room, pid: PlayerId, action: Action): Action['type']
  * @param httpServer    Vite の Node HTTP サーバ
  * @param fallbackPort  address() が取れない場合のポート（既定 5173）
  */
-export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
+export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: LanServerOptions = {}): void {
   const wss = new WebSocketServer({ noServer: true });
+  // タイミング設定（テストでは短縮値を注入。未指定なら本番既定値）。
+  const graceMs = opts.graceMs ?? DISCONNECT_GRACE_MS;
+  const cpuStepMs = opts.cpuStepMs ?? CPU_STEP_MS;
+  const cpuAfterRollMs = opts.cpuAfterRollMs ?? CPU_AFTER_ROLL_MS;
 
   // ホスト URL 表示用に、実際に listen しているポートを動的取得する。
   const currentUrls = (): string[] => {
@@ -340,7 +378,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         case 'create': {
           if (room) return;
           const code = genCode();
-          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', memberLogs: {} };
+          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', memberLogs: {}, graceMs, cpuStepMs, cpuAfterRollMs };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);
@@ -378,11 +416,13 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
           me = member;
           send(ws, { t: 'joined', code: target.code, you: member.id, isHost: member.isHost, token: member.token, started: target.started });
           if (target.started && target.state) {
+            // 切断中は AI が代行していた Player を、本人復帰につき人間へ戻す。
+            convertPlayerType(target, member.id, 'human');
             // ゲーム中: 現在の視点別マスク state ＋ 自分視点ログで再同期。
             send(ws, { t: 'started', you: member.id, state: { ...maskStateFor(target.state, member.id), log: target.memberLogs[member.id] ?? [] } });
             // 復帰を他プレイヤーへ通知＋CPU駆動を再評価（手番待ち解消の場合に備える）。
             notifyReconnect(target, member.name);
-            scheduleCpuTick(target, CPU_STEP_MS);
+            scheduleCpuTick(target, target.cpuStepMs);
           } else {
             broadcastLobby(target, currentUrls());
           }
@@ -448,16 +488,25 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
               return;
             }
           }
+          // 交易確定は「交易対象かつ ACCEPT した相手」に対してのみ許可する
+          // （拒否者・対象外への一方的な成立強制を防ぐ。エンジン側 confirmTrade と二重防御）。
+          if (action.type === 'CONFIRM_TRADE') {
+            const pt = room.state.pendingTrade;
+            if (!pt || !pt.targetPlayerIds.includes(action.responderId) || pt.responses[action.responderId]?.status !== 'ACCEPT') {
+              send(ws, { t: 'error', message: '承諾した相手とのみ交易を成立できます' });
+              return;
+            }
+          }
           // 捨て札は「手札の半分(切り捨て)を、所持範囲内で」のみ許可（不足/過剰を拒否）
           if (action.type === 'DISCARD_RESOURCES') {
             const p = room.state.players[action.playerId];
             if (!p) { send(ws, { t: 'error', message: '不明なプレイヤーです' }); return; }
-            const handTotal = RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0);
-            const required = Math.floor(handTotal / 2);
+            // 捨て札枚数ルール(floor(手札/2))の正本はエンジンの discardCount を再利用（重複実装を排除）。
+            const required = discardCount(room.state, action.playerId);
             const res = action.resources as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
             const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
             const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
-            if (handTotal < 8 || discardSum !== required || !withinHand) {
+            if (required === 0 || discardSum !== required || !withinHand) {
               send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
               return;
             }
@@ -470,7 +519,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
             // 視点別ログは broadcastState 内で各メンバー視点に生成する
             broadcastState(room, prev, action, me.id);
             // 人間の操作後に CPU の手番/応答が来る場合は CPU 駆動を起動。
-            scheduleCpuTick(room, action.type === 'ROLL_DICE' ? CPU_AFTER_ROLL_MS : CPU_STEP_MS);
+            scheduleCpuTick(room, action.type === 'ROLL_DICE' ? room.cpuAfterRollMs : room.cpuStepMs);
           } catch {
             // applyAction が弾いた無効操作（送信者にのみ通知）
             send(ws, { t: 'error', message: '無効な操作です' });
@@ -491,12 +540,16 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         broadcastLobby(room, currentUrls());
         scheduleMemberRelease(room, me);
       } else {
-        // 開始後: 切断を記録。残りの人間へ配信は継続。
+        // 開始後: 切断者の手番でゲームが停止しないよう、その Player を一時的に AI 化して
+        // サーバ側 CPU 駆動に代行させる（再接続で人間へ戻す）。スロット自体は解放しない。
+        convertPlayerType(room, me.id, 'ai');
         if (connectedHumans(room) === 0) {
           // 観戦者ゼロなら CPU 駆動を一時停止（再接続で再開）。ルームは猶予中は保持。
           if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
         } else {
           notifyDisconnect(room, me.name);
+          // 切断者の手番なら即 CPU が代行できるよう駆動を起動する。
+          scheduleCpuTick(room, room.cpuStepMs);
         }
         scheduleMemberRelease(room, me);
       }
@@ -510,12 +563,24 @@ function scheduleMemberRelease(room: Room, member: Member): void {
   member.graceTimer = setTimeout(() => {
     member.graceTimer = null;
     if (member.connected) return; // 既に再接続済み
-    room.members = room.members.filter(m => m !== member);
-    if (!room.started) {
-      // ホストが抜けたままなら残りの先頭をホストに昇格
-      if (member.isHost && room.members.length > 0 && !room.members.some(m => m.isHost)) {
-        room.members[0]!.isHost = true;
+
+    if (room.started) {
+      // 開始後はスロットを解放しない。resume（id+token 一致）で同一プレイヤーとして
+      // 復帰できるよう Member を残す（その間 Player は AI が代行し続ける）。
+      // 全員が戻らないまま猶予を過ぎた場合のみルームを破棄する。
+      if (connectedHumans(room) === 0) {
+        if (room.cpuTimer) { clearTimeout(room.cpuTimer); room.cpuTimer = null; }
+        for (const m of room.members) { if (m.graceTimer) { clearTimeout(m.graceTimer); m.graceTimer = null; } }
+        rooms.delete(room.code);
       }
+      return;
+    }
+
+    // 開始前（ロビー）: スロットを解放する（従来どおり）。
+    room.members = room.members.filter(m => m !== member);
+    // ホストが抜けたままなら残りの先頭をホストに昇格
+    if (member.isHost && room.members.length > 0 && !room.members.some(m => m.isHost)) {
+      room.members[0]!.isHost = true;
     }
     // 誰もいなくなったら CPU を止めてルーム破棄
     if (room.members.length === 0) {
@@ -523,8 +588,8 @@ function scheduleMemberRelease(room: Room, member: Member): void {
       rooms.delete(room.code);
       return;
     }
-    if (!room.started) broadcastLobby(room, lanHostUrls(5173));
-  }, DISCONNECT_GRACE_MS);
+    broadcastLobby(room, lanHostUrls(5173));
+  }, room.graceMs);
 }
 
 function sanitizeName(raw: string): string {
