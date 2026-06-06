@@ -974,9 +974,14 @@ h1 {
   cursor: pointer;
 }
 .menu-toggle:hover { background: rgba(255,255,255,0.16); color: #fff; }
-/* スマホ縦持ち: メニューを少し小さく（safe-area 考慮・右上維持・押しやすさは確保） */
+/* スマホ縦持ち: メニューを少し小さく（safe-area 考慮・右上維持・押しやすさは確保）。
+   端ギリギリで見切れないよう、右端・上端から少し内側へ寄せる。 */
 @media (orientation: portrait) and (pointer: coarse) {
-  #game-nav { top: max(4px, env(safe-area-inset-top)); right: 6px; gap: 5px; }
+  #game-nav {
+    top: max(8px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    gap: 5px;
+  }
   .menu-toggle { padding: 4px 9px; font-size: 0.74rem; border-radius: 7px; }
 }
 .game-menu {
