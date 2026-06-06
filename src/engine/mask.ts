@@ -37,5 +37,12 @@ export function maskStateFor(state: GameState, viewerId: PlayerId): GameState {
       devCardCount: p.devCards.length,
     };
   }
-  return { ...state, players };
+  return {
+    ...state,
+    players,
+    // 山札(devDeck)は「残り枚数」だけが公開情報。各カードの種類・並び順は秘匿する。
+    // クライアント/AI は devDeck.length しか参照しないため、枚数を保った不透明スタブに置換し、
+    // DevTools から「次に誰が何を引くか」を先読みできないようにする（中身は決して読まれない）。
+    devDeck: state.devDeck.map(() => ({ id: '', type: 'knight' as const, purchasedOnTurn: -1 })),
+  };
 }

@@ -113,4 +113,21 @@ describe('maskStateFor', () => {
     expect(masked.players.player1!.name).toBe('A');
     expect(masked.players.player2!.color).toBe('blue');
   });
+
+  it('hides the dev-card deck order/types but keeps the remaining count (H1)', () => {
+    const s = createInitialGameState(SPECS, 'fixed', ['player1', 'player2', 'player3']);
+    const real = s.devDeck;
+    expect(real.length).toBe(25);
+    const masked = maskStateFor(s, 'player1');
+    // 残り枚数（公開情報）は保たれる
+    expect(masked.devDeck.length).toBe(real.length);
+    // 種類・並び順・id は実山札と一致しない＝「次に引くカード」を先読みできない
+    const realSig = real.map(c => `${c.id}:${c.type}`).join(',');
+    const maskedSig = masked.devDeck.map(c => `${c.id}:${c.type}`).join(',');
+    expect(maskedSig).not.toBe(realSig);
+    for (const c of masked.devDeck) expect(c.id).toBe('');
+    // GAME_OVER の勝者公開時も山札は秘匿のまま（勝者の Player だけが開示される）
+    const over = maskStateFor({ ...s, phase: 'GAME_OVER', winner: 'player1' }, 'player2' as PlayerId);
+    for (const c of over.devDeck) expect(c.id).toBe('');
+  });
 });
