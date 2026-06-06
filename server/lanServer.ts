@@ -26,7 +26,7 @@ import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
-import { generateRandomPlayerName, resolveUniqueName } from '../src/net/names';
+import { generateRandomPlayerName, resolveUniqueName, pickCpuName } from '../src/net/names';
 import { RESOURCE_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer } from '../src/net/protocol';
@@ -59,7 +59,6 @@ function requiredActor(state: GameState, action: Action): PlayerId | null {
 
 const PLAYER_IDS: PlayerId[] = ['player1', 'player2', 'player3', 'player4'];
 const PLAYER_COLORS: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
-const CPU_NAMES = ['CPU α', 'CPU β', 'CPU γ'];
 const CPU_DIFFICULTY = 'normal' as const;
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
@@ -89,6 +88,8 @@ interface Room {
   state: GameState | null;
   cpuCount: number;           // CPU 人数（0..3、ホストが設定）
   cpuTimer: ReturnType<typeof setTimeout> | null; // サーバ側CPU駆動タイマー
+  // CPU のランダム3文字名。ルームで一度決めたら固定（再接続・人数変更でも維持）。
+  cpuNames: string[];
   // 視点別ログ（playerId → ログ配列）。各端末に「自分視点」のログを配信するため。
   memberLogs: Record<string, LogEntry[]>;
 }
@@ -141,12 +142,23 @@ function clampCpu(room: Room): void {
   room.cpuCount = Math.min(Math.max(0, room.cpuCount), maxCpu);
 }
 
+// CPU 名をルーム単位で固定割り当て（不足分のみ追加。人間名・既存CPU名と重複回避）。
+// 一度決めた名前は room.cpuNames に残るので、人数変更・再接続後も同じ名前を維持する。
+function cpuNamesFor(room: Room, count: number): string[] {
+  const humanNames = room.members.map(m => m.name);
+  while (room.cpuNames.length < count) {
+    room.cpuNames.push(pickCpuName([...humanNames, ...room.cpuNames]));
+  }
+  return room.cpuNames.slice(0, count);
+}
+
 function lobbyPlayers(room: Room): LobbyPlayer[] {
   const humans: LobbyPlayer[] = [...room.members]
     .sort((a, b) => PLAYER_IDS.indexOf(a.id) - PLAYER_IDS.indexOf(b.id))
     .map(m => ({ id: m.id, name: m.name, color: colorFor(m.id), isHost: m.isHost, connected: m.connected, isCpu: false }));
+  const cpuNames = cpuNamesFor(room, cpuSlots(room).length);
   const cpus: LobbyPlayer[] = cpuSlots(room).map((id, i) => ({
-    id, name: CPU_NAMES[i] ?? `CPU ${i + 1}`, color: colorFor(id), isHost: false, connected: true, isCpu: true,
+    id, name: cpuNames[i] ?? `CPU${i + 1}`, color: colorFor(id), isHost: false, connected: true, isCpu: true,
   }));
   return [...humans, ...cpus];
 }
@@ -204,10 +216,11 @@ function startGame(room: Room): void {
     color: colorFor(m.id),
     type: 'human' as const,
   }));
-  // CPU は空きスロットへ割り当て（type:'ai'・難易度付き）。
+  // CPU は空きスロットへ割り当て（type:'ai'・難易度付き）。名前はルーム固定のランダム3文字名。
+  const cpuNames = cpuNamesFor(room, cpuSlots(room).length);
   const cpuSpecs: PlayerSpec[] = cpuSlots(room).map((id, i) => ({
     id,
-    name: CPU_NAMES[i] ?? `CPU ${i + 1}`,
+    name: cpuNames[i] ?? `CPU${i + 1}`,
     color: colorFor(id),
     type: 'ai' as const,
     aiDifficulty: CPU_DIFFICULTY,
@@ -319,7 +332,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173): void {
         case 'create': {
           if (room) return;
           const code = genCode();
-          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, memberLogs: {} };
+          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], memberLogs: {} };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);

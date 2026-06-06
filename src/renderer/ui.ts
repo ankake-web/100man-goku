@@ -1209,9 +1209,8 @@ export function renderUI(
   if (lanMode && viewerId != null && viewerId !== pid && state.phase !== 'GAME_OVER') {
     const waitEl = el('div', 'lan-turn-wait');
     const compact = isLandscapeCompact();
-    waitEl.textContent = player.type === 'ai'
-      ? (compact ? `🤖 ${player.name} 操作中` : `🤖 ${player.name} が操作中です…`)
-      : (compact ? `⏳ ${player.name} の番` : `⏳ ${player.name} の操作を待っています…`);
+    // CPU/人間を問わず控えめに「○○ の番」とだけ（操作パネル側の小表示。CPUを強調しない）。
+    waitEl.textContent = compact ? `⏳ ${player.name} の番` : `⏳ ${player.name} の番です`;
     turnPanel.appendChild(waitEl);
   }
 
@@ -1295,20 +1294,27 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     panel.dataset.pid = pid;
     panel.style.setProperty('--mini-color', color);
 
+    // 1行目: カラードット + 名前（長い場合は省略表示）
+    const row1 = el('div', 'mini-row1');
     const dot = el('span', 'mini-dot');
     dot.style.background = color;
     const name = el('span', 'mini-name');
     name.textContent = p.name;
+    row1.append(dot, name);
+
+    // 2行目: ★点数 🃏手札枚数（公開情報のみ）＋ 称号アイコン
+    const row2 = el('div', 'mini-row2');
     const stat = el('span', 'mini-stat');
     stat.textContent = `★${vp} 🃏${handTotal}`;
-    panel.append(dot, name, stat);
-
+    row2.appendChild(stat);
     if (p.hasLongestRoad || p.hasLargestArmy) {
       const badges = el('span', 'mini-badges');
       if (p.hasLongestRoad) { const bdg = el('span', 'mini-badge'); bdg.textContent = '🛤'; badges.appendChild(bdg); }
       if (p.hasLargestArmy) { const bdg = el('span', 'mini-badge'); bdg.textContent = '⚔'; badges.appendChild(bdg); }
-      panel.appendChild(badges);
+      row2.appendChild(badges);
     }
+
+    panel.append(row1, row2);
     wrap.appendChild(panel);
   });
   boardArea.appendChild(wrap);

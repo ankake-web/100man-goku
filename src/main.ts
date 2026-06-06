@@ -11,7 +11,7 @@ import type { PlayerSpec } from './engine/createState';
 import { applyAction } from './engine/game';
 import { renderLanLobby } from './net/lanLobby';
 import { LanClient } from './net/lanClient';
-import { generateRandomPlayerName } from './net/names';
+import { generateRandomPlayerName, pickCpuNames } from './net/names';
 import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
@@ -49,7 +49,6 @@ interface HomeConfig {
 
 const PLAYER_IDS: PlayerId[]   = ['player1', 'player2', 'player3', 'player4'];
 const PLAYER_COLORS            = ['red', 'blue', 'purple', 'orange'] as const;
-const CPU_NAMES                = ['CPU α', 'CPU β', 'CPU γ'];
 
 // ============================================================
 // ホーム画面レンダリング
@@ -175,7 +174,8 @@ function renderHome(
 
   const playerDisplayLabel = (id: PlayerId): string => {
     const idx = PLAYER_IDS.indexOf(id);
-    return idx === 0 ? 'あなた' : (CPU_NAMES[idx - 1] ?? id);
+    // 開始前プレビュー用の汎用ラベル（実際のCPU名はゲーム作成時にランダム決定）。
+    return idx === 0 ? 'あなた' : `CPU${idx}`;
   };
 
   const readCpuCount = (): number => {
@@ -536,6 +536,9 @@ function createRadioGroup(name: string, options: string[], defaultVal: string): 
 
 function initGameState(cfg: HomeConfig): GameState {
   const totalPlayers = cfg.cpuCount + 1;
+  // CPU 名はランダムな3文字名を重複なく割り当て（人間名とも重複回避）。state に保存され
+  // 以降は固定（render 毎の再抽選はしない）。表示名のみでCPUロジックには関与しない。
+  const cpuNames = pickCpuNames(cfg.cpuCount, [cfg.playerName]);
   // プレイヤー実体（誰が人間/CPUか）は ID 固定で生成する。手番順とは独立。
   const specs: PlayerSpec[] = [];
   for (let i = 0; i < totalPlayers; i++) {
@@ -543,7 +546,7 @@ function initGameState(cfg: HomeConfig): GameState {
     specs.push({
       id: PLAYER_IDS[i]!,
       color: PLAYER_COLORS[i]!,
-      name: isHuman ? cfg.playerName : CPU_NAMES[i - 1]!,
+      name: isHuman ? cfg.playerName : cpuNames[i - 1]!,
       type: isHuman ? 'human' : 'ai',
       ...(isHuman ? {} : { aiDifficulty: cfg.cpuDifficulty }),
     });
@@ -773,7 +776,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
   }
   if (cur) {
     const p = state.players[cur];
-    if (p?.type === 'ai') return { text: `🤖 ${p.name} 操作中`, alert: false };
+    // CPU/人間を問わず控えめに「○○ の番」とだけ表示（CPUを強調しすぎない）。
     return { text: `⏳ ${p?.name ?? ''} の番`, alert: false };
   }
   return { text: '', alert: false };
@@ -885,6 +888,25 @@ function updateGameNav(): void {
   bgmRow.append(bgmBtn, volSlider);
   dd.appendChild(bgmRow);
 
+  // BGM 曲選択（3種）。選択は localStorage に保存され、次回も同じ曲。
+  const trackRow = document.createElement('div');
+  trackRow.className = 'game-menu-row';
+  const trackLbl = document.createElement('span');
+  trackLbl.className = 'game-menu-label';
+  trackLbl.textContent = 'BGM 曲';
+  const trackSel = document.createElement('select');
+  trackSel.className = 'game-menu-select';
+  BGM_TRACKS.forEach((tr, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = tr.name;
+    if (i === _bgmTrack) opt.selected = true;
+    trackSel.appendChild(opt);
+  });
+  trackSel.addEventListener('change', () => setBgmTrack(parseInt(trackSel.value, 10)));
+  trackRow.append(trackLbl, trackSel);
+  dd.appendChild(trackRow);
+
   // SE ON/OFF
   const seBtn = document.createElement('button');
   seBtn.className = 'game-menu-btn';
@@ -955,38 +977,89 @@ let _bgmEnabled  = false;
 let _bgmVolume   = 0.07;  // かなり控えめ
 let _bgmLoopId   = 0;
 let _bgmOscs: OscillatorNode[] = [];
+let _bgmMaster: GainNode | null = null;   // フェード制御用のマスターゲイン
 
-// C4/E4/G4/A4/C5: Cペンタトニックメジャー
-// [freq_hz, dur_beats, vol_ratio]
-const BEAT_SEC = 0.55;  // 約110 BPM
-const BGM_SEQ: [number, number, number][] = [
-  [261.6,1,0.8],[329.6,1,0.7],[392.0,1,0.8],[523.3,1,0.6],
-  [440.0,1,0.7],[392.0,1,0.6],[329.6,2,0.5],
-  [261.6,1,0.7],[349.2,1,0.6],[392.0,1,0.7],[349.2,1,0.5],
-  [329.6,1,0.6],[293.7,1,0.5],[261.6,2,0.7],
-  [392.0,1,0.6],[440.0,1,0.7],[523.3,1,0.8],[440.0,1,0.6],
-  [392.0,1,0.6],[329.6,1,0.5],[261.6,3,0.4],
+// ---- BGM 3種（手続き生成＝著作権フリーのオリジナル旋律）。実音源は同梱せず、
+//      差し替え可能な構造のみ用意。実音源候補と規約メモは docs/BGM候補.md を参照。 ----
+interface BgmTrack {
+  name: string;
+  beatSec: number;
+  melody: OscillatorType;
+  bass: OscillatorType;
+  seq: [number, number, number][]; // [freq_hz, dur_beats, vol_ratio]
+}
+const BGM_TRACKS: BgmTrack[] = [
+  {
+    // 0: 開拓の朝 — 明るくほのぼの（Cメジャー・ペンタ寄り）
+    name: '開拓の朝', beatSec: 0.55, melody: 'sine', bass: 'triangle',
+    seq: [
+      [261.6,1,0.8],[329.6,1,0.7],[392.0,1,0.8],[523.3,1,0.6],
+      [440.0,1,0.7],[392.0,1,0.6],[329.6,2,0.5],
+      [261.6,1,0.7],[349.2,1,0.6],[392.0,1,0.7],[349.2,1,0.5],
+      [329.6,1,0.6],[293.7,1,0.5],[261.6,2,0.7],
+      [392.0,1,0.6],[440.0,1,0.7],[523.3,1,0.8],[440.0,1,0.6],
+      [392.0,1,0.6],[329.6,1,0.5],[261.6,3,0.4],
+    ],
+  },
+  {
+    // 1: 港町の酒場 — 中世・ケルト風の軽快なリール（Aドリアン）
+    name: '港町の酒場', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
+    seq: [
+      [440.0,1,0.7],[523.3,1,0.6],[493.9,1,0.65],[440.0,1,0.6],[392.0,1,0.55],[440.0,2,0.6],
+      [493.9,1,0.65],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[440.0,1,0.6],[493.9,2,0.6],
+      [523.3,1,0.65],[659.3,1,0.7],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[523.3,2,0.6],
+      [440.0,1,0.6],[392.0,1,0.55],[440.0,1,0.6],[523.3,1,0.65],[493.9,1,0.6],[440.0,2,0.6],
+    ],
+  },
+  {
+    // 2: 静かな夜 — 落ち着いたファンタジー（Aマイナー、ゆっくり・控えめ）
+    name: '静かな夜', beatSec: 0.74, melody: 'sine', bass: 'triangle',
+    seq: [
+      [440.0,2,0.5],[523.3,2,0.45],[659.3,2,0.5],[587.3,2,0.4],
+      [523.3,2,0.45],[493.9,2,0.4],[440.0,3,0.5],[392.0,1,0.35],
+      [349.2,2,0.45],[392.0,2,0.4],[440.0,2,0.5],[523.3,2,0.45],
+      [493.9,2,0.4],[440.0,2,0.45],[392.0,3,0.5],[329.6,1,0.35],
+    ],
+  },
 ];
-const BGM_TOTAL_BEATS = BGM_SEQ.reduce((s,[,b]) => s + b, 0);
+
+const BGM_TRACK_KEY = 'catan_bgm_track';
+function loadBgmTrack(): number {
+  try {
+    const v = parseInt(localStorage.getItem(BGM_TRACK_KEY) ?? '', 10);
+    return Number.isInteger(v) && v >= 0 && v < BGM_TRACKS.length ? v : 0;
+  } catch { return 0; }
+}
+function saveBgmTrack(i: number): void {
+  try { localStorage.setItem(BGM_TRACK_KEY, String(i)); } catch { /* localStorage 不可でも無視 */ }
+}
+let _bgmTrack = loadBgmTrack();
 
 function bgmStart(): void {
   if (!_bgmEnabled) return;
   bgmStop();
-  const ctx = getAudioCtx();
+  let ctx: AudioContext;
+  try { ctx = getAudioCtx(); } catch { return; } // Audio 不可でもゲームは壊さない
+  const tr = BGM_TRACKS[_bgmTrack] ?? BGM_TRACKS[0]!;
+  const totalBeats = tr.seq.reduce((s, [, b]) => s + b, 0);
+
   const masterGain = ctx.createGain();
-  masterGain.gain.value = _bgmVolume;
+  // 開始時はフェードイン（切替時に急に鳴り出さない）
+  masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  masterGain.gain.linearRampToValueAtTime(_bgmVolume, ctx.currentTime + 0.8);
   masterGain.connect(ctx.destination);
+  _bgmMaster = masterGain;
   const loopId = ++_bgmLoopId;
 
   function scheduleLoop(startT: number) {
     if (_bgmLoopId !== loopId) return;
     let t = startT;
-    for (const [freq, beats, volR] of BGM_SEQ) {
-      const dur = beats * BEAT_SEC;
-      // 主旋律: sine（澄んだ音）
+    for (const [freq, beats, volR] of tr.seq) {
+      const dur = beats * tr.beatSec;
+      // 主旋律
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
-      osc.type = 'sine';
+      osc.type = tr.melody;
       osc.frequency.value = freq;
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(volR, t + 0.04);
@@ -995,11 +1068,11 @@ function bgmStart(): void {
       osc.connect(g); g.connect(masterGain);
       osc.start(t); osc.stop(t + dur);
       _bgmOscs.push(osc);
-      // 低音ハーモニー: triangle（一オクターブ下、半音量）
+      // 低音ハーモニー（一オクターブ下、半音量）
       if (beats >= 2) {
         const bass = ctx.createOscillator();
         const bg = ctx.createGain();
-        bass.type = 'triangle';
+        bass.type = tr.bass;
         bass.frequency.value = freq / 2;
         bg.gain.setValueAtTime(0, t);
         bg.gain.linearRampToValueAtTime(volR * 0.35, t + 0.08);
@@ -1010,8 +1083,7 @@ function bgmStart(): void {
       }
       t += dur;
     }
-    // 1ループ後に再スケジュール
-    const loopDur = BGM_TOTAL_BEATS * BEAT_SEC;
+    const loopDur = totalBeats * tr.beatSec;
     setTimeout(() => scheduleLoop(ctx.currentTime + 0.05), (loopDur - 0.5) * 1000);
   }
   scheduleLoop(ctx.currentTime + 0.1);
@@ -1021,10 +1093,37 @@ function bgmStop(): void {
   _bgmLoopId++;
   _bgmOscs.forEach(o => { try { o.stop(); } catch { /**/ } });
   _bgmOscs = [];
+  if (_bgmMaster) { try { _bgmMaster.disconnect(); } catch { /**/ } _bgmMaster = null; }
 }
 
 function bgmSetVolume(v: number): void {
   _bgmVolume = v;
+  if (_bgmMaster) {
+    try {
+      const ctx = getAudioCtx();
+      _bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
+      _bgmMaster.gain.setValueAtTime(Math.max(0.0001, v), ctx.currentTime);
+    } catch { /**/ }
+  }
+}
+
+// BGM トラックを切り替える（localStorage 保存＋再生中なら自然にフェード差し替え）。
+function setBgmTrack(i: number): void {
+  i = Math.max(0, Math.min(BGM_TRACKS.length - 1, i));
+  saveBgmTrack(i);
+  if (i === _bgmTrack) return;
+  _bgmTrack = i;
+  if (!_bgmEnabled) return;
+  // 現行をフェードアウト → 少し後に新トラックを開始（bgmStart 内で旧オシレータは停止）。
+  try {
+    const ctx = getAudioCtx();
+    if (_bgmMaster) {
+      _bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
+      _bgmMaster.gain.setValueAtTime(_bgmMaster.gain.value, ctx.currentTime);
+      _bgmMaster.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    }
+    setTimeout(() => bgmStart(), 520);
+  } catch { bgmStart(); }
 }
 
 // -------------------------------------------------------
@@ -1796,27 +1895,9 @@ function setCpuThinking(actorId: string): void {
 
 /** CPUが責任を持つ場面なら上部中央にステータスバナーを表示。人間の番では消す。 */
 function updateCpuStatusBanner(): void {
-  const existing = document.getElementById('cpu-status');
-  const show = !!state && state.phase !== 'GAME_OVER' && cpuIsResponsible() && !!cpuStatusActor;
-  if (!show) { existing?.remove(); return; }
-  let banner = existing as HTMLDivElement | null;
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'cpu-status';
-    banner.className = 'cpu-status-banner';
-    document.body.appendChild(banner);
-  }
-  banner.style.borderColor = cpuStatusColor;
-  banner.textContent = '';
-  const dot = document.createElement('span');
-  dot.className = 'cpu-status-dot';
-  dot.style.background = cpuStatusColor;
-  const robot = document.createElement('span'); robot.textContent = '🤖';
-  const name = document.createElement('span'); name.className = 'cpu-status-name'; name.textContent = cpuStatusActor;
-  const msg = document.createElement('span');
-  msg.className = cpuStatusMsg === '考え中…' ? 'cpu-status-msg thinking' : 'cpu-status-msg';
-  msg.textContent = cpuStatusMsg;
-  banner.append(robot, dot, name, msg);
+  // 盤上には「CPU考え中／操作中」を出さない（手番の発光・枠強調・操作パネル表示で分かる）。
+  // 状態変数(cpuStatusActor/Msg)の更新は他処理の都合で残すが、盤上バナーは描画しない。
+  document.getElementById('cpu-status')?.remove();
 }
 
 /** サイコロ産出タイルの画面座標を取得する */

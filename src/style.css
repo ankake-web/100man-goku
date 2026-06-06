@@ -2116,9 +2116,10 @@ h1 {
 .mini-panel {
   position: absolute;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 44vw;          /* 上段2枚が重ならない幅に制限 */
+  flex-direction: column;   /* 2行表示（1行目=名前 / 2行目=★🃏）で横幅を抑える */
+  align-items: flex-start;
+  gap: 1px;
+  max-width: 34vw;          /* 2行化でさらに細く。左右の同段2枚が重ならない幅 */
   padding: 3px 7px;
   border-radius: 9px;
   background: rgba(12,14,20,0.62);
@@ -2126,17 +2127,19 @@ h1 {
   box-shadow: 0 1px 4px rgba(0,0,0,0.45);
   font-size: clamp(0.6rem, 3vw, 0.78rem);
   line-height: 1.2;
-  white-space: nowrap;      /* VP・手札枚数は改行しない */
+  white-space: nowrap;
   color: #fff;
 }
-.corner-tl { top: 5px;    left: 5px; }
-.corner-tr { top: 5px;    right: 5px; }
-.corner-bl { bottom: 5px; left: 5px; }
-.corner-br { bottom: 5px; right: 5px; }
+/* 上段(P1/P2)はメニューバー(右上固定)を避けて少し下、下段(P3/P4)は少し上へ */
+.corner-tl { top: 42px;    left: 5px; }
+.corner-tr { top: 42px;    right: 5px; }
+.corner-bl { bottom: 26px; left: 5px; }
+.corner-br { bottom: 26px; right: 5px; }
+.mini-row1, .mini-row2 { display: flex; align-items: center; gap: 4px; max-width: 100%; }
 .mini-dot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.6); flex: 0 0 auto; }
 .mini-name {
-  font-weight: 700; min-width: 0; max-width: 9ch;   /* 長い名前は省略 */
-  overflow: hidden; text-overflow: ellipsis;
+  font-weight: 700; min-width: 0; max-width: 5em;   /* 名前は約4〜5文字で省略 */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mini-stat { color: #ffd700; font-weight: 700; flex: 0 0 auto; }
 .mini-badges { display: inline-flex; gap: 1px; flex: 0 0 auto; }

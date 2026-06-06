@@ -55,6 +55,34 @@ export function resolveUniqueName(
   return uniquifyWithNumber(requested, used);
 }
 
+// ============================================================
+// CPU 名: ランダムな3文字カタカナ名（6通り）。ゲーム作成時に決定し state/room へ保存する。
+// 同一ゲーム内では重複させない。表示名のみで、CPUロジック・強さには一切関与しない。
+// ============================================================
+export const CPU_NAME_POOL: readonly string[] = [
+  'ハルト', 'ミナト', 'ソラノ', 'リクヤ', 'ナツキ', 'コハル',
+];
+
+/** 既存名と重複しない CPU 名を1つ返す（尽きたら末尾数字で一意化）。 */
+export function pickCpuName(existing: readonly string[] = [], rng: () => number = Math.random): string {
+  const used = new Set(existing);
+  const free = CPU_NAME_POOL.filter(n => !used.has(n));
+  if (free.length > 0) return pickRandom(free, rng);
+  return uniquifyWithNumber(pickRandom(CPU_NAME_POOL, rng), used);
+}
+
+/** 重複しない CPU 名を count 個返す（人間名など existing も避ける）。 */
+export function pickCpuNames(count: number, existing: readonly string[] = [], rng: () => number = Math.random): string[] {
+  const out: string[] = [];
+  const used = [...existing];
+  for (let i = 0; i < count; i++) {
+    const n = pickCpuName(used, rng);
+    out.push(n);
+    used.push(n);
+  }
+  return out;
+}
+
 function uniquifyWithNumber(base: string, used: Set<string>): string {
   let i = 2;
   while (used.has(`${base}${i}`)) i++;
