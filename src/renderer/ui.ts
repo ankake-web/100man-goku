@@ -8,6 +8,7 @@ import { calcVP, calcPublicVP, calcLongestRoad } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
+import { findPendingDiscarder } from '../engine/robber';
 import type { BuildMode } from './events';
 
 // ============================================================
@@ -98,10 +99,7 @@ function phaseText(state: GameState): string {
       return isCpuTurn ? `${cpuName} が盗賊を移動中…` : '盗賊を動かすタイルをクリック';
     case 'DISCARD': {
       // 捨て札は手番者とは限らない（手札8枚以上の全員が対象）。
-      const discardPid = state.playerOrder.find(p => {
-        const h = state.players[p]!.hand;
-        return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
-      });
+      const discardPid = findPendingDiscarder(state);
       const dp = discardPid ? state.players[discardPid] : null;
       if (dp?.type === 'ai') return `${dp.name} が手札を捨てています…`;
       return '半数を捨ててください';
@@ -183,10 +181,7 @@ function buildDiscardUI(
 ): HTMLDivElement {
   const div = el('div', 'modal-panel');
 
-  const discardPid = state.playerOrder.find(p => {
-    const h = state.players[p]!.hand;
-    return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
-  });
+  const discardPid = findPendingDiscarder(state);
   if (!discardPid) return div;
 
   const player = state.players[discardPid]!;
@@ -976,10 +971,7 @@ function buildActionButtons(
     // 捨て札UIは「人間が捨てる対象のとき」だけ表示する。
     // CPUが対象の場合に出すと、CPUの手札内訳が漏れ・人間がCPU分を操作できてしまう。
     // LAN ではマスク済み state により discardPid は「自分」に解決する。
-    const discardPid = state.playerOrder.find(p => {
-      const h = state.players[p]!.hand;
-      return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
-    });
+    const discardPid = findPendingDiscarder(state);
     if (!discardPid || state.players[discardPid]?.type !== 'human') return null;
     div.appendChild(buildDiscardUI(state, uiPhase, setUIPhase, dispatch));
     return div;
