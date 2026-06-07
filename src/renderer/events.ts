@@ -5,6 +5,7 @@
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from '../engine/actions';
 import type { UIPhase } from './ui';
+import type { BoardViewport } from './board';
 
 // ============================================================
 // 型定義
@@ -113,6 +114,8 @@ export function attachBoardEvents(
   dispatch: (action: Action) => void,
 ): void {
   svg.addEventListener('click', (e) => {
+    // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
+    if (consumeSuppressClick()) return;
     const target = e.target as SVGElement;
     const state = getState();
     const pid = state.playerOrder[state.currentPlayerIndex]!;
@@ -191,6 +194,161 @@ export function resolvePlacePreviewAction(
 ): Action | null {
   if (kind === 'road') return resolveEdgeAction(state, pid, 'road', targetId);
   return resolveVertexAction(state, pid, kind, targetId);
+}
+
+// ============================================================
+// ピンチズーム＆パン（B-3）
+// ============================================================
+
+// パン/ピンチで指が動いた直後の click(配置) を1回だけ抑止する。
+let pendingSuppressClick = false;
+function consumeSuppressClick(): boolean {
+  if (pendingSuppressClick) { pendingSuppressClick = false; return true; }
+  return false;
+}
+
+const MIN_SCALE = 1;
+const MAX_SCALE = 2.6;
+const PAN_THRESHOLD = 8; // screen px。これ未満の1本指移動はタップ(配置)扱い。
+
+/** ビューポートを範囲内に収める純粋関数。scale<=1 は中央(tx=ty=0)へ戻す。 */
+export function clampViewport(vp: BoardViewport, vbW: number, vbH: number): BoardViewport {
+  const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, vp.scale));
+  if (scale <= 1) return { scale: 1, tx: 0, ty: 0 };
+  const maxX = (vbW * (scale - 1)) / 2;
+  const maxY = (vbH * (scale - 1)) / 2;
+  return {
+    scale,
+    tx: Math.max(-maxX, Math.min(maxX, vp.tx)),
+    ty: Math.max(-maxY, Math.min(maxY, vp.ty)),
+  };
+}
+
+/**
+ * 盤面のピンチズーム/パンを有効化する。viewport は main 側が永続保持する。
+ * - 2本指: ピンチで拡縮（中心固定）＋midpoint移動でパン。
+ * - 1本指: 拡大時(scale>1)のみパン。等倍ではタップ(配置)を優先。
+ * - ホイール: PCの拡縮（任意）。
+ * getScreenCTM 経由のヒット判定(events)は viewport 変換に自動追従する。
+ */
+export function attachBoardGestures(
+  svg: SVGSVGElement,
+  getViewport: () => BoardViewport,
+  setViewport: (vp: BoardViewport) => void,
+): void {
+  const pointers = new Map<number, { x: number; y: number }>();
+  let mode: 'none' | 'pan' | 'pinch' = 'none';
+  let start = { x: 0, y: 0 };
+  let last = { x: 0, y: 0 };
+  let movedTotal = 0;
+  let lastDist = 0;
+  let lastMid = { x: 0, y: 0 };
+
+  const vbDims = (): { w: number; h: number } => {
+    const b = svg.viewBox?.baseVal;
+    return { w: b?.width || 800, h: b?.height || 700 };
+  };
+  const screenScale = (): number => {
+    const ctm = svg.getScreenCTM();
+    return ctm && ctm.a ? ctm.a : 1;
+  };
+  const toVb = (x: number, y: number): { x: number; y: number } => {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x, y };
+    const p = svg.createSVGPoint(); p.x = x; p.y = y;
+    const r = p.matrixTransform(ctm.inverse());
+    return { x: r.x, y: r.y };
+  };
+  const applyLive = (vp: BoardViewport): void => {
+    const g = svg.querySelector('.board-viewport') as SVGGElement | null;
+    if (g) g.setAttribute('transform', `translate(${vp.tx} ${vp.ty}) scale(${vp.scale})`);
+  };
+  const commit = (vp: BoardViewport): void => {
+    const { w, h } = vbDims();
+    const c = clampViewport(vp, w, h);
+    setViewport(c);
+    applyLive(c);
+  };
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }): number => Math.hypot(a.x - b.x, a.y - b.y);
+  const mid = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  // ピンチ中心(vbPoint)を固定したまま newScale へ拡縮した tx,ty を返す。
+  const zoomAround = (vp: BoardViewport, newScale: number, vbPoint: { x: number; y: number }): BoardViewport => ({
+    scale: newScale,
+    tx: vbPoint.x - (vbPoint.x - vp.tx) * (newScale / vp.scale),
+    ty: vbPoint.y - (vbPoint.y - vp.ty) * (newScale / vp.scale),
+  });
+
+  svg.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      mode = 'none';
+      start = last = { x: e.clientX, y: e.clientY };
+      movedTotal = 0;
+    } else if (pointers.size === 2) {
+      mode = 'pinch';
+      const pts = [...pointers.values()];
+      lastDist = dist(pts[0]!, pts[1]!);
+      lastMid = mid(pts[0]!, pts[1]!);
+    }
+  });
+
+  svg.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (mode === 'pinch' && pointers.size >= 2) {
+      e.preventDefault();
+      const pts = [...pointers.values()];
+      const d = dist(pts[0]!, pts[1]!);
+      const m = mid(pts[0]!, pts[1]!);
+      if (lastDist > 0) {
+        const vp = getViewport();
+        let next = zoomAround(vp, vp.scale * (d / lastDist), toVb(m.x, m.y));
+        const sc = screenScale();
+        next = { scale: next.scale, tx: next.tx + (m.x - lastMid.x) / sc, ty: next.ty + (m.y - lastMid.y) / sc };
+        commit(next);
+      }
+      lastDist = d; lastMid = m;
+      return;
+    }
+
+    if (pointers.size === 1 && mode !== 'pinch') {
+      movedTotal = Math.max(movedTotal, Math.hypot(e.clientX - start.x, e.clientY - start.y));
+      const vp = getViewport();
+      if (vp.scale > 1 && (mode === 'pan' || movedTotal > PAN_THRESHOLD)) {
+        e.preventDefault();
+        mode = 'pan';
+        const sc = screenScale();
+        commit({ scale: vp.scale, tx: vp.tx + (e.clientX - last.x) / sc, ty: vp.ty + (e.clientY - last.y) / sc });
+      }
+      last = { x: e.clientX, y: e.clientY };
+    }
+  }, { passive: false });
+
+  const endPointer = (e: PointerEvent): void => {
+    pointers.delete(e.pointerId);
+    if (mode === 'pan' || mode === 'pinch') pendingSuppressClick = true;
+    if (pointers.size === 0) {
+      mode = 'none';
+    } else if (pointers.size === 1) {
+      // ピンチ→1本指: 残り指でパン継続できるよう基準を更新。
+      const only = [...pointers.values()][0]!;
+      start = last = { x: only.x, y: only.y };
+      movedTotal = 0;
+      mode = 'none';
+    }
+  };
+  svg.addEventListener('pointerup', endPointer);
+  svg.addEventListener('pointercancel', endPointer);
+
+  // PC: ホイールでカーソル位置中心に拡縮（任意）。
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const vp = getViewport();
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    commit(zoomAround(vp, vp.scale * factor, toVb(e.clientX, e.clientY)));
+  }, { passive: false });
 }
 
 // ============================================================

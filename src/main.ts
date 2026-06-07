@@ -22,10 +22,10 @@ import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
 import { renderBoard } from './renderer/board';
-import type { BoardRenderOptions } from './renderer/board';
+import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
-import { attachBoardEvents, resolvePlacePreviewAction } from './renderer/events';
+import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction } from './renderer/events';
 import type { BuildMode } from './renderer/events';
 import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
@@ -622,7 +622,8 @@ function redraw(): void {
   // 自分の手番のときだけ出す。CPUスケジュール/ウォッチドッグは動かさない。
   if (netMode) {
     const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
-    const opts = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
+    const opts: BoardRenderOptions = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
+    opts.viewport = boardViewport;
     renderBoard(svgBoard, state, opts);
     renderUI(
       uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
@@ -630,15 +631,18 @@ function redraw(): void {
     );
     updateGameNav();
     updatePlaceConfirmBar();
+    updateZoomReset();
     updateLandscapeSheet();
     return;
   }
 
   const opts = withPreview(computeHighlights(state, buildMode));
+  opts.viewport = boardViewport;
   renderBoard(svgBoard, state, opts);
   renderUI(uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch);
   updateGameNav();
   updatePlaceConfirmBar();
+  updateZoomReset();
   // CPUが責任を持つ場面ならフリーズ対策ウォッチドッグを再武装
   armCpuWatchdog();
   // CPU手番ステータスバナーの更新
@@ -2071,6 +2075,32 @@ function setUIPhase(phase: UIPhase): void {
 // SVG ボードイベントは一度だけ登録
 let boardEventsAttached = false;
 
+// 盤面のピンチズーム/パンの永続ビューポート（viewBox座標系）。
+let boardViewport: BoardViewport = { scale: 1, tx: 0, ty: 0 };
+function setBoardViewport(vp: BoardViewport): void {
+  boardViewport = vp;
+  updateZoomReset();
+}
+
+// 拡大中のみ「ズーム解除」ボタンを盤面左下に出す。
+function updateZoomReset(): void {
+  const host = document.getElementById('board-area');
+  let btn = document.getElementById('zoom-reset');
+  if (!host || boardViewport.scale <= 1) { btn?.remove(); return; }
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'zoom-reset';
+    btn.textContent = '⟲';
+    btn.title = 'ズームを元に戻す';
+    btn.addEventListener('click', () => {
+      boardViewport = { scale: 1, tx: 0, ty: 0 };
+      updateZoomReset();
+      redraw();
+    });
+    host.appendChild(btn);
+  }
+}
+
 // ============================================================
 // LAN対戦: ゲーム開始 / サーバメッセージ処理 / Action送信
 // ============================================================
@@ -2113,8 +2143,11 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
   if (!boardEventsAttached) {
     attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch);
+    attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
   }
+
+  boardViewport = { scale: 1, tx: 0, ty: 0 }; // 新規対戦はズームをリセット
 
   // 画面をゲーム本体へ切替
   homeDiv.style.display = 'none';
@@ -2331,9 +2364,11 @@ function startGame(cfg: HomeConfig): void {
       setUIPhase,
       dispatch,
     );
+    attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
   }
 
+  boardViewport = { scale: 1, tx: 0, ty: 0 }; // 新規ゲームはズームをリセット
   redraw();
   scheduleAiTurn();
 }
@@ -2346,6 +2381,8 @@ function returnToHome(): void {
   // AI タイムアウトを無効化
   gameGeneration++;
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
+  document.getElementById('zoom-reset')?.remove(); document.getElementById('place-confirm')?.remove();
+  boardViewport = { scale: 1, tx: 0, ty: 0 };
   // 横持ちボトムシートの状態をリセット
   landscapeSheetUserOpen = false;
   document.body.classList.remove('lsheet-open');

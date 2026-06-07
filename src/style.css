@@ -52,12 +52,28 @@ h1 {
   width: auto;
   height: auto;
   filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
-  /* 配置タップでダブルタップズーム/テキスト選択が起きないように（スクロールは許可）。 */
-  touch-action: manipulation;
+  /* ピンチズーム/パンを自前で扱うためブラウザのジェスチャ（スクロール/ズーム）を無効化。
+     配置タップのダブルタップズーム・テキスト選択も併せて抑止する。 */
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ズーム解除ボタン（拡大中のみ表示・盤面左下） */
+#zoom-reset {
+  position: absolute;
+  left: 8px; bottom: 8px;
+  z-index: 5;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(12,14,20,0.82);
+  color: #fff; font-size: 1.2rem; line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+#zoom-reset:hover { background: rgba(28,32,44,0.92); }
 
 /* ---- 広い画面: プレイヤーパネルを盤面の四隅に配置 ---- */
 @media (min-width: 1200px) {

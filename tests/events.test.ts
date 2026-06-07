@@ -6,7 +6,7 @@
 // DOM/CTM 変換は実機目視（命中率そのもの）に委ね、ここでは幾何ロジックを担保する。
 
 import { describe, it, expect } from 'vitest';
-import { nearestValidVertexId, nearestValidEdgeId, resolvePlacePreviewAction } from '../src/renderer/events';
+import { nearestValidVertexId, nearestValidEdgeId, resolvePlacePreviewAction, clampViewport } from '../src/renderer/events';
 import { applyAction } from '../src/engine/game';
 import { canBuildRoad } from '../src/engine/actions';
 import { makeGameState } from './helpers';
@@ -86,5 +86,22 @@ describe('resolvePlacePreviewAction (確認ステップの確定)', () => {
     s = applyAction(s, { type: 'BUILD_SETTLEMENT', vertexId: vid });
     // PLACE_ROAD 中に開拓地確定を試みても null（フェーズ不一致）
     expect(resolvePlacePreviewAction(s, 'player1', 'settlement', vid)).toBeNull();
+  });
+});
+
+describe('clampViewport (ピンチズーム/パンの範囲制限)', () => {
+  it('scale<=1 は中央(tx=ty=0)へ戻す', () => {
+    expect(clampViewport({ scale: 0.5, tx: 100, ty: 100 }, 800, 700)).toEqual({ scale: 1, tx: 0, ty: 0 });
+    expect(clampViewport({ scale: 1, tx: 50, ty: 50 }, 800, 700)).toEqual({ scale: 1, tx: 0, ty: 0 });
+  });
+
+  it('最大倍率を超えない', () => {
+    expect(clampViewport({ scale: 9, tx: 0, ty: 0 }, 800, 700).scale).toBe(2.6);
+  });
+
+  it('拡大時の tx/ty を ±(vb*(scale-1)/2) に制限する', () => {
+    const r = clampViewport({ scale: 2, tx: 9999, ty: -9999 }, 800, 700);
+    expect(r.tx).toBeCloseTo(400);   // 800*(2-1)/2
+    expect(r.ty).toBeCloseTo(-350);  // 700*(2-1)/2
   });
 });

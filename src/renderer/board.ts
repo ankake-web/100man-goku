@@ -17,6 +17,14 @@ export interface BoardRenderOptions {
   // 仮置きプレビュー（確定待ち）のターゲット。ゴースト表示する。
   previewVertexId?: string;
   previewEdgeId?: string;
+  // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
+  viewport?: BoardViewport;
+}
+
+export interface BoardViewport {
+  scale: number;
+  tx: number;
+  ty: number;
 }
 
 // 強盗コマをタイル中心から下へずらす量（数字チップとの重なり回避）。
@@ -479,6 +487,16 @@ export function renderBoard(
 
   // タッチ端末では盤面コンテンツ（タイル/数字/建物/港/盗賊）だけを viewBox 中心まわりに
   // 少しだけ拡大して見やすくする。海背景(sea)は対象外なので水色の余白・外枠は不変。
+  // ピンチズーム/パンの永続ビューポート（海背景の上、盤面コンテンツを包む）。
+  // ここに transform を載せるため、getScreenCTM 経由のタップ座標逆算（events.ts）が
+  // ズーム/パンに自動追従する。海背景(sea)は外側なので拡縮しない。
+  const viewport = svgEl('g');
+  viewport.setAttribute('class', 'board-viewport');
+  const vp = opts?.viewport;
+  if (vp && (vp.scale !== 1 || vp.tx !== 0 || vp.ty !== 0)) {
+    viewport.setAttribute('transform', `translate(${vp.tx} ${vp.ty}) scale(${vp.scale})`);
+  }
+
   const content = svgEl('g');
   // タップ座標→盤面ピクセル座標の変換に使う（events.ts が CTM とこの offset で逆算）。
   content.setAttribute('class', 'board-content');
@@ -512,5 +530,6 @@ export function renderBoard(
   // --- 頂点（建物。最前面） ---
   content.appendChild(renderVertices(state, ox, oy, opts));
 
-  svgEl_.appendChild(content);
+  viewport.appendChild(content);
+  svgEl_.appendChild(viewport);
 }
