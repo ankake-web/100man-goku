@@ -98,6 +98,13 @@ function saveBgmTrack(i: number): void {
 }
 let _bgmTrack = loadBgmTrack();
 
+// public 配下の実音源（'/bgm/xxx.mp3'）を base 込みの URL に解決する。
+// import.meta.env.BASE_URL は末尾 '/' 付き（dev/test: '/', 本番ビルド: '/catan/'）。
+// これを付けないと GitHub Pages のサブパス配信で実音源が 404 になる。
+function bgmAssetUrl(file: string): string {
+  return import.meta.env.BASE_URL.replace(/\/$/, '') + file;
+}
+
 function bgmStart(): void {
   if (!_bgmEnabled) return;
   bgmStop();
@@ -105,7 +112,7 @@ function bgmStart(): void {
   // まず実音源(public/bgm)を再生。未配置/読込失敗時は手続き生成BGMへフォールバック。
   if (tr.file && typeof Audio !== 'undefined') {
     try {
-      const audio = new Audio(tr.file);
+      const audio = new Audio(bgmAssetUrl(tr.file));
       audio.loop = true;
       audio.volume = 0;
       _bgmAudio = audio;

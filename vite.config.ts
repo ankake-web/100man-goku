@@ -17,9 +17,13 @@ function lanWsPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // GitHub Pages はリポジトリ名のサブパス（https://ankake-web.github.io/catan/）で配信する。
+  // 本番ビルド（vite build）のときだけ base を '/catan/' にし、
+  // dev サーバ（vite / npm run dev）では '/' のままにする（ローカルでは base を効かせない）。
+  base: command === 'build' ? '/catan/' : '/',
   plugins: [lanWsPlugin()],
   test: {
     environment: 'node',
   },
-});
+}));
