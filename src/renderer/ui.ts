@@ -201,7 +201,8 @@ function buildDiscardUI(
   const dot = el('span', 'color-dot');
   dot.style.background = color;
   header.appendChild(dot);
-  header.append(` ${player.name}：${target}枚を捨ててください（${chosen}/${target}枚選択中）`);
+  const remaining = Math.max(0, target - chosen);
+  header.append(` ${player.name}：${target}枚を捨てる（あと ${remaining}枚 ・ ${chosen}/${target}）`);
   div.appendChild(header);
 
   const resRow = el('div', 'modal-res-row');

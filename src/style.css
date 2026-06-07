@@ -991,6 +991,16 @@ h1 {
   cursor: not-allowed;
 }
 
+/* タッチ端末: 交易/破棄のステッパー(+/−)と資源セルを指で押しやすく（44px目安）。
+   横持ちコンパクトは別途 #ui 指定で 24px に縮小されるためそちらが優先される。 */
+@media (pointer: coarse) {
+  .modal-res-cell { padding: 5px 8px; gap: 10px; }
+  .modal-res-cell .btn-small { min-width: 44px; min-height: 44px; font-size: 1.15rem; }
+  .modal-res-info { min-width: 96px; font-size: 0.9rem; }
+  /* モーダル下部の確定/キャンセル等もタップしやすい高さに。 */
+  .modal-panel > button { min-height: 44px; }
+}
+
 /* ============================================================
    ゲーム内ナビゲーションバー
    ============================================================ */
