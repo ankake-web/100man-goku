@@ -1606,6 +1606,26 @@ h1 {
 }
 /* スライド中は盤面の静的コマを隠す（二重表示防止） */
 .robber-sliding .robber { opacity: 0; }
+
+/* ---- 略奪演出: 伏せカード（種類は出さない）が被害者→略奪者へ飛ぶ ---- */
+.steal-card {
+  position: fixed;
+  width: 26px; height: 36px;
+  margin: -18px 0 0 -13px;          /* 中心基準 */
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.18) 0 4px, transparent 4px 8px),
+    linear-gradient(160deg, #6a3fb0, #3a2270);
+  border: 1.5px solid rgba(255,255,255,0.85);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.55);
+  z-index: 60;
+  pointer-events: none;
+  transition: transform 0.62s cubic-bezier(0.34,0.2,0.2,1), opacity 0.62s ease;
+}
+.steal-card.go {
+  transform: translate(var(--tx), var(--ty)) rotate(22deg) scale(0.8);
+  opacity: 0.25;
+}
 /* 着地ハイライト（光るパルス。SVGなので transform は使わず filter で表現） */
 .robber-landed { animation: robberLand 0.65s ease-out; }
 @keyframes robberLand {

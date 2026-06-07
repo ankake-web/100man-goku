@@ -1216,9 +1216,38 @@ function appendRobberFlyVisual(fly: HTMLElement): void {
   } catch { fly.textContent = '🦹'; }
 }
 
+// プレイヤーの手札総数（公開情報ベース。他者はマスクで handCount、自分は実手札）。
+function totalCardsOf(s: GameState, pid: string): number {
+  const p = s.players[pid];
+  if (!p) return 0;
+  return p.handCount ?? RESOURCE_TYPES.reduce((a, r) => a + p.hand[r], 0);
+}
+
+// 略奪演出: 伏せカード(種類非公開)が被害者パネル→略奪者パネルへ1枚飛ぶ。
+function animateStealCard(fromPid: string, toPid: string): void {
+  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  const fromEl = flyTargetFor(fromPid);
+  const toEl = flyTargetFor(toPid);
+  if (!fromEl || !toEl) return;
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  if ((fr.width === 0 && fr.height === 0) || (tr.width === 0 && tr.height === 0)) return;
+  const from = { x: fr.left + fr.width / 2, y: fr.top + fr.height / 2 };
+  const to = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
+  const card = document.createElement('div');
+  card.className = 'steal-card';
+  card.style.left = `${from.x}px`;
+  card.style.top = `${from.y}px`;
+  card.style.setProperty('--tx', `${to.x - from.x}px`);
+  card.style.setProperty('--ty', `${to.y - from.y}px`);
+  document.body.appendChild(card);
+  requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('go')));
+  setTimeout(() => card.remove(), 720);
+}
+
 /** 盗賊が移動元→移動先へスライドする演出。移動先で着地ハイライト。 */
 function animateRobberMove(fromTileId: string, toTileId: string): void {
-  if (lastConfig?.cpuSpeed === 'instant' || fromTileId === toTileId) return;
+  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion() || fromTileId === toTileId) return;
   const from = tileScreenCenter(fromTileId);
   const to = tileScreenCenter(toTileId);
   if (!from || !to) return;
@@ -1893,6 +1922,13 @@ function runTransitionFx(
   redraw();
   if (action?.type === 'MOVE_ROBBER' && robberFromTile) {
     animateRobberMove(robberFromTile, action.tileId);
+    // 略奪が成立（被害者の手札が1枚減った）なら、伏せカードが被害者→略奪者へ飛ぶ。
+    // 資源の種類は出さない（秘匿）。盗賊の着地後に少し遅らせて見せる。
+    const victim = action.stealFromPlayerId;
+    const actor = prevState.playerOrder[prevState.currentPlayerIndex];
+    if (victim && actor && totalCardsOf(prevState, victim) > totalCardsOf(state, victim)) {
+      setTimeout(() => animateStealCard(victim, actor), 580);
+    }
   }
   // 7（盗賊）が出た瞬間: 専用の不穏SE。捨て札フェーズなら警告SEも（少し遅らせて重複回避）。
   if (action?.type === 'ROLL_DICE' && diceTotal === 7) {
