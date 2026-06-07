@@ -28,6 +28,7 @@
   --font: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic UI', 'Segoe UI', system-ui, -apple-system, 'Noto Sans JP', sans-serif;
 }
 
+html { overscroll-behavior: none; }
 body {
   background: var(--bg);
   background-attachment: fixed;
@@ -37,6 +38,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* スマホでの引っ張り更新/バウンスを抑え、操作中の誤スクロールを防ぐ。
+     縦の内容スクロール（盤面下のパネル閲覧）は維持する。横方向は溢れさせない。 */
+  overscroll-behavior: none;
+  overflow-x: hidden;
 }
 
 h1 {
