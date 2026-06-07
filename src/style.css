@@ -52,6 +52,11 @@ h1 {
   width: auto;
   height: auto;
   filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+  /* 配置タップでダブルタップズーム/テキスト選択が起きないように（スクロールは許可）。 */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ---- 広い画面: プレイヤーパネルを盤面の四隅に配置 ---- */

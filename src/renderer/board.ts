@@ -417,7 +417,7 @@ function renderVertices(
     if (isValid) {
       const hit = svgEl('circle');
       hit.classList.add('vertex-hit');
-      setAttrs(hit, { cx: vx, cy: vy, r: 16 });
+      setAttrs(hit, { cx: vx, cy: vy, r: 24 });
       vg.appendChild(hit);
     }
 
@@ -462,6 +462,10 @@ export function renderBoard(
   // タッチ端末では盤面コンテンツ（タイル/数字/建物/港/盗賊）だけを viewBox 中心まわりに
   // 少しだけ拡大して見やすくする。海背景(sea)は対象外なので水色の余白・外枠は不変。
   const content = svgEl('g');
+  // タップ座標→盤面ピクセル座標の変換に使う（events.ts が CTM とこの offset で逆算）。
+  content.setAttribute('class', 'board-content');
+  content.dataset.ox = String(ox);
+  content.dataset.oy = String(oy);
   const boardZoom = isTouchDevice() ? 1.06 : 1.0;
   if (boardZoom !== 1) {
     const cx = vbx + W / 2, cy = vby + H / 2;
