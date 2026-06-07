@@ -1692,6 +1692,22 @@ h1 {
   #turn-toast { animation: none; }
 }
 
+/* ---- 称号バッジの移動演出(C-7): 旧保持者→新保持者へ飛ぶ ---- */
+.badge-fly {
+  position: fixed;
+  font-size: 26px;
+  line-height: 1;
+  z-index: 60;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1);
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6));
+  transition: transform 0.7s cubic-bezier(0.34, 0.2, 0.2, 1), opacity 0.7s ease;
+}
+.badge-fly.go {
+  transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1.25) rotate(-12deg);
+  opacity: 0.2;
+}
+
 /* ---- 略奪演出: 伏せカード（種類は出さない）が被害者→略奪者へ飛ぶ ---- */
 .steal-card {
   position: fixed;

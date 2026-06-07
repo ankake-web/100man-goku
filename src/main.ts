@@ -1730,12 +1730,38 @@ function triggerVpGainEffects(prevState: GameState, newState: GameState): void {
     if (delta > 0) popVpGain(pid, delta);
   }
   // 称号の移動（公開情報）は専用の少し派手な演出＋ファンファーレSE。
+  // 旧保持者がいた場合は、バッジが旧→新保持者へ飛ぶ（C-7・移動の見落とし防止）。
   if (prevState.longestRoadHolder !== newState.longestRoadHolder && newState.longestRoadHolder) {
+    if (prevState.longestRoadHolder) flyBadge(prevState.longestRoadHolder, newState.longestRoadHolder, '🛤');
     flashBonus(newState.longestRoadHolder, '🛤 最長交易路！');
   }
   if (prevState.largestArmyHolder !== newState.largestArmyHolder && newState.largestArmyHolder) {
+    if (prevState.largestArmyHolder) flyBadge(prevState.largestArmyHolder, newState.largestArmyHolder, '⚔');
     flashBonus(newState.largestArmyHolder, '⚔ 最大騎士力！');
   }
+}
+
+// 称号バッジが旧保持者→新保持者のパネルへ飛ぶ演出（C-7）。reduced-motion/instantは省略。
+function flyBadge(fromPid: string, toPid: string, glyph: string): void {
+  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  const fromEl = flyTargetFor(fromPid);
+  const toEl = flyTargetFor(toPid);
+  if (!fromEl || !toEl) return;
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  if ((fr.width === 0 && fr.height === 0) || (tr.width === 0 && tr.height === 0)) return;
+  const from = { x: fr.left + fr.width / 2, y: fr.top + fr.height / 2 };
+  const to = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
+  const b = document.createElement('div');
+  b.className = 'badge-fly';
+  b.textContent = glyph;
+  b.style.left = `${from.x}px`;
+  b.style.top = `${from.y}px`;
+  b.style.setProperty('--tx', `${to.x - from.x}px`);
+  b.style.setProperty('--ty', `${to.y - from.y}px`);
+  document.body.appendChild(b);
+  requestAnimationFrame(() => requestAnimationFrame(() => b.classList.add('go')));
+  setTimeout(() => b.remove(), 900);
 }
 
 // プレイヤーパネル上に「+N VP」を浮かせ、パネルを短時間発光させる。
@@ -2148,7 +2174,7 @@ function updateZoomReset(): void {
 // ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
 function clearTransientFx(): void {
   document
-    .querySelectorAll('.dice-roll-overlay, .res-fly, .robber-fly, .steal-card, .vp-pop, .bonus-pop, #turn-toast')
+    .querySelectorAll('.dice-roll-overlay, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast')
     .forEach(n => n.remove());
 }
 
