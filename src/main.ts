@@ -1859,6 +1859,10 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
 // 状態更新後の「見せる」処理本体（CPU/交易のスケジューリングは含まない）。
 // redraw → 盗賊スライド → 7のSE → 産出ハイライト → 資源/VP/手番演出、を再現する。
 // dispatch（ローカル）と applyNetState（LAN）の両方から呼び、演出のドリフトを防ぐ。
+// ROLL_DICE ではこの関数自体が runWithDiceAnim 経由でダイス停止後に呼ばれる。つまり
+// 手札カウントの再描画(redraw)と資源アニメは「出目が止まってから」まとめて起こる
+// （ローカル/LAN とも同経路）。演出中の早出しを防ぐため、他経路の redraw も
+// diceAnimating 中はスキップする（onViewportChange 参照）。
 function runTransitionFx(
   prevState: GameState,
   action: Action | undefined,
@@ -2330,7 +2334,12 @@ function onViewportChange(): void {
   if (!state) return;
   syncBoardDrawWidth();
   if (viewportChangeTimer) clearTimeout(viewportChangeTimer);
-  viewportChangeTimer = setTimeout(() => { viewportChangeTimer = null; if (state) redraw(); }, 100);
+  viewportChangeTimer = setTimeout(() => {
+    viewportChangeTimer = null;
+    // ダイス演出中の再描画は避ける。出目が止まる前に手札カウントが更新され「資源が
+    // 先に増えて見える」ため。演出完了時に runTransitionFx が必ず再描画するので取り残されない。
+    if (state && !diceAnimating) redraw();
+  }, 100);
 }
 window.addEventListener('resize', onViewportChange);
 window.addEventListener('orientationchange', onViewportChange);
