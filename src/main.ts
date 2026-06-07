@@ -1183,6 +1183,27 @@ function tileScreenCenter(tileId: string): { x: number; y: number } | null {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
 
+// 盤上の現行盗賊コマ(SVG)を複製し、盤面と同じ表示スケールで fly に載せる。
+// 盗賊のデザインは board.ts の単一実装のみ。ここは複製するだけで描画パスは持たない
+// （旧表現＝🦹絵文字は複製失敗時のフォールバックとしてのみ残す）。
+function appendRobberFlyVisual(fly: HTMLElement): void {
+  const boardEl = document.getElementById('board') as SVGSVGElement | null;
+  const liveRobber = boardEl?.querySelector('.robber') as SVGGElement | null;
+  if (!boardEl || !liveRobber) { fly.textContent = '🦹'; return; }
+  try {
+    const bb = liveRobber.getBBox();
+    const vbW = boardEl.viewBox.baseVal.width || 752;
+    const scale = boardEl.getBoundingClientRect().width / vbW; // 盤面の表示倍率に合わせる
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `${bb.x} ${bb.y} ${bb.width} ${bb.height}`);
+    svg.setAttribute('width', `${bb.width * scale}`);
+    svg.setAttribute('height', `${bb.height * scale}`);
+    svg.style.overflow = 'visible';
+    svg.appendChild(liveRobber.cloneNode(true));
+    fly.appendChild(svg);
+  } catch { fly.textContent = '🦹'; }
+}
+
 /** 盗賊が移動元→移動先へスライドする演出。移動先で着地ハイライト。 */
 function animateRobberMove(fromTileId: string, toTileId: string): void {
   if (lastConfig?.cpuSpeed === 'instant' || fromTileId === toTileId) return;
@@ -1194,11 +1215,13 @@ function animateRobberMove(fromTileId: string, toTileId: string): void {
 
   const fly = document.createElement('div');
   fly.className = 'robber-fly';
-  fly.textContent = '🦹';
   fly.style.left = `${from.x}px`;
   fly.style.top  = `${from.y}px`;
   fly.style.setProperty('--tx', `${to.x - from.x}px`);
   fly.style.setProperty('--ty', `${to.y - from.y}px`);
+  // 飛ぶコマは盤上と同じ現行SVGデザインを複製して載せる（旧🦹絵文字は使わない＝
+  // 移動中に別キャラが動いて見える二重表現を解消）。複製不可なら絵文字でフォールバック。
+  appendRobberFlyVisual(fly);
   document.body.appendChild(fly);
   requestAnimationFrame(() => requestAnimationFrame(() => fly.classList.add('go')));
 
