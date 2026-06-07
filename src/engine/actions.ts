@@ -3,7 +3,7 @@
 // ============================================================
 
 import type {
-  GameState, PlayerId, EdgeId, VertexId, ResourceHand, ResourceType,
+  GameState, PlayerId, EdgeId, VertexId, ResourceHand,
 } from '../types';
 import { BUILD_COSTS, RESOURCE_TYPES } from '../constants';
 import { isDistanceRuleOk, isEdgeConnected } from './board';

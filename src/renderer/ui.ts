@@ -491,15 +491,6 @@ function makeZeroHand(): ResourceHand {
   return { wood: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
 }
 
-function formatResources(partial: Partial<ResourceHand>): string {
-  const parts: string[] = [];
-  for (const r of RESOURCE_TYPES) {
-    const n = partial[r] ?? 0;
-    if (n > 0) parts.push(`${RESOURCE_EMOJI[r]}×${n}`);
-  }
-  return parts.length > 0 ? parts.join(' ') : '（なし）';
-}
-
 // 資源を見やすいチップ列で表示（交易UIの「一目で分かる」用）
 function resChips(partial: Partial<ResourceHand>): HTMLDivElement {
   const wrap = el('div', 'res-chips');

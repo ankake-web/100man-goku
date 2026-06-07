@@ -5,7 +5,7 @@
 import type {
   GameState, Action, PlayerId, ResourceType, DevCard, VertexId, ResourceHand,
 } from '../types';
-import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, makeHand, VP_TABLE } from '../constants';
+import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, VP_TABLE } from '../constants';
 import { rollDice, distributeResources } from './dice';
 import {
   canBuildRoad, buildRoad,
@@ -15,7 +15,7 @@ import {
 } from './actions';
 import { moveRobber, discardResources, stealResource, getRobbablePlayerIds, discardCount } from './robber';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
-import { updateLongestRoad, updateLargestArmy, checkVictory, calcLongestRoad, calcVP } from './scoring';
+import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP } from './scoring';
 
 // ============================================================
 // 内部ユーティリティ
@@ -23,18 +23,6 @@ import { updateLongestRoad, updateLargestArmy, checkVictory, calcLongestRoad, ca
 
 function currentPlayer(state: GameState): PlayerId {
   return state.playerOrder[state.currentPlayerIndex]!;
-}
-
-function deductHand(hand: Record<string, number>, cost: Record<string, number>) {
-  const next = { ...hand } as Record<string, number>;
-  for (const r of RESOURCE_TYPES) next[r] = (next[r] ?? 0) - (cost[r] ?? 0);
-  return next;
-}
-
-function addToHand(hand: Record<string, number>, gains: Record<string, number>) {
-  const next = { ...hand } as Record<string, number>;
-  for (const r of RESOURCE_TYPES) next[r] = (next[r] ?? 0) + (gains[r] ?? 0);
-  return next;
 }
 
 /**

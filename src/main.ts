@@ -558,11 +558,6 @@ let diceAnimating = false;
 // 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
 let gameMenuOpen = false;
 
-// CPU手番の状況バナー（「今CPUが何をしているか」を上部中央に表示）
-let cpuStatusActor = '';   // CPU名
-let cpuStatusColor = '#aaa';
-let cpuStatusMsg = '';     // 行動説明 or 「考え中…」
-
 // 出目分布の集計（インデックス2〜12が出現回数。現在のゲーム中のみ蓄積）
 let diceStats: number[] = new Array(13).fill(0);
 
@@ -652,8 +647,6 @@ function redraw(): void {
   updateZoomReset();
   // CPUが責任を持つ場面ならフリーズ対策ウォッチドッグを再武装
   armCpuWatchdog();
-  // CPU手番ステータスバナーの更新
-  updateCpuStatusBanner();
   updateLandscapeSheet();
 }
 
@@ -1020,7 +1013,6 @@ function scheduleAiTurn(): void {
       return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
     });
     if (discardPid) {
-      setCpuThinking(discardPid); updateCpuStatusBanner();
       setTimeout(() => {
         if (gen !== gameGeneration) return;
         runCpuStep(discardPid, {});
@@ -1032,7 +1024,6 @@ function scheduleAiTurn(): void {
   const pid = state.playerOrder[state.currentPlayerIndex]!;
   if (state.players[pid]?.type === 'ai') {
     const aiOpts: AiOpts = { skipPlayerTrade: cpuPlayerTradeOfferedThisTurn };
-    setCpuThinking(pid); updateCpuStatusBanner();
     setTimeout(() => {
       if (gen !== gameGeneration) return;
       runCpuStep(pid, aiOpts);
@@ -1541,66 +1532,11 @@ function showDiceStatsModal(): void {
   document.body.appendChild(overlay);
 }
 
-// ============================================================
-// CPU手番ステータスバナー（「今CPUが何をしているか」を上部中央に表示）
-// ============================================================
-
-const CPU_ACTION_DESC: Record<string, string> = {
-  ROLL_DICE:            '🎲 ダイスを振った',
-  BUILD_ROAD:           '🛤 道を建設',
-  BUILD_SETTLEMENT:     '🏠 開拓地を建設',
-  BUILD_CITY:           '🏙 都市を建設',
-  BUY_DEV_CARD:         '🃏 発展カードを購入',
-  PLAY_KNIGHT:          '⚔ 騎士を使用',
-  PLAY_ROAD_BUILDING:   '🛤 街道建設カードを使用',
-  PLAY_YEAR_OF_PLENTY:  '🌾 年の豊穣を使用',
-  PLAY_MONOPOLY:        '🏛 独占を使用',
-  MOVE_ROBBER:          '🦹 盗賊を移動',
-  BANK_TRADE:           '💱 銀行と交易',
-  OFFER_TRADE:          '🤝 交易を提案',
-  CONFIRM_TRADE:        '🤝 交易を成立',
-  CANCEL_TRADE:         '🤝 交易を取り下げ',
-  DISCARD_RESOURCES:    '🗑 手札を捨てた',
-  END_TURN:             '↩ ターンを終了',
-};
-
-/** CPUが行ったアクションからステータスバナーの文言を設定する（actorがCPUの時のみ） */
-function setCpuStatusFromAction(action: Action, prevState: GameState): void {
-  let actorId: string = prevState.playerOrder[prevState.currentPlayerIndex] ?? '';
-  if (action.type === 'DISCARD_RESOURCES') actorId = action.playerId;
-  else if (action.type === 'RESPOND_TRADE') actorId = action.response.playerId;
-  const actor = prevState.players[actorId] ?? state.players[actorId];
-  if (actor?.type !== 'ai') return;
-  cpuStatusActor = actor.name;
-  cpuStatusColor = PLAYER_HEX[actorId] ?? '#aaa';
-  if (action.type === 'RESPOND_TRADE') {
-    cpuStatusMsg = action.response.status === 'ACCEPT' ? '🤝 交易を承諾' : '🤝 交易を拒否';
-  } else {
-    cpuStatusMsg = CPU_ACTION_DESC[action.type] ?? '';
-  }
-}
-
-/** 「考え中…」状態をセット（次のCPU行動を待っている間） */
-function setCpuThinking(actorId: string): void {
-  const actor = state.players[actorId];
-  if (!actor) return;
-  cpuStatusActor = actor.name;
-  cpuStatusColor = PLAYER_HEX[actorId] ?? '#aaa';
-  cpuStatusMsg = '考え中…';
-}
-
-/** CPUが責任を持つ場面なら上部中央にステータスバナーを表示。人間の番では消す。 */
-function updateCpuStatusBanner(): void {
-  // 盤上には「CPU考え中／操作中」を出さない（手番の発光・枠強調・操作パネル表示で分かる）。
-  // 状態変数(cpuStatusActor/Msg)の更新は他処理の都合で残すが、盤上バナーは描画しない。
-  document.getElementById('cpu-status')?.remove();
-}
 
 /** サイコロ産出タイルの画面座標を取得する */
 function getProducingTileOrigin(diceTotal: number): { x: number; y: number } | null {
   const boardEl = document.getElementById('board') as SVGSVGElement | null;
   if (!boardEl) return null;
-  const boardRect = boardEl.getBoundingClientRect();
   // state から diceTotal に対応するタイルを探す
   const producingTiles = Object.values(state.tiles).filter(
     t => t.number === diceTotal && !t.hasRobber,
@@ -2012,9 +1948,6 @@ function dispatch(action: Action): void {
   try {
     const prevState = state;
     state = applyAction(state, action);
-
-    // CPU手番ステータス: CPUが行った行動をバナーに反映
-    setCpuStatusFromAction(action, prevState);
 
     // SE（applyNetState と共通の対応表を再利用）
     playActionSE(action);

@@ -2,7 +2,7 @@
 // src/renderer/board.ts — F-01 + F-02: ボードSVGレンダリング
 // ============================================================
 
-import type { GameState, Tile, TileType, HarborType, Harbor } from '../types';
+import type { GameState, Tile, HarborType, Harbor } from '../types';
 import { HEX_SIZE } from '../constants';
 import { axialToPixel } from '../engine/board';
 
