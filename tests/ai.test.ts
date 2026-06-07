@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { chooseAction } from '../src/engine/ai';
+import { chooseAction, evaluateVertexForSetup } from '../src/engine/ai';
 import { applyAction } from '../src/engine/game';
 import { makeHand, RESOURCE_TYPES } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
@@ -145,6 +145,97 @@ describe('chooseAction - SETUP フェーズ', () => {
     if (action?.type === 'BUILD_SETTLEMENT') {
       expect(s.vertices[action.vertexId]?.building).toBeNull();
     }
+  });
+});
+
+// ============================================================
+// A-1: 初期配置ヒューリスティック
+// ============================================================
+
+describe('evaluateVertexForSetup (初期配置ヒューリスティック)', () => {
+  // pip: 6/8=5, 5/9=4, 2/12=1。資源: forest=wood, hill=brick, mountain=ore, field=grain, pasture=wool
+  function evalState(): GameState {
+    return {
+      tiles: {
+        f6: { id: 'f6', type: 'forest', number: 6 },
+        f8: { id: 'f8', type: 'forest', number: 8 },
+        f5: { id: 'f5', type: 'forest', number: 5 },
+        f2: { id: 'f2', type: 'forest', number: 2 },
+        f12: { id: 'f12', type: 'forest', number: 12 },
+        h8: { id: 'h8', type: 'hill', number: 8 },
+        h6: { id: 'h6', type: 'hill', number: 6 },
+        m5: { id: 'm5', type: 'mountain', number: 5 },
+        fld9: { id: 'fld9', type: 'field', number: 9 },
+        p9: { id: 'p9', type: 'pasture', number: 9 },
+      },
+      vertices: {
+        vHigh: { id: 'vHigh', adjacentTileIds: ['f6', 'h8', 'm5'], harborType: null },
+        vLow: { id: 'vLow', adjacentTileIds: ['f2', 'f12'], harborType: null },
+        vSame: { id: 'vSame', adjacentTileIds: ['f6', 'f8', 'f5'], harborType: null },
+        vDiv: { id: 'vDiv', adjacentTileIds: ['f6', 'h8', 'm5'], harborType: null },
+        vOreWheat: { id: 'vOreWheat', adjacentTileIds: ['m5', 'fld9'], harborType: null },
+        vOreWool: { id: 'vOreWool', adjacentTileIds: ['m5', 'p9'], harborType: null },
+        vNoHarbor: { id: 'vNoHarbor', adjacentTileIds: ['f2', 'f12'], harborType: null },
+        vHarbor: { id: 'vHarbor', adjacentTileIds: ['f2', 'f12'], harborType: 'generic' },
+        vSpread: { id: 'vSpread', adjacentTileIds: ['f6', 'h8'], harborType: null },
+        vNoSpread: { id: 'vNoSpread', adjacentTileIds: ['f6', 'h6'], harborType: null },
+        vFirst: { id: 'vFirst', adjacentTileIds: ['f6', 'h8'], harborType: null },
+        vNew: { id: 'vNew', adjacentTileIds: ['m5', 'fld9'], harborType: null },
+        vDup: { id: 'vDup', adjacentTileIds: ['f6', 'h8'], harborType: null },
+      },
+    } as unknown as GameState;
+  }
+
+  it('(a) 高pip・多様な頂点を低pip・単一資源より高く評価する', () => {
+    const s = evalState();
+    expect(evaluateVertexForSetup(s, 'vHigh')).toBeGreaterThan(evaluateVertexForSetup(s, 'vLow'));
+  });
+
+  it('資源の多様性を加点する（同pipなら多様な方が高い）', () => {
+    const s = evalState();
+    expect(evaluateVertexForSetup(s, 'vDiv')).toBeGreaterThan(evaluateVertexForSetup(s, 'vSame'));
+  });
+
+  it('ore+wheat を加点する（同pip・同多様性の wool 比較で上回る）', () => {
+    const s = evalState();
+    expect(evaluateVertexForSetup(s, 'vOreWheat')).toBeGreaterThan(evaluateVertexForSetup(s, 'vOreWool'));
+  });
+
+  it('港に小加点する', () => {
+    const s = evalState();
+    expect(evaluateVertexForSetup(s, 'vHarbor')).toBeGreaterThan(evaluateVertexForSetup(s, 'vNoHarbor'));
+  });
+
+  it('数字の分散を加点する（同じ数字に偏る頂点より高い）', () => {
+    const s = evalState();
+    expect(evaluateVertexForSetup(s, 'vSpread')).toBeGreaterThan(evaluateVertexForSetup(s, 'vNoSpread'));
+  });
+
+  it('(b) 2軒目は1軒目の不足資源・別数字を補完する頂点を優先する', () => {
+    const s = evalState();
+    // 補完なし（1軒目を考慮しない）なら vDup(高pip) > vNew
+    expect(evaluateVertexForSetup(s, 'vNew')).toBeLessThan(evaluateVertexForSetup(s, 'vDup'));
+    // 1軒目(vFirst=wood/brick,6/8)を踏まえると、全資源・全数字が新しい vNew が逆転して上回る
+    expect(evaluateVertexForSetup(s, 'vNew', 'vFirst'))
+      .toBeGreaterThan(evaluateVertexForSetup(s, 'vDup', 'vFirst'));
+  });
+});
+
+describe('chooseAction - SETUP 配置の決定性', () => {
+  it('(c) 通常AIの初期配置は同シードで同じ頂点を選ぶ', () => {
+    const mk = (): GameState => makeGameState({
+      phase: 'SETUP_FORWARD',
+      setupSubPhase: 'PLACE_SETTLEMENT',
+      currentPlayerIndex: 0,
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'normal' }),
+        player2: makePlayer('player2', { type: 'ai', aiDifficulty: 'normal' }),
+      },
+    });
+    const a = chooseAction(mk(), 'player1', { rng: createRng(7) });
+    const b = chooseAction(mk(), 'player1', { rng: createRng(7) });
+    expect(a?.type).toBe('BUILD_SETTLEMENT');
+    expect(a).toEqual(b);
   });
 });
 

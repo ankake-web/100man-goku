@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType } from '../types';
-import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
+import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
 import { canBuildRoad, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
 import { calcVP } from './scoring';
@@ -34,6 +34,79 @@ function vertexProductionScore(state: GameState, vertexId: string): number {
     const n = state.tiles[tid]?.number;
     return sum + (n ? (NUMBER_PROB[n] ?? 0) : 0);
   }, 0);
+}
+
+// 頂点に隣接するタイルの産出資源（砂漠は除外）。
+function adjacentResources(state: GameState, vertexId: string): ResourceType[] {
+  const out: ResourceType[] = [];
+  for (const tid of state.vertices[vertexId]?.adjacentTileIds ?? []) {
+    const t = state.tiles[tid];
+    const r = t ? TILE_RESOURCE_MAP[t.type] : null;
+    if (r) out.push(r);
+  }
+  return out;
+}
+
+// 頂点に隣接するタイルの数字（砂漠/未設定は除外）。
+function adjacentNumbers(state: GameState, vertexId: string): number[] {
+  const out: number[] = [];
+  for (const tid of state.vertices[vertexId]?.adjacentTileIds ?? []) {
+    const n = state.tiles[tid]?.number;
+    if (n != null) out.push(n);
+  }
+  return out;
+}
+
+// 初期配置ヒューリスティックの重み（チューニングはここ1か所に集約）。
+const SETUP_WEIGHTS = {
+  pip: 1.0,          // 隣接3ヘックスの pip(出目確率) 合計の基礎重み
+  diversity: 1.5,    // 異なる資源1種ごとの加点（資源の多様性）
+  oreWheat: 2.0,     // ore と wheat(grain) の両方に触れる（都市化に重要）
+  woodBrick: 1.5,    // wood と brick の両方に触れる（序盤拡張に重要）
+  harbor: 1.0,       // 港に接する小加点
+  numberSpread: 1.0, // 隣接数字が全て異なるときの加点（同じ数字への偏りを避ける）
+  newResource: 2.0,  // (2軒目) 1軒目に無い資源1種ごとの加点
+  newNumber: 0.5,    // (2軒目) 1軒目と異なる数字1個ごとの加点
+} as const;
+
+/**
+ * 初期配置（開拓地）の頂点評価。高いほど良い。純粋関数。
+ * 基礎 = 隣接 pip 合計。補正 = 資源多様性 / ore+wheat / wood+brick / 港 / 数字分散。
+ * ownFirstSettlement を渡すと（2軒目想定）1軒目に無い資源・別数字を補完するほど加点する。
+ */
+export function evaluateVertexForSetup(
+  state: GameState,
+  vertexId: string,
+  ownFirstSettlement?: string,
+): number {
+  if (!state.vertices[vertexId]) return -Infinity;
+  const resources = adjacentResources(state, vertexId);
+  const uniqueRes = new Set(resources);
+  const numbers = adjacentNumbers(state, vertexId);
+  const uniqueNums = new Set(numbers);
+
+  let score = vertexProductionScore(state, vertexId) * SETUP_WEIGHTS.pip;
+  score += uniqueRes.size * SETUP_WEIGHTS.diversity;
+  if (uniqueRes.has('ore') && uniqueRes.has('grain')) score += SETUP_WEIGHTS.oreWheat;
+  if (uniqueRes.has('wood') && uniqueRes.has('brick')) score += SETUP_WEIGHTS.woodBrick;
+  if (state.vertices[vertexId]?.harborType) score += SETUP_WEIGHTS.harbor;
+  if (numbers.length > 0 && uniqueNums.size === numbers.length) score += SETUP_WEIGHTS.numberSpread;
+
+  if (ownFirstSettlement) {
+    const firstRes = new Set(adjacentResources(state, ownFirstSettlement));
+    const firstNums = new Set(adjacentNumbers(state, ownFirstSettlement));
+    for (const r of uniqueRes) if (!firstRes.has(r)) score += SETUP_WEIGHTS.newResource;
+    for (const n of uniqueNums) if (!firstNums.has(n)) score += SETUP_WEIGHTS.newNumber;
+  }
+  return score;
+}
+
+// スコア最大の要素を選ぶ。最大が拮抗（eps以内）する場合のみ seed RNG でタイブレーク。
+function pickByScore<T>(items: T[], scoreFn: (t: T) => number, rng: () => number, eps = 0.01): T {
+  const scored = items.map(it => ({ it, s: scoreFn(it) }));
+  const best = scored.reduce((m, x) => Math.max(m, x.s), -Infinity);
+  const top = scored.filter(x => x.s >= best - eps).map(x => x.it);
+  return top.length === 1 ? top[0]! : top[Math.floor(rng() * top.length)]!;
 }
 
 function playerHandTotal(state: GameState, pid: PlayerId): number {
@@ -151,11 +224,18 @@ function chooseSetupAction(state: GameState, pid: PlayerId, rng: () => number): 
     );
     if (valid.length === 0) return null;
 
-    const chosen = difficulty === 'weak'
-      ? valid[Math.floor(rng() * valid.length)]!
-      : valid.reduce((a, b) =>
-          vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b,
-        );
+    if (difficulty === 'weak') {
+      return { type: 'BUILD_SETTLEMENT', vertexId: valid[Math.floor(rng() * valid.length)]! };
+    }
+
+    // 2軒目(SETUP_BACKWARD)は自分の1軒目を踏まえ、不足資源・別数字を補完する評価にする。
+    const firstSettlement = state.phase === 'SETUP_BACKWARD'
+      ? Object.keys(state.vertices).find(vid => {
+          const b = state.vertices[vid]?.building;
+          return b?.type === 'settlement' && b.playerId === pid;
+        })
+      : undefined;
+    const chosen = pickByScore(valid, vid => evaluateVertexForSetup(state, vid, firstSettlement), rng);
     return { type: 'BUILD_SETTLEMENT', vertexId: chosen };
   }
 
