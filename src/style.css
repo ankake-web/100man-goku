@@ -272,6 +272,11 @@ h1 {
   60%  { filter: brightness(1.3) drop-shadow(0 0 5px rgba(255,240,150,0.6)); }
   100% { filter: brightness(1); }
 }
+/* アニメ抑制時はパルスを止め、産出ヘックスを静的に明るく示す（どこから出たか分かる）。 */
+@media (prefers-reduced-motion: reduce) {
+  .hex-tile.producing { animation: none; filter: brightness(1.5) drop-shadow(0 0 6px rgba(255,240,150,0.85)); }
+  .dice-die.settled { animation: none; }
+}
 
 .hex-tile.forest   { fill: #2d6a2d; }
 .hex-tile.field    { fill: #c8a830; }

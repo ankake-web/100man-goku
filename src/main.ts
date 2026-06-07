@@ -1628,6 +1628,13 @@ function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: nu
   return getProducingTileOrigin(diceTotal) ?? getBoardCenter();
 }
 
+// OSの「視差効果を減らす/アニメ抑制」設定を尊重する。trueなら派手な動きは省略し即時化する。
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 // 初期配置2軒目（SETUP_BACKWARD）で配る初期資源を公開情報から導出して飛ばす。
 // 「どの資源を配るか」は付与(game.ts)と同じ setupGainFor に一本化（ロジックのドリフト防止）。
 // 配置頂点の隣接タイル＋バンク残はいずれも公開情報なので、LANで相手の手札が
@@ -1672,7 +1679,7 @@ function triggerResourceAnimation(
   action?: Action,
   diceTotal?: number,
 ): void {
-  if (lastConfig?.cpuSpeed === 'instant') return;
+  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
   // 盗み取り(MOVE_ROBBER)は飛ばさない（奪った資源の種類を秘匿するため）。
   if (action?.type === 'MOVE_ROBBER') return;
 
@@ -1819,7 +1826,8 @@ function diceRollMs(): number {
   }
 }
 function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
-  const dur = diceRollMs();
+  // アニメ抑制設定ではタンブルを省略して即時に結果へ進む（静的な産出ハイライトは残す）。
+  const dur = prefersReducedMotion() ? 0 : diceRollMs();
   if (dur <= 0 || d1 < 1 || d2 < 1) { onDone(); return; }
 
   const host = document.getElementById('board-area') ?? document.body;
