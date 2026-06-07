@@ -20,7 +20,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 import type { Server } from 'node:http';
 import os from 'node:os';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { createInitialGameState } from '../src/engine/createState';
 import { maskStateFor } from '../src/engine/mask';
 import { applyAction } from '../src/engine/game';
@@ -144,13 +144,22 @@ function genToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
-function genCode(): string {
-  const chars = '0123456789'; // 数字4桁（スマホのテンキーで入力しやすい）
-  let code = '';
-  do {
-    code = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  } while (rooms.has(code));
-  return code;
+// ルームコード: スマホのテンキーで入力しやすい数字4桁。
+// - 終始“文字列”として扱い（Number()/parseInt を挟まない）先頭ゼロを保持する。
+// - 各桁は CSPRNG(randomInt) で引く（Math.random は予測可能なため使わない）。
+// - 既存アクティブルームと衝突したら引き直す。上限到達でエラー（無限ループ/枯渇防止）。
+// 注: 4桁=1万通りと鍵空間は狭い。総当たり参加は接続単位の試行制限（下記）と
+//     ルームが一時的・即時破棄される性質で緩和する設計。
+const CODE_DIGITS = '0123456789';
+const CODE_LEN = 4;
+const CODE_MAX_ATTEMPTS = 200;
+export function genCode(isTaken: (code: string) => boolean): string {
+  for (let attempt = 0; attempt < CODE_MAX_ATTEMPTS; attempt++) {
+    let code = '';
+    for (let i = 0; i < CODE_LEN; i++) code += CODE_DIGITS[randomInt(CODE_DIGITS.length)];
+    if (!isTaken(code)) return code;
+  }
+  throw new Error('ルームコードの生成に失敗しました（空きコード枯渇）');
 }
 
 // 空いている最小スロット（player1..4）を返す。満員なら null。
@@ -388,6 +397,11 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
   wss.on('connection', (ws: WebSocket) => {
     let room: Room | null = null;
     let me: Member | null = null;
+    // ルームコード総当たり対策: この接続で「存在しないコードへの join」が
+    // 続いたら接続を切る。1接続あたりの試行を絞り、4桁(1万通り)の全探索を非現実的にする。
+    // 正本(connected room)に入れば 0 に戻す。誤入力数回では切らない緩めの上限。
+    let badJoinAttempts = 0;
+    const MAX_BAD_JOINS = 12;
 
     ws.on('message', (data: unknown) => {
       let msg: ClientMessage;
@@ -396,7 +410,9 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
       switch (msg.t) {
         case 'create': {
           if (room) return;
-          const code = genCode();
+          let code: string;
+          try { code = genCode(c => rooms.has(c)); }
+          catch { send(ws, { t: 'error', message: 'ルームを作成できませんでした。時間をおいて再度お試しください' }); return; }
           room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', memberLogs: {}, graceMs, cpuStepMs, cpuAfterRollMs };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
@@ -408,7 +424,16 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
         case 'join': {
           if (room) return;
           const target = rooms.get((msg.code || '').toUpperCase());
-          if (!target) { send(ws, { t: 'error', message: 'ルームが見つかりません' }); return; }
+          if (!target) {
+            if (++badJoinAttempts >= MAX_BAD_JOINS) {
+              send(ws, { t: 'error', message: '試行回数が多すぎます。しばらくしてから入り直してください', fatal: true });
+              try { ws.close(); } catch { /* noop */ }
+              return;
+            }
+            send(ws, { t: 'error', message: 'ルームが見つかりません' });
+            return;
+          }
+          badJoinAttempts = 0;
           if (target.started) { send(ws, { t: 'error', message: 'このルームは既に開始済みです' }); return; }
           const slot = nextSlot(target);
           if (!slot) { send(ws, { t: 'error', message: 'ルームが満員です（最大4人）' }); return; }

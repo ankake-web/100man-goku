@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
-import { attachLanServer, requiredActor, __resetRoomsForTest } from '../server/lanServer';
+import { attachLanServer, requiredActor, genCode, __resetRoomsForTest } from '../server/lanServer';
 import type { LanServerOptions } from '../server/lanServer';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
@@ -97,6 +97,35 @@ afterEach(async () => {
   await delay(50);          // サーバ側 'close' ハンドラを走らせてから
   __resetRoomsForTest();    // 全ルームの保留タイマーを止めて Map を空に
   if (server) { await new Promise<void>(res => server!.close(() => res())); server = null; }
+});
+
+describe('genCode (room code)', () => {
+  it('always returns a 4-digit string, preserving leading zeros (no numeric coercion)', () => {
+    let sawLeadingZero = false;
+    for (let i = 0; i < 500; i++) {
+      const code = genCode(() => false);
+      expect(typeof code).toBe('string');
+      expect(code).toMatch(/^\d{4}$/);
+      expect(code.length).toBe(4);
+      if (code[0] === '0') sawLeadingZero = true;
+    }
+    // "0042" が 42 にならない＝先頭ゼロ保持。500回も引けば必ず先頭ゼロが出る。
+    expect(sawLeadingZero).toBe(true);
+  });
+
+  it('never returns a code reported as taken (collision retry works)', () => {
+    const taken = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const code = genCode(c => taken.has(c));
+      expect(taken.has(code)).toBe(false); // アクティブな既存コードは決して返さない
+      taken.add(code);
+    }
+    expect(taken.size).toBe(200); // 全て一意
+  });
+
+  it('throws when the keyspace is exhausted instead of looping forever', () => {
+    expect(() => genCode(() => true)).toThrow();
+  });
 });
 
 describe('lanServer integration (M8)', () => {
