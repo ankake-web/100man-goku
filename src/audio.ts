@@ -240,8 +240,17 @@ function setBgmTrack(i: number): void {
 // -------------------------------------------------------
 // SE: 短くシンプル、連打・鳴りすぎ防止付き
 // -------------------------------------------------------
-let _seEnabled = true;
-let _seVolume  = 0.28;
+// SEの有効/音量は localStorage に永続化する（端末ごとに記憶）。
+const SE_ON_KEY = 'catan_se_on';
+const SE_VOL_KEY = 'catan_se_vol';
+function loadSeOn(): boolean {
+  try { const v = localStorage.getItem(SE_ON_KEY); return v == null ? true : v === '1'; } catch { return true; }
+}
+function loadSeVol(): number {
+  try { const v = parseFloat(localStorage.getItem(SE_VOL_KEY) ?? ''); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.28; } catch { return 0.28; }
+}
+let _seEnabled = loadSeOn();
+let _seVolume  = loadSeVol();
 const _seCooldown = new Map<string, number>();  // SE種別 → 最後に鳴らした時刻(ms)
 const SE_MIN_INTERVAL: Record<string, number> = {
   resource: 80,   // 資源獲得は連続OK（少しずらす）
@@ -367,5 +376,14 @@ export function setBgmEnabled(v: boolean): void { _bgmEnabled = v; }
 export function getBgmVolume(): number { return _bgmVolume; }
 export function getBgmTrack(): number { return _bgmTrack; }
 export function isSeEnabled(): boolean { return _seEnabled; }
-export function setSeEnabled(v: boolean): void { _seEnabled = v; }
+export function setSeEnabled(v: boolean): void {
+  _seEnabled = v;
+  try { localStorage.setItem(SE_ON_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+  if (v) playSE('click'); // ON にした瞬間に確認音
+}
+export function getSeVolume(): number { return _seVolume; }
+export function setSeVolume(v: number): void {
+  _seVolume = Math.max(0, Math.min(1, v));
+  try { localStorage.setItem(SE_VOL_KEY, String(_seVolume)); } catch { /* ignore */ }
+}
 export { playSE, bgmStart, bgmStop, bgmSetVolume, setBgmTrack, BGM_TRACKS };

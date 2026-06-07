@@ -13,6 +13,7 @@ import { findPendingDiscarder } from './engine/robber';
 import {
   playSE, bgmStart, bgmStop, bgmSetVolume, setBgmTrack, BGM_TRACKS,
   isBgmEnabled, setBgmEnabled, getBgmVolume, getBgmTrack, isSeEnabled, setSeEnabled,
+  getSeVolume, setSeVolume,
 } from './audio';
 import { renderLanLobby } from './net/lanLobby';
 import { LanClient } from './net/lanClient';
@@ -827,7 +828,9 @@ function updateGameNav(): void {
   trackRow.append(trackLbl, trackSel);
   dd.appendChild(trackRow);
 
-  // SE ON/OFF
+  // SE ON/OFF + 音量（BGM と同じ並び。設定は localStorage に永続化）
+  const seRow = document.createElement('div');
+  seRow.className = 'game-menu-row';
   const seBtn = document.createElement('button');
   seBtn.className = 'game-menu-btn';
   seBtn.textContent = isSeEnabled() ? '🔔 効果音 ON' : '🔕 効果音 OFF';
@@ -835,7 +838,16 @@ function updateGameNav(): void {
     setSeEnabled(!isSeEnabled());
     seBtn.textContent = isSeEnabled() ? '🔔 効果音 ON' : '🔕 効果音 OFF';
   });
-  dd.appendChild(seBtn);
+  const seVol = document.createElement('input');
+  seVol.type = 'range'; seVol.min = '0'; seVol.max = '100';
+  seVol.value = String(Math.round(getSeVolume() * 100));
+  seVol.className = 'bgm-volume';
+  seVol.title = '効果音 音量';
+  seVol.addEventListener('input', () => setSeVolume(parseInt(seVol.value, 10) / 100));
+  // スライダーを離したときに現在音量で確認音を鳴らす（聞いて調整できる）。
+  seVol.addEventListener('change', () => { if (isSeEnabled()) playSE('click'); });
+  seRow.append(seBtn, seVol);
+  dd.appendChild(seRow);
 
   // 出目分布グラフ
   const statsBtn = document.createElement('button');
