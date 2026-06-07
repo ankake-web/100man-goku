@@ -1166,8 +1166,8 @@ function spawnResFlyer(
   }, delay);
 }
 
-// 資源アニメの着地先。縦持ちスマホでは盤面四隅のミニパネル（表示中のもの）へ、
-// それ以外（PC/横持ち）では従来どおり通常のプレイヤーパネルへ飛ばす。
+// 資源アニメの着地先。パネルが盤面下に回り込むレイアウト(mini-mode)では盤面四隅の
+// ミニパネル（表示中のもの）へ、四隅レイアウト(PC広画面/横持ち)では通常のプレイヤーパネルへ。
 function flyTargetFor(pid: string): HTMLElement | null {
   const mini = document.querySelector(`.mini-panel[data-pid="${pid}"]`) as HTMLElement | null;
   if (mini && mini.getBoundingClientRect().width > 0) return mini; // 表示中なら優先
@@ -1593,21 +1593,60 @@ function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: nu
   return getProducingTileOrigin(diceTotal) ?? getBoardCenter();
 }
 
+// 初期配置2軒目（SETUP_BACKWARD）で配る初期資源を公開情報から導出して飛ばす。
+// 配置頂点の隣接タイル（公開）＋バンク残（公開）だけで導けるので、LANで相手の手札が
+// マスクされていても全員分のアニメを出せる（手札差分だと相手は0で出なかった）。
+function animateSetupGain(oldState: GameState, vertexId: string): void {
+  const pid = oldState.playerOrder[oldState.currentPlayerIndex];
+  if (!pid) return;
+  const targetEl = flyTargetFor(pid);
+  if (!targetEl) return;
+  const tr = targetEl.getBoundingClientRect();
+  if (tr.width === 0 && tr.height === 0) return;
+  const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
+
+  // 配置頂点に隣接するタイルから1個ずつ（buildEngine と同じ順・バンク切れ/砂漠は除外）。
+  const tileIds = Object.entries(oldState.tileToVertices)
+    .filter(([, vids]) => vids.includes(vertexId))
+    .map(([tid]) => tid);
+  const bank = { ...oldState.bank };
+  let delay = 0;
+  for (const tid of tileIds) {
+    const tile = oldState.tiles[tid];
+    if (!tile || tile.type === 'desert') continue;
+    const r = TILE_RESOURCE_MAP[tile.type];
+    if (!r || bank[r] < 1) continue;
+    bank[r] -= 1;
+    const origin = tileScreenCenter(tid) ?? getBoardCenter();
+    const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
+    spawnResFlyer(RES_EMOJI[r], target, jitter, delay);
+    delay += RES_FLY_STAGGER;
+  }
+}
+
 function triggerResourceAnimation(
   oldState: GameState,
   newState: GameState,
-  actionType?: string,
+  action?: Action,
   diceTotal?: number,
 ): void {
   if (lastConfig?.cpuSpeed === 'instant') return;
   // 盗み取り(MOVE_ROBBER)は飛ばさない（奪った資源の種類を秘匿するため）。
-  if (actionType === 'MOVE_ROBBER') return;
+  if (action?.type === 'MOVE_ROBBER') return;
+
+  // 初期配置2軒目の初期資源は公開情報から導出する（LANでも相手分のアニメを出すため）。
+  if (action?.type === 'BUILD_SETTLEMENT'
+      && oldState.phase === 'SETUP_BACKWARD'
+      && oldState.setupSubPhase === 'PLACE_SETTLEMENT') {
+    animateSetupGain(oldState, action.vertexId);
+    return;
+  }
 
   // ダイス産出は公開情報。盤面（タイル/数字/強盗/建物）とバンクから各プレイヤーの
   // 実獲得を導出し、全員分のアイコンを該当ヘックスからパネルへ飛ばす。
   // LANでは相手の手札がマスクされ手札差分が0になるため、この公開導出が必須。
   // ダイス以外（年の豊穣等）は従来どおり手札差分（自分のみ公開）で飛ばす。
-  const isDice = actionType === 'ROLL_DICE' && diceTotal !== undefined;
+  const isDice = action?.type === 'ROLL_DICE' && diceTotal !== undefined;
   const production = isDice ? computeDiceProduction(oldState, diceTotal!) : null;
 
   const MAX_PER_PLAYER = 6; // スマホで重くならないよう1人あたりの上限
@@ -1812,7 +1851,7 @@ function runTransitionFx(
   if (action?.type === 'ROLL_DICE' && diceTotal !== undefined && diceTotal !== 7) {
     highlightProducingTiles(diceTotal);
   }
-  triggerResourceAnimation(prevState, state, action?.type ?? 'SYSTEM', diceTotal);
+  triggerResourceAnimation(prevState, state, action, diceTotal);
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);
 }
