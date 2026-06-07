@@ -195,7 +195,7 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
   if (state.phase !== 'MAIN') return null;
 
   if (state.turnPhase === 'DISCARD') {
-    return chooseDiscard(state, pid);
+    return chooseDiscard(state, pid, rng);
   }
 
   if (state.playerOrder[state.currentPlayerIndex] !== pid) return null;
@@ -279,7 +279,7 @@ function choosePreRollAction(state: GameState, pid: PlayerId): Action {
 // DISCARD フェーズ（難易度に関わらず正確に捨てる）
 // ============================================================
 
-function chooseDiscard(state: GameState, pid: PlayerId): Action | null {
+function chooseDiscard(state: GameState, pid: PlayerId, rng: () => number = Math.random): Action | null {
   const player = state.players[pid];
   if (!player) return null;
 
@@ -287,79 +287,121 @@ function chooseDiscard(state: GameState, pid: PlayerId): Action | null {
   if (total < 8) return null;
 
   const target = Math.floor(total / 2);
-  const discardOrder: ResourceType[] = ['wood', 'brick', 'wool', 'grain', 'ore'];
-  const resources: Partial<Record<ResourceType, number>> = {};
-  let remaining = target;
+  return { type: 'DISCARD_RESOURCES', playerId: pid, resources: chooseDiscards(state, pid, target, rng) };
+}
 
-  for (const r of discardOrder) {
-    if (remaining <= 0) break;
-    const amount = Math.min(remaining, player.hand[r]);
-    if (amount > 0) {
-      resources[r] = amount;
-      remaining -= amount;
-    }
+/**
+ * 破棄する資源を選ぶ純粋関数。次の建設目標(goalCosts)に必要な資源を温存し、
+ * 余剰(手札 - 目標必要数)が大きい資源から1枚ずつ count 枚捨てる。
+ * 余剰が拮抗するときのみ seed RNG でタイブレーク（決定的）。
+ */
+export function chooseDiscards(
+  state: GameState, pid: PlayerId, count: number, rng: () => number = Math.random,
+): Partial<Record<ResourceType, number>> {
+  const player = state.players[pid];
+  if (!player) return {};
+  const goals = goalCosts(state, pid);
+  // 各資源の必要数 = 目標コストに含まれる枚数の最大（最優先目標を含む全目標で温存）。
+  const needed = {} as Record<ResourceType, number>;
+  for (const r of RESOURCE_TYPES) needed[r] = goals.reduce((m, g) => Math.max(m, g[r] ?? 0), 0);
+
+  const remaining = { ...player.hand };
+  const discards: Partial<Record<ResourceType, number>> = {};
+  for (let i = 0; i < count; i++) {
+    const avail = RESOURCE_TYPES.filter(r => remaining[r] > 0);
+    if (avail.length === 0) break;
+    // 余剰度（remaining - needed）が最大の資源を捨てる。必要資源は最後まで温存される。
+    const pick = pickByScore(avail, r => remaining[r] - needed[r], rng);
+    remaining[pick] -= 1;
+    discards[pick] = (discards[pick] ?? 0) + 1;
   }
-
-  return { type: 'DISCARD_RESOURCES', playerId: pid, resources };
+  return discards;
 }
 
 // ============================================================
 // ROBBER フェーズ
 // ============================================================
 
+// タイルに建物を持つ相手プレイヤー（自分は除く・重複なし）。
+function opponentsOnTile(state: GameState, tileId: string, pid: PlayerId): PlayerId[] {
+  const vids = state.tileToVertices[tileId] ?? [];
+  return [...new Set(
+    vids.map(v => state.vertices[v]?.building?.playerId)
+      .filter((p): p is PlayerId => p != null && p !== pid),
+  )];
+}
+
+// 自分がそのタイルに建物を持つか（盗賊で自分の生産を止めないため）。
+function selfOnTile(state: GameState, tileId: string, pid: PlayerId): boolean {
+  return (state.tileToVertices[tileId] ?? []).some(v => state.vertices[v]?.building?.playerId === pid);
+}
+
+function tilePip(state: GameState, tileId: string): number {
+  const n = state.tiles[tileId]?.number;
+  return n ? (NUMBER_PROB[n] ?? 0) : 0;
+}
+
+// 盗賊配置スコア: 相手がいない/自分の生産/砂漠/現在地 は対象外(-Infinity)。
+// それ以外は pip ×「最も勝っている相手の脅威度(VP)」。VP0でも pip で比較できるよう +1。
+function robberHexScore(state: GameState, tileId: string, pid: PlayerId): number {
+  const tile = state.tiles[tileId];
+  if (!tile || tile.type === 'desert' || tile.hasRobber) return -Infinity;
+  if (selfOnTile(state, tileId, pid)) return -Infinity;
+  const opps = opponentsOnTile(state, tileId, pid);
+  if (opps.length === 0) return -Infinity;
+  const maxThreat = opps.reduce((m, o) => Math.max(m, calcVP(state, o)), 0);
+  return tilePip(state, tileId) * (1 + maxThreat);
+}
+
+/**
+ * 盗賊を置くヘックスを選ぶ純粋関数。
+ * 「最も勝っている相手の生産を最も削る（pip × 相手VP）」ヘックスを選び、自分の生産は避ける。
+ * 相手のいる有効ヘックスが無い場合は自分を避けた非砂漠、それも無ければ任意へフォールバック。
+ */
+export function chooseRobberHex(state: GameState, pid: PlayerId, rng: () => number = Math.random): string {
+  const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
+  const candidates = Object.keys(state.tiles).filter(
+    tid => tid !== current && state.tiles[tid]?.type !== 'desert',
+  );
+  const scored = candidates.filter(tid => robberHexScore(state, tid, pid) > -Infinity);
+  if (scored.length > 0) {
+    return pickByScore(scored, tid => robberHexScore(state, tid, pid), rng);
+  }
+  // フォールバック: 自分の生産を避けたヘックス → 無ければ任意の候補 → 最後に fallbackTileId。
+  const noSelf = candidates.filter(tid => !selfOnTile(state, tid, pid));
+  const pool = noSelf.length > 0 ? noSelf : candidates;
+  return pool.length > 0 ? pool[Math.floor(rng() * pool.length)]! : fallbackTileId(state, current);
+}
+
+/**
+ * 盗賊を置いたヘックスに隣接する相手から略奪先を選ぶ純粋関数。
+ * 手札が多い／勝利に近い(VP高)相手を優先。手札0の相手は除外（奪えないため）。該当なしは null。
+ */
+export function chooseStealTarget(
+  state: GameState, tileId: string, pid: PlayerId, rng: () => number = Math.random,
+): PlayerId | null {
+  const opps = opponentsOnTile(state, tileId, pid).filter(o => playerHandTotal(state, o) > 0);
+  if (opps.length === 0) return null;
+  return pickByScore(opps, o => playerHandTotal(state, o) + calcVP(state, o) * 2, rng);
+}
+
 function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number): Action {
   const difficulty = getDifficulty(state, pid);
-  const currentRobberTileId = Object.values(state.tiles).find(t => t.hasRobber)?.id;
-
-  // 移動候補: 現在地以外の非砂漠タイル
-  const candidates = Object.keys(state.tiles).filter(
-    tid => tid !== currentRobberTileId && state.tiles[tid]?.type !== 'desert',
-  );
 
   if (difficulty === 'weak') {
-    // 弱: 候補からランダム。候補がなければ現在地以外の任意タイル。
+    // 弱: 現在地以外の非砂漠からランダム。盗む相手は選ばない。
+    const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
+    const candidates = Object.keys(state.tiles).filter(
+      tid => tid !== current && state.tiles[tid]?.type !== 'desert',
+    );
     const tileId = candidates.length > 0
       ? candidates[Math.floor(rng() * candidates.length)]!
-      : fallbackTileId(state, currentRobberTileId);
+      : fallbackTileId(state, current);
     return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
   }
 
-  // 普通・強: スコア最大タイルを選び、手札最多の相手から盗む
-  let bestTileId = '';
-  let bestScore = -1;
-  let bestOpponent: PlayerId | null = null;
-
-  for (const [tileId, tile] of Object.entries(state.tiles)) {
-    if (tileId === currentRobberTileId) continue;
-    if (tile.type === 'desert') continue;
-
-    const prob = tile.number ? (NUMBER_PROB[tile.number] ?? 0) : 0;
-    const vertexIds = state.tileToVertices[tileId] ?? [];
-    const opponents = [...new Set(
-      vertexIds
-        .map(vid => state.vertices[vid]?.building?.playerId)
-        .filter((p): p is PlayerId => p != null && p !== pid),
-    )];
-
-    const opponentMultiplier = difficulty === 'strong' ? 3 : 2;
-    const score = prob * (opponents.length > 0 ? opponentMultiplier : 1);
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestTileId = tileId;
-      bestOpponent = opponents.reduce<PlayerId | null>((best, opp) => {
-        const oppTotal = playerHandTotal(state, opp);
-        const bestTotal = best != null ? playerHandTotal(state, best) : -1;
-        return oppTotal > bestTotal ? opp : best;
-      }, null);
-    }
-  }
-
-  if (!bestTileId) {
-    bestTileId = candidates[0] ?? fallbackTileId(state, currentRobberTileId);
-  }
-
-  return { type: 'MOVE_ROBBER', tileId: bestTileId, stealFromPlayerId: bestOpponent };
+  const tileId = chooseRobberHex(state, pid, rng);
+  return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: chooseStealTarget(state, tileId, pid, rng) };
 }
 
 // ============================================================

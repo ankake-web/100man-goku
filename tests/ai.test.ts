@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { chooseAction, evaluateVertexForSetup } from '../src/engine/ai';
+import { chooseAction, evaluateVertexForSetup, chooseRobberHex, chooseStealTarget, chooseDiscards } from '../src/engine/ai';
 import { applyAction } from '../src/engine/game';
 import { makeHand, RESOURCE_TYPES } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
@@ -425,6 +425,85 @@ describe('chooseAction - ROBBER', () => {
     if (action?.type === 'MOVE_ROBBER') {
       expect(action.tileId).not.toBe(currentRobberTile.id);
     }
+  });
+});
+
+// ============================================================
+// A-2: 盗賊配置・略奪・7破棄
+// ============================================================
+
+describe('A-2 盗賊配置・略奪・7破棄', () => {
+  const vp = (turn: number): DevCard => makeDevCard('victory_point', turn);
+  // 自分=player1。A: player2(リーダー,VP4) / B: player3(VP2) / E: player2&player3 / D: 砂漠(盗賊)
+  function craft(overrides: Partial<GameState> = {}): GameState {
+    return {
+      tiles: {
+        A: { id: 'A', type: 'forest', number: 6, hasRobber: false },    // pip5
+        B: { id: 'B', type: 'hill', number: 5, hasRobber: false },       // pip4
+        E: { id: 'E', type: 'mountain', number: 9, hasRobber: false },   // pip4
+        D: { id: 'D', type: 'desert', number: null, hasRobber: true },
+      },
+      tileToVertices: { A: ['a1', 'a2'], B: ['b1', 'b2'], E: ['e1', 'e2'], D: ['d1'] },
+      vertices: {
+        a1: { id: 'a1', building: { type: 'settlement', playerId: 'player2' } },
+        a2: { id: 'a2', building: null },
+        b1: { id: 'b1', building: { type: 'settlement', playerId: 'player3' } },
+        b2: { id: 'b2', building: null },
+        e1: { id: 'e1', building: { type: 'settlement', playerId: 'player2' } },
+        e2: { id: 'e2', building: { type: 'settlement', playerId: 'player3' } },
+        d1: { id: 'd1', building: null },
+      },
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'strong' }),
+        player2: makePlayer('player2', { hand: makeHand({ wood: 6 }), devCards: [vp(0), vp(1)] }), // VP=2settl+2card=4
+        player3: makePlayer('player3', { hand: makeHand({ wood: 1 }) }),                            // VP=2settl=2
+      },
+      playerOrder: ['player1', 'player2', 'player3'],
+      ...overrides,
+    } as unknown as GameState;
+  }
+
+  it('リーダー(最高VP)の最強ヘックスに盗賊を置く', () => {
+    // A: pip5×(1+4)=25 > E: pip4×(1+4)=20 > B: pip4×(1+2)=12
+    expect(chooseRobberHex(craft(), 'player1', createRng(1))).toBe('A');
+  });
+
+  it('自分の生産ヘックスは避ける（高pipでも自分がいれば選ばない）', () => {
+    // A に自分(player1)を同居させる → A は除外。残り E(20) > B(12) で E を選ぶ。
+    const s = craft();
+    const sa = { ...s, vertices: { ...s.vertices, a2: { id: 'a2', building: { type: 'settlement', playerId: 'player1' } } } } as unknown as GameState;
+    expect(chooseRobberHex(sa, 'player1', createRng(1))).toBe('E');
+  });
+
+  it('同ヘックスの相手のうち手札が多い/勝利に近い相手から奪う', () => {
+    // E に player2(手札6,VP4) と player3(手札1,VP2) → player2 を狙う
+    expect(chooseStealTarget(craft(), 'E', 'player1', createRng(1))).toBe('player2');
+  });
+
+  it('手札0の相手からは奪わない（null）', () => {
+    const s = craft();
+    const s0 = { ...s, players: { ...s.players, player3: makePlayer('player3', { hand: makeHand() }) } } as unknown as GameState;
+    // B の相手は player3 のみ。手札0 → null。
+    expect(chooseStealTarget(s0, 'B', 'player1', createRng(1))).toBeNull();
+  });
+
+  it('7破棄は建設目標に不要な余剰資源から捨て、必要資源を温存する', () => {
+    // 目標(開拓地: 木/煉瓦/羊/麦 各1、発展: 羊/麦/鉱石 各1)。ore は dev で1必要だが余剰4。
+    const s = makeGameState({
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'normal', hand: makeHand({ wood: 1, brick: 1, wool: 1, grain: 1, ore: 5 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+    const d = chooseDiscards(s, 'player1', 4, createRng(1));
+    expect(d.ore).toBe(4);                                  // 余剰 ore を捨てる
+    expect((d.wood ?? 0) + (d.brick ?? 0) + (d.wool ?? 0) + (d.grain ?? 0)).toBe(0); // 目標資源は温存
+    const total = RESOURCE_TYPES.reduce((sum, r) => sum + (d[r] ?? 0), 0);
+    expect(total).toBe(4);
+  });
+
+  it('盗賊配置は同シードで再現可能（決定的）', () => {
+    expect(chooseRobberHex(craft(), 'player1', createRng(9))).toBe(chooseRobberHex(craft(), 'player1', createRng(9)));
   });
 });
 
