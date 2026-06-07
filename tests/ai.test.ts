@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { chooseAction, evaluateVertexForSetup, chooseRobberHex, chooseStealTarget, chooseDiscards } from '../src/engine/ai';
+import { chooseAction, evaluateVertexForSetup, chooseRobberHex, chooseStealTarget, chooseDiscards, weightedProduction, evaluateExpansionVertex } from '../src/engine/ai';
 import { applyAction } from '../src/engine/game';
 import { makeHand, RESOURCE_TYPES } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
@@ -582,6 +582,68 @@ describe('chooseAction - TRADE_BUILD', () => {
     if (action?.type === 'BANK_TRADE') {
       expect(action.receive).toBe('ore');
     }
+  });
+});
+
+// ============================================================
+// A-3: 手番方策（重み付き生産・拡張先の補完評価）
+// ============================================================
+
+describe('A-3 手番方策の評価関数', () => {
+  it('weightedProduction は同pipなら ore/wheat を wood/brick より高く評価する', () => {
+    const s = {
+      tiles: { o6: { id: 'o6', type: 'mountain', number: 6 }, w6: { id: 'w6', type: 'forest', number: 6 } },
+      vertices: {
+        vOre: { id: 'vOre', adjacentTileIds: ['o6'] },
+        vWood: { id: 'vWood', adjacentTileIds: ['w6'] },
+      },
+    } as unknown as GameState;
+    expect(weightedProduction(s, 'vOre')).toBeGreaterThan(weightedProduction(s, 'vWood'));
+  });
+
+  it('evaluateExpansionVertex は未保有資源を補完する頂点を高く評価する（同pip・同重み）', () => {
+    // player1 は wood のみ産出。新規 wool 頂点 > 既保有 wood 頂点（どちらも weight 1.0・pip5）。
+    const s = {
+      tiles: {
+        w6: { id: 'w6', type: 'forest', number: 6 },  // wood（保有元）
+        s8: { id: 's8', type: 'pasture', number: 8 },  // wool（新規）
+        w8: { id: 'w8', type: 'forest', number: 8 },   // wood（既保有）
+      },
+      vertices: {
+        vOwned: { id: 'vOwned', adjacentTileIds: ['w6'], building: { type: 'settlement', playerId: 'player1' }, harborType: null },
+        vNewWool: { id: 'vNewWool', adjacentTileIds: ['s8'], building: null, harborType: null },
+        vOldWood: { id: 'vOldWood', adjacentTileIds: ['w8'], building: null, harborType: null },
+      },
+    } as unknown as GameState;
+    expect(evaluateExpansionVertex(s, 'player1', 'vNewWool'))
+      .toBeGreaterThan(evaluateExpansionVertex(s, 'player1', 'vOldWood'));
+  });
+
+  it('都市化可能なら開拓地より都市を優先する', () => {
+    // 都市化先(自分の開拓地)を1つ用意し、別に開拓地建設も可能な資源を持たせる。
+    let s = makeGameState({
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', currentPlayerIndex: 0,
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'normal', hand: makeHand({ grain: 2, ore: 3, wood: 1, brick: 1, wool: 1 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+    const vid = firstFreeVertex(s);
+    s = { ...s, vertices: { ...s.vertices, [vid]: { ...s.vertices[vid]!, building: { type: 'settlement', playerId: 'player1' } } } };
+    expect(chooseAction(s, 'player1')?.type).toBe('BUILD_CITY');
+  });
+
+  it('TRADE_BUILD の選択は同シードで再現可能（決定的）', () => {
+    const mk = (): GameState => makeGameState({
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', currentPlayerIndex: 0,
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'strong', hand: makeHand({ wood: 2, brick: 2, wool: 2, grain: 2 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+    const a = chooseAction(mk(), 'player1', { rng: createRng(5) });
+    const b = chooseAction(mk(), 'player1', { rng: createRng(5) });
+    expect(a).toEqual(b);
   });
 });
 

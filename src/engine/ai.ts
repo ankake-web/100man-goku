@@ -109,6 +109,79 @@ function pickByScore<T>(items: T[], scoreFn: (t: T) => number, rng: () => number
   return top.length === 1 ? top[0]! : top[Math.floor(rng() * top.length)]!;
 }
 
+// ============================================================
+// 手番方策（A-3）の評価ヘルパー
+// ============================================================
+
+// 資源の戦略的重み。都市化で生産が倍になる ore/wheat(grain) を重視する。
+const RESOURCE_WEIGHT: Record<ResourceType, number> = {
+  ore: 1.3, grain: 1.3, wool: 1.0, wood: 1.0, brick: 1.0,
+};
+
+// 頂点の重み付き生産価値 = Σ pip(隣接タイル) × 資源重み。都市化先・開拓地先の良し悪し。
+export function weightedProduction(state: GameState, vertexId: string): number {
+  let v = 0;
+  for (const tid of state.vertices[vertexId]?.adjacentTileIds ?? []) {
+    const t = state.tiles[tid];
+    const r = t ? TILE_RESOURCE_MAP[t.type] : null;
+    if (!r) continue;
+    v += (t!.number ? (NUMBER_PROB[t!.number] ?? 0) : 0) * RESOURCE_WEIGHT[r];
+  }
+  return v;
+}
+
+// pid が既に産出している資源の集合（建物の隣接タイルから導出）。
+function playerResourceCoverage(state: GameState, pid: PlayerId): Set<ResourceType> {
+  const cov = new Set<ResourceType>();
+  for (const v of Object.values(state.vertices)) {
+    if (v.building?.playerId !== pid) continue;
+    for (const r of adjacentResources(state, v.id)) cov.add(r);
+  }
+  return cov;
+}
+
+// MAIN フェーズの開拓地先評価 = 重み付き生産 + 未保有資源の補完 + 港小加点。
+const EXPANSION_NEW_RESOURCE = 2.0;
+const EXPANSION_HARBOR = 1.0;
+export function evaluateExpansionVertex(state: GameState, pid: PlayerId, vertexId: string): number {
+  let score = weightedProduction(state, vertexId);
+  const cov = playerResourceCoverage(state, pid);
+  for (const r of new Set(adjacentResources(state, vertexId))) if (!cov.has(r)) score += EXPANSION_NEW_RESOURCE;
+  if (state.vertices[vertexId]?.harborType) score += EXPANSION_HARBOR;
+  return score;
+}
+
+// 建設可能な都市化先のうち最良（重み付き生産最大、ore/wheat重視）。無ければ null。
+function bestCityVertex(state: GameState, pid: PlayerId, rng: () => number): string | null {
+  const verts = Object.keys(state.vertices).filter(v => canBuildCity(state, pid, v));
+  return verts.length > 0 ? pickByScore(verts, v => weightedProduction(state, v), rng) : null;
+}
+
+// 建設可能な開拓地先のうち最良（生産＋資源補完）。無ければ null。
+function bestSettlementVertex(state: GameState, pid: PlayerId, rng: () => number): string | null {
+  const verts = Object.keys(state.vertices).filter(v => canBuildSettlement(state, pid, v));
+  return verts.length > 0 ? pickByScore(verts, v => evaluateExpansionVertex(state, pid, v), rng) : null;
+}
+
+// 道の価値 = その辺が開く（空き）頂点の最良 evaluateExpansionVertex。
+// 良い拡張先へ向かう道を優先する（行き止まりの道を避ける）。
+function roadEdgeValue(state: GameState, pid: PlayerId, edgeId: string): number {
+  const e = state.edges[edgeId];
+  if (!e) return 0;
+  let best = 0;
+  for (const vid of e.vertexIds) {
+    if (state.vertices[vid]?.building) continue; // 既に建物がある頂点は開かない
+    best = Math.max(best, evaluateExpansionVertex(state, pid, vid));
+  }
+  return best;
+}
+
+// 建設可能な道のうち最良の拡張先へ向かう辺。無ければ null。
+function bestRoadEdge(state: GameState, pid: PlayerId, rng: () => number): string | null {
+  const edges = Object.keys(state.edges).filter(eid => canBuildRoad(state, pid, eid));
+  return edges.length > 0 ? pickByScore(edges, eid => roadEdgeValue(state, pid, eid), rng) : null;
+}
+
 function playerHandTotal(state: GameState, pid: PlayerId): number {
   const h = state.players[pid]?.hand;
   return h ? RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) : 0;
@@ -481,20 +554,14 @@ function bankTradeToward(state: GameState, pid: PlayerId, cost: ResourceHand): A
 
 // 勝利まであと1点以上なら、勝利に直結する建設を最優先で実行する。
 // 建設できなければ、不足資源をバンク交易で1手ずつ補い、次ステップでの建設→勝利を狙う。
-function victoryPush(state: GameState, pid: PlayerId): Action | null {
+function victoryPush(state: GameState, pid: PlayerId, rng: () => number = Math.random): Action | null {
   if (calcVP(state, pid) < VP_TABLE.target - 1) return null;
   const player = state.players[pid]!;
 
-  const cityVerts = Object.keys(state.vertices).filter(v => canBuildCity(state, pid, v));
-  if (cityVerts.length > 0) {
-    const best = cityVerts.reduce((a, b) => vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b);
-    return { type: 'BUILD_CITY', vertexId: best };
-  }
-  const settlVerts = Object.keys(state.vertices).filter(v => canBuildSettlement(state, pid, v));
-  if (settlVerts.length > 0) {
-    const best = settlVerts.reduce((a, b) => vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b);
-    return { type: 'BUILD_SETTLEMENT', vertexId: best };
-  }
+  const city = bestCityVertex(state, pid, rng);
+  if (city) return { type: 'BUILD_CITY', vertexId: city };
+  const settl = bestSettlementVertex(state, pid, rng);
+  if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
   // 建設不可: 都市化先があれば都市、なければ開拓地の不足資源をバンク交易で補う
   const hasUpgradable = Object.values(state.vertices).some(
     v => v.building?.type === 'settlement' && v.building.playerId === pid,
@@ -578,41 +645,43 @@ function chooseProgressCardAction(state: GameState, pid: PlayerId): Action | nul
   return null;
 }
 
+// ----------------------------------------------------------------
+// 手番方策（明文化したヒューリスティック・探索/ミニマックスはしない）
+//   1. このターンに勝てる（建設/カードで10点）なら勝ち手を実行（victoryPush）。
+//   2. 最良の都市化（重み付き生産・特に ore/wheat を倍化）。
+//   3. 道で繋がった最良の空き頂点へ開拓地（生産＋資源補完を評価）。
+//   4. ore+wheat+sheep が揃うなら発展カード購入。
+//   5. 最良の拡張先へ向けて道（行き止まりの道は避ける）。
+//   6. 手詰まりなら進歩カードで局面を進める／人間へ交易提案／余剰をバンク交易で変換。
+//   タイブレークのみ seed RNG。状態変更はエンジン経由（ルールはエンジンが権威）。
+// ----------------------------------------------------------------
 function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
   const player = state.players[pid]!;
 
-  // 勝利が近いなら勝利に直結する手を最優先
-  const win = victoryPush(state, pid);
+  // 1. 勝利が近いなら勝利に直結する手を最優先
+  const win = victoryPush(state, pid, rng);
   if (win) return win;
 
-  const cityVerts = Object.keys(state.vertices).filter(vid => canBuildCity(state, pid, vid));
-  if (cityVerts.length > 0) {
-    const best = cityVerts.reduce((a, b) =>
-      vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b,
-    );
-    return { type: 'BUILD_CITY', vertexId: best };
-  }
+  // 2. 最良の都市化
+  const city = bestCityVertex(state, pid, rng);
+  if (city) return { type: 'BUILD_CITY', vertexId: city };
 
-  const settlVerts = Object.keys(state.vertices).filter(vid => canBuildSettlement(state, pid, vid));
-  if (settlVerts.length > 0) {
-    const best = settlVerts.reduce((a, b) =>
-      vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b,
-    );
-    return { type: 'BUILD_SETTLEMENT', vertexId: best };
-  }
+  // 3. 最良の開拓地（生産＋資源補完）
+  const settl = bestSettlementVertex(state, pid, rng);
+  if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
 
+  // 4. 発展カード購入（ore+wheat+sheep が揃うとき）
   if (state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card)) {
     return { type: 'BUY_DEV_CARD' };
   }
 
+  // 5. 最良の拡張先へ向けて道
   if (player.remainingRoads > 0) {
-    const roadEdges = Object.keys(state.edges).filter(eid => canBuildRoad(state, pid, eid));
-    if (roadEdges.length > 0) {
-      return { type: 'BUILD_ROAD', edgeId: roadEdges[0]! };
-    }
+    const road = bestRoadEdge(state, pid, rng);
+    if (road) return { type: 'BUILD_ROAD', edgeId: road };
   }
 
-  // 建設で手詰まりのとき、手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
+  // 6. 建設で手詰まりのとき、手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
   const progress = chooseProgressCardAction(state, pid);
   if (progress) return progress;
 
@@ -638,26 +707,16 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   const player = state.players[pid]!;
 
   // 0. 勝利が近いなら勝利に直結する手を最優先（建設 or バンク交易で資源補充）
-  const win = victoryPush(state, pid);
+  const win = victoryPush(state, pid, rng);
   if (win) return win;
 
-  // 1. 都市（VP効率最高）
-  const cityVerts = Object.keys(state.vertices).filter(vid => canBuildCity(state, pid, vid));
-  if (cityVerts.length > 0) {
-    const best = cityVerts.reduce((a, b) =>
-      vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b,
-    );
-    return { type: 'BUILD_CITY', vertexId: best };
-  }
+  // 1. 都市（VP効率最高・重み付き生産で ore/wheat を倍化）
+  const city = bestCityVertex(state, pid, rng);
+  if (city) return { type: 'BUILD_CITY', vertexId: city };
 
-  // 2. 開拓地
-  const settlVerts = Object.keys(state.vertices).filter(vid => canBuildSettlement(state, pid, vid));
-  if (settlVerts.length > 0) {
-    const best = settlVerts.reduce((a, b) =>
-      vertexProductionScore(state, a) >= vertexProductionScore(state, b) ? a : b,
-    );
-    return { type: 'BUILD_SETTLEMENT', vertexId: best };
-  }
+  // 2. 開拓地（生産＋資源補完）
+  const settl = bestSettlementVertex(state, pid, rng);
+  if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
 
   // 3. 人間への交易提案（バンク交易より優先・テンポ重視で控えめ）
   if (!skipPlayerTrade && rng() < CPU_TRADE_OFFER_CHANCE.strong) {
@@ -673,12 +732,10 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   const bankTradeStrategic = tryBankTradeStrong(state, pid);
   if (bankTradeStrategic) return bankTradeStrategic;
 
-  // 5. 道
+  // 5. 道（最良の拡張先へ向けて）
   if (player.remainingRoads > 0) {
-    const roadEdges = Object.keys(state.edges).filter(eid => canBuildRoad(state, pid, eid));
-    if (roadEdges.length > 0) {
-      return { type: 'BUILD_ROAD', edgeId: roadEdges[0]! };
-    }
+    const road = bestRoadEdge(state, pid, rng);
+    if (road) return { type: 'BUILD_ROAD', edgeId: road };
   }
 
   // 6. 発展カード
