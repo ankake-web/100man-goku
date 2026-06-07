@@ -258,10 +258,12 @@ function broadcastLobby(room: Room, urls: string[]): void {
 function broadcastState(room: Room, prev: GameState, action: Action, byPid: PlayerId): void {
   if (!room.state) return;
   for (const m of room.members) {
-    if (!m.connected) continue;
+    // ログは切断中でも蓄積する（送信だけスキップ）。これで再接続時に
+    // 切断中のCPU代行手番もログに反映され、盤面と齟齬しない。
     const entries = buildActionLog(prev, action, room.state, m.id);
     const log = [...(room.memberLogs[m.id] ?? []), ...entries].slice(-MAX_LOG_ENTRIES);
     room.memberLogs[m.id] = log;
+    if (!m.connected) continue;
     send(m.ws, { t: 'state', state: { ...maskStateFor(room.state, m.id), log }, action, by: byPid });
   }
 }
@@ -518,44 +520,48 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
             send(ws, { t: 'error', message: 'この操作はまだLAN対戦に対応していません' });
             return;
           }
-          // 操作権限: actor が送信者本人か（非手番/別IDは拒否）
-          const actor = requiredActor(room.state, action);
-          if (actor !== me.id) {
-            send(ws, { t: 'error', message: 'あなたの操作できる場面ではありません' });
-            return;
-          }
-          // 交易応答は「交易対象に含まれるプレイヤー」のみ許可（対象外を拒否）
-          if (action.type === 'RESPOND_TRADE') {
-            const pt = room.state.pendingTrade;
-            if (!pt || !pt.targetPlayerIds.includes(action.response.playerId)) {
-              send(ws, { t: 'error', message: '交易の対象ではありません' });
-              return;
-            }
-          }
-          // 交易確定は「交易対象かつ ACCEPT した相手」に対してのみ許可する
-          // （拒否者・対象外への一方的な成立強制を防ぐ。エンジン側 confirmTrade と二重防御）。
-          if (action.type === 'CONFIRM_TRADE') {
-            const pt = room.state.pendingTrade;
-            if (!pt || !pt.targetPlayerIds.includes(action.responderId) || pt.responses[action.responderId]?.status !== 'ACCEPT') {
-              send(ws, { t: 'error', message: '承諾した相手とのみ交易を成立できます' });
-              return;
-            }
-          }
-          // 捨て札は「手札の半分(切り捨て)を、所持範囲内で」のみ許可（不足/過剰を拒否）
-          if (action.type === 'DISCARD_RESOURCES') {
-            const p = room.state.players[action.playerId];
-            if (!p) { send(ws, { t: 'error', message: '不明なプレイヤーです' }); return; }
-            // 捨て札枚数ルール(floor(手札/2))の正本はエンジンの discardCount を再利用（重複実装を排除）。
-            const required = discardCount(room.state, action.playerId);
-            const res = action.resources as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
-            const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
-            const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
-            if (required === 0 || discardSum !== required || !withinHand) {
-              send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
-              return;
-            }
-          }
+          // 不正クライアント対策: 権限判定・検証・適用をすべて try で包む。
+          // 必須フィールド欠落（例 RESPOND_TRADE に response が無い／DISCARD に resources が無い）の
+          // JSON は requiredActor や検証で TypeError を投げうるが、これがリスナー外へ漏れると
+          // Node プロセス全体が落ち全ルームが巻き込まれる（リモートDoS）。catch で送信者にのみ通知する。
           try {
+            // 操作権限: actor が送信者本人か（非手番/別IDは拒否）
+            const actor = requiredActor(room.state, action);
+            if (actor !== me.id) {
+              send(ws, { t: 'error', message: 'あなたの操作できる場面ではありません' });
+              return;
+            }
+            // 交易応答は「交易対象に含まれるプレイヤー」のみ許可（対象外を拒否）
+            if (action.type === 'RESPOND_TRADE') {
+              const pt = room.state.pendingTrade;
+              if (!pt || !pt.targetPlayerIds.includes(action.response.playerId)) {
+                send(ws, { t: 'error', message: '交易の対象ではありません' });
+                return;
+              }
+            }
+            // 交易確定は「交易対象かつ ACCEPT した相手」に対してのみ許可する
+            // （拒否者・対象外への一方的な成立強制を防ぐ。エンジン側 confirmTrade と二重防御）。
+            if (action.type === 'CONFIRM_TRADE') {
+              const pt = room.state.pendingTrade;
+              if (!pt || !pt.targetPlayerIds.includes(action.responderId) || pt.responses[action.responderId]?.status !== 'ACCEPT') {
+                send(ws, { t: 'error', message: '承諾した相手とのみ交易を成立できます' });
+                return;
+              }
+            }
+            // 捨て札は「手札の半分(切り捨て)を、所持範囲内で」のみ許可（不足/過剰を拒否）
+            if (action.type === 'DISCARD_RESOURCES') {
+              const p = room.state.players[action.playerId];
+              if (!p) { send(ws, { t: 'error', message: '不明なプレイヤーです' }); return; }
+              // 捨て札枚数ルール(floor(手札/2))の正本はエンジンの discardCount を再利用（重複実装を排除）。
+              const required = discardCount(room.state, action.playerId);
+              const res = action.resources as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
+              const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+              const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
+              if (required === 0 || discardSum !== required || !withinHand) {
+                send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
+                return;
+              }
+            }
             const prev = room.state;
             // 乱数（ダイス/山札/盗賊奪取）はすべてサーバ側で確定する
             const next = applyAction(prev, action, Math.random);
@@ -565,7 +571,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
             // 人間の操作後に CPU の手番/応答が来る場合は CPU 駆動を起動。
             scheduleCpuTick(room, action.type === 'ROLL_DICE' ? room.cpuAfterRollMs : room.cpuStepMs);
           } catch {
-            // applyAction が弾いた無効操作（送信者にのみ通知）
+            // applyAction が弾いた無効操作 or 不正な形のメッセージ（送信者にのみ通知し、プロセスは継続）
             send(ws, { t: 'error', message: '無効な操作です' });
           }
           break;

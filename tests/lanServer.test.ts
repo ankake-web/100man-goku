@@ -141,6 +141,21 @@ describe('lanServer integration (M8)', () => {
     expect(joined.token.length).toBeGreaterThan(20); // randomBytes(32) base64url
   });
 
+  it('does not crash the process on a malformed action message (replies with an error)', async () => {
+    await startServer();
+    const { host } = await setupStartedGame();
+    // 必須フィールド(response)が欠落した RESPOND_TRADE。requiredActor 内で TypeError を投げうるが、
+    // サーバはプロセスを落とさず送信者へエラーを返すこと（リモートDoS回帰テスト）。
+    const errP = host.next(isType('error'));
+    host.send({ t: 'action', action: { type: 'RESPOND_TRADE' } } as unknown as ClientMessage);
+    const err = await errP as Extract<ServerMessage, { t: 'error' }>;
+    expect(err.t).toBe('error');
+    // サーバ生存確認: もう一通の不正メッセージにも引き続き応答できる（クラッシュしていない）。
+    const err2P = host.next(isType('error'));
+    host.send({ t: 'action', action: { type: 'DISCARD_RESOURCES', playerId: 'player1' } } as unknown as ClientMessage);
+    expect((await err2P).t).toBe('error');
+  });
+
   it('start delivers per-viewer masked state (own hand raw, opponent masked, devDeck hidden)', async () => {
     await startServer();
     const { hStarted, gStarted } = await setupStartedGame();
