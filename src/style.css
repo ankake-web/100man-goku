@@ -534,20 +534,6 @@ h1 {
 }
 .btn-active:hover:not(:disabled) { background: #90ff55; }
 
-/* 建設モード選択中のヒント（どこを置くか・選択状態の可視化） */
-.build-select-hint {
-  flex: 1 1 100%;
-  margin: 2px 0 4px;
-  padding: 6px 10px;
-  background: rgba(80,255,140,0.14);
-  border: 1px solid rgba(80,255,140,0.35);
-  border-radius: 8px;
-  color: #b6ffcf;
-  font-size: 0.82rem;
-  font-weight: bold;
-  text-align: center;
-}
-
 .btn-end {
   background: #6a4020;
   color: #ffe0b0;

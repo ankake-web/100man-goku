@@ -1041,14 +1041,8 @@ function buildActionButtons(
   const canCity  = player.remainingCities > 0 && hasEnoughResources(player.hand, BUILD_COSTS.city);
   const canDev   = state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card);
 
-  // 建設モード選択中は「どこを置くか」を明示（タッチでの誤操作防止・選択状態の可視化）。
-  if (buildMode === 'road' || buildMode === 'settlement' || buildMode === 'city') {
-    const label = buildMode === 'road' ? '道' : buildMode === 'settlement' ? '開拓地' : '都市';
-    const hint = el('div', 'build-select-hint');
-    // 横持ちは情報を最小化（短縮表記）。
-    hint.textContent = isLandscapeCompact() ? `${label}を配置` : `🛠 選択中：${label} — 光っている場所をタップ`;
-    div.appendChild(hint);
-  }
+  // 建設モード選択中のヒント文（「選択中：光っている場所をタップ」）は操作パネルの
+  // レイアウトを崩すため表示しない。配置可能な頂点/辺は盤面側のハイライトで示す。
 
   div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
