@@ -245,6 +245,67 @@ export function findCpuTradeOpportunity(
   return null;
 }
 
+// 単独首位のプレイヤー（同点なら null）。利敵回避の判定に使う。
+function soleVpLeader(state: GameState): PlayerId | null {
+  let best = -1;
+  let leader: PlayerId | null = null;
+  let tie = false;
+  for (const pid of state.playerOrder) {
+    const vp = calcVP(state, pid);
+    if (vp > best) { best = vp; leader = pid; tie = false; }
+    else if (vp === best) tie = true;
+  }
+  return tie ? null : leader;
+}
+
+/**
+ * 相手(initiator)からの交易提案を responder(CPU)が受けるべきか判断する純粋関数。
+ * offer は initiator 視点（initiator が give を渡し receive を受け取る）。
+ * よって responder は offer.give を受け取り、offer.receive を渡す。
+ * 受諾条件:
+ *  - 渡す資源を支払える。
+ *  - 受け取る資源が自分の建設目標(goalCosts)の不足を埋める（局面が前進する）。
+ *  - 渡す資源が目標必要数を割らない（目標に必要な資源は手放さない）。
+ *  - 起案者が単独首位かつ勝利間近(VP>=target-3)なら、過度に利敵しないよう拒否。
+ */
+export function evaluateTradeOffer(
+  state: GameState,
+  responderId: PlayerId,
+  offer: { give: Partial<ResourceHand>; receive: Partial<ResourceHand> },
+  initiatorId: PlayerId,
+): boolean {
+  const me = state.players[responderId];
+  if (!me) return false;
+  const gain = offer.give;     // responder が受け取る
+  const cost = offer.receive;  // responder が渡す
+
+  // 渡す資源を支払えること
+  for (const r of RESOURCE_TYPES) if ((me.hand[r] ?? 0) < (cost[r] ?? 0)) return false;
+
+  const goals = goalCosts(state, responderId);
+  const needed = {} as Record<ResourceType, number>;
+  for (const r of RESOURCE_TYPES) needed[r] = goals.reduce((m, g) => Math.max(m, g[r] ?? 0), 0);
+
+  // 受け取りが目標の不足を埋めるか（前進しない交易は受けない）
+  const helps = RESOURCE_TYPES.some(r => (gain[r] ?? 0) > 0 && me.hand[r] < needed[r]);
+  if (!helps) return false;
+
+  // 渡す資源が目標必要数を割らないか（必要資源は温存）
+  for (const r of RESOURCE_TYPES) {
+    if ((cost[r] ?? 0) === 0) continue;
+    const after = me.hand[r] - (cost[r] ?? 0) + (gain[r] ?? 0);
+    if (after < needed[r]) return false;
+  }
+
+  // 利敵回避: 起案者が単独首位かつ勝利間近なら見送る
+  const leader = soleVpLeader(state);
+  if (leader === initiatorId && initiatorId !== responderId
+      && calcVP(state, initiatorId) >= VP_TABLE.target - 3) {
+    return false;
+  }
+  return true;
+}
+
 // ============================================================
 // メインエントリポイント
 // ============================================================

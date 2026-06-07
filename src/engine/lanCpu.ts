@@ -3,7 +3,7 @@
 // ============================================================
 //
 // サーバ権威モデルで CPU を動かすための「次に CPU が打つ一手」を決める純粋関数。
-// 既存の純粋AI（chooseAction）を再利用し、交易応答だけ簡易ロジックで補う。
+// 既存の純粋AI（chooseAction / evaluateTradeOffer）を再利用する。
 // 乱数は rng 注入（サーバ=Math.random、テスト=seed）。
 //
 // 方針:
@@ -16,7 +16,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { RESOURCE_TYPES } from '../constants';
-import { chooseAction } from './ai';
+import { chooseAction, evaluateTradeOffer } from './ai';
 import { canBuildSettlement, canBuildRoad } from './actions';
 
 export interface CpuStep {
@@ -31,7 +31,7 @@ const isCpu = (state: GameState, pid: PlayerId): boolean =>
  * 現在の state で「次に動くべき CPU の一手」を返す。CPU が動く必要が無い
  * （人間の手番・人間の入力待ち・GAME_OVER）なら null。
  *
- * @param rng 交易承諾の確率判定に使う乱数（0..1）。
+ * @param rng CPU判断のタイブレーク等に使う乱数（0..1）。
  */
 export function nextCpuAction(state: GameState, rng: () => number = Math.random): CpuStep | null {
   if (state.phase === 'GAME_OVER') return null;
@@ -43,9 +43,8 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
       // 未応答の対象のうち先頭が CPU なら応答する。人間が先頭なら待つ。
       const pending = trade.targetPlayerIds.find(t => !trade.responses[t]);
       if (pending && isCpu(state, pending)) {
-        const cpu = state.players[pending]!;
-        const canAfford = RESOURCE_TYPES.every(r => cpu.hand[r] >= (trade.offer.receive[r] ?? 0));
-        const accepts = canAfford && rng() < 0.6; // 既存ローカルCPUと同じ簡易判断
+        // 受諾判断は AI の交易方策に委ねる（ローカルCPUと共通）。
+        const accepts = evaluateTradeOffer(state, pending, trade.offer, trade.initiatorId);
         return { pid: pending, action: { type: 'RESPOND_TRADE', response: { playerId: pending, status: accepts ? 'ACCEPT' : 'REJECT' } } };
       }
       return null; // 人間ターゲットの応答待ち

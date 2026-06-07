@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { chooseAction, evaluateVertexForSetup, chooseRobberHex, chooseStealTarget, chooseDiscards, weightedProduction, evaluateExpansionVertex } from '../src/engine/ai';
+import { chooseAction, evaluateVertexForSetup, chooseRobberHex, chooseStealTarget, chooseDiscards, weightedProduction, evaluateExpansionVertex, evaluateTradeOffer } from '../src/engine/ai';
 import { applyAction } from '../src/engine/game';
 import { makeHand, RESOURCE_TYPES } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
@@ -644,6 +644,59 @@ describe('A-3 手番方策の評価関数', () => {
     const a = chooseAction(mk(), 'player1', { rng: createRng(5) });
     const b = chooseAction(mk(), 'player1', { rng: createRng(5) });
     expect(a).toEqual(b);
+  });
+});
+
+// ============================================================
+// A-4: 交易方策（受諾判断 evaluateTradeOffer）
+// ============================================================
+
+describe('A-4 evaluateTradeOffer (相手提案の受諾判断)', () => {
+  // responder=player1 に都市化先(開拓地1)を持たせ、目標=都市/開拓地/発展。
+  function tradeState(p1Hand: Partial<Record<string, number>>, p2: Partial<import('../src/types').Player> = {}): GameState {
+    let s = makeGameState({
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'normal', hand: makeHand(p1Hand as Record<typeof RESOURCE_TYPES[number], number>) }),
+        player2: makePlayer('player2', p2),
+      },
+    });
+    const vid = firstFreeVertex(s);
+    s = { ...s, vertices: { ...s.vertices, [vid]: { ...s.vertices[vid]!, building: { type: 'settlement', playerId: 'player1' } } } };
+    return s;
+  }
+
+  it('目標を前進させ、渡す資源が余剰なら受諾する', () => {
+    const s = tradeState({ grain: 2, ore: 1, wood: 3, brick: 1, wool: 1 });
+    // 受け取り=ore(都市の不足を埋める)、渡す=wood(余剰)
+    const offer = { give: { ore: 1 }, receive: { wood: 1 } };
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(true);
+  });
+
+  it('目標に必要な資源を手放す提案は拒否する', () => {
+    const s = tradeState({ grain: 1, ore: 1, wood: 3, brick: 1, wool: 1 });
+    // 受け取り=grain、渡す=ore（都市に必須・残0になる）→ 拒否
+    const offer = { give: { grain: 1 }, receive: { ore: 1 } };
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
+  });
+
+  it('支払えない提案は拒否する', () => {
+    const s = tradeState({ grain: 2, ore: 1, wood: 1 });
+    const offer = { give: { ore: 1 }, receive: { wood: 5 } };
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
+  });
+
+  it('目標を前進させない提案は拒否する', () => {
+    const s = tradeState({ grain: 2, ore: 3, wood: 3, brick: 1, wool: 1 });
+    // 受け取り=wood(既に十分・不足でない) → 前進しない → 拒否
+    const offer = { give: { wood: 1 }, receive: { brick: 1 } };
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
+  });
+
+  it('起案者が単独首位かつ勝利間近なら、好条件でも利敵回避で拒否する', () => {
+    const vpCards: DevCard[] = Array.from({ length: 7 }, (_, i) => makeDevCard('victory_point', i));
+    const s = tradeState({ grain: 2, ore: 1, wood: 3, brick: 1, wool: 1 }, { devCards: vpCards }); // player2 VP7
+    const offer = { give: { ore: 1 }, receive: { wood: 1 } }; // 単独なら受諾する好条件
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
   });
 });
 

@@ -396,18 +396,20 @@ describe('LAN mixed human+CPU: server-side CPU drive', () => {
     expect(sum).toBe(4); // floor(8/2)
   });
 
-  it('makes a CPU respond to a human trade offer (accept when affordable & lucky)', () => {
-    const base = tradeReadyState({ wood: 2 }, { brick: 2 });
-    const withCpu: GameState = {
-      ...base,
-      players: { ...base.players, player2: { ...base.players.player2!, type: 'ai', aiDifficulty: 'normal' } },
-    };
-    // player1(human) が player2(CPU) に交易提案
-    const offered = applyAction(withCpu, { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: ['player2'] }, createRng(1));
-    const accept = nextCpuAction(offered, () => 0.1); // rng<0.6 → 承諾
+  it('makes a CPU accept a beneficial trade but reject one that costs a needed resource', () => {
+    // 受諾: CPU(player2) は不足している wood を受け取り、余剰(brick2)から brick1 を渡す
+    const acceptBase = tradeReadyState({ wood: 2 }, { brick: 2 });
+    const acceptCpu: GameState = { ...acceptBase, players: { ...acceptBase.players, player2: { ...acceptBase.players.player2!, type: 'ai', aiDifficulty: 'normal' } } };
+    const offeredA = applyAction(acceptCpu, { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: ['player2'] }, createRng(1));
+    const accept = nextCpuAction(offeredA, () => 0.5);
     expect(accept?.pid).toBe('player2');
     expect(accept?.action).toEqual({ type: 'RESPOND_TRADE', response: { playerId: 'player2', status: 'ACCEPT' } });
-    const reject = nextCpuAction(offered, () => 0.9); // rng>=0.6 → 拒否
+
+    // 拒否: brick が1枚のみ → 渡すと目標(開拓地)に必要な brick が0になるため拒否（rngに依らず決定的）
+    const rejectBase = tradeReadyState({ wood: 2 }, { brick: 1 });
+    const rejectCpu: GameState = { ...rejectBase, players: { ...rejectBase.players, player2: { ...rejectBase.players.player2!, type: 'ai', aiDifficulty: 'normal' } } };
+    const offeredR = applyAction(rejectCpu, { type: 'OFFER_TRADE', offer: { give: { wood: 1 }, receive: { brick: 1 } }, targetPlayerIds: ['player2'] }, createRng(1));
+    const reject = nextCpuAction(offeredR, () => 0.5);
     expect((reject?.action as { response: { status: string } }).response.status).toBe('REJECT');
   });
 

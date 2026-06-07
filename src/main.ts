@@ -27,7 +27,7 @@ import { renderUI, syncBoardDrawWidth } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
 import { attachBoardEvents } from './renderer/events';
 import type { BuildMode } from './renderer/events';
-import { chooseAction } from './engine/ai';
+import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
 import { buildActionLog, MAX_LOG_ENTRIES, RES_EMOJI } from './engine/log';
 import { calcVP, calcPublicVP } from './engine/scoring';
@@ -896,16 +896,8 @@ function scheduleCpuTradeResponse(): void {
     const stillPending = cur.targetPlayerIds.find(t => !cur.responses[t]);
     if (stillPending !== pending) return;
 
-    const cpuPlayer = state.players[pending];
-    const canAfford = RESOURCE_TYPES.every((r: ResourceType) =>
-      (cpuPlayer?.hand[r] ?? 0) >= (cur.offer.receive[r] ?? 0),
-    );
-    // CPU は資源があれば 60% の確率で承諾
-    const accepts = canAfford && Math.random() < 0.6;
-    if (!accepts) {
-      const reason = !canAfford ? '資源不足' : '気が乗らない';
-      console.log(`[交易] ${state.players[pending]?.name} が拒否（理由: ${reason}）`);
-    }
+    // 受諾判断は AI の交易方策に委ねる（支払い可能・目標前進・必要資源温存・利敵回避）。
+    const accepts = evaluateTradeOffer(state, pending as PlayerId, cur.offer, cur.initiatorId);
     dispatch({ type: 'RESPOND_TRADE', response: { playerId: pending as PlayerId, status: accepts ? 'ACCEPT' : 'REJECT' } });
   }, aiDelayMs());
 }
