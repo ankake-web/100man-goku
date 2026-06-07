@@ -480,9 +480,25 @@ export function renderBoard(
   const { ox, oy } = boardOffset(state, vbx + W / 2, vby + H / 2);
   const size = HEX_SIZE;
 
-  // --- 海背景（viewBox 全体を覆う。スケール対象外＝水色の海・余白・外枠は不変） ---
+  // --- 海背景（viewBox 全体を覆う。スケール対象外＝海・余白・外枠は不変） ---
+  // 深いティールの縦グラデで「海の深み」を出す（フラットな水色をやめる）。
+  // renderBoard は毎回 SVG をクリアするので defs も毎回作り直す。
+  const defs = svgEl('defs');
+  const grad = svgEl('linearGradient');
+  setAttrs(grad, { id: 'sea-grad', x1: '0', y1: '0', x2: '0', y2: '1' });
+  const stopTop = svgEl('stop'); setAttrs(stopTop, { offset: '0', 'stop-color': '#1c6b78' });
+  const stopBot = svgEl('stop'); setAttrs(stopBot, { offset: '1', 'stop-color': '#0f4049' });
+  grad.appendChild(stopTop); grad.appendChild(stopBot);
+  defs.appendChild(grad);
+  svgEl_.appendChild(defs);
+
   const sea = svgEl('rect');
-  setAttrs(sea, { x: vbx, y: vby, width: W, height: H, fill: '#1a6ea8', rx: 12 });
+  sea.setAttribute('class', 'sea');
+  // 1px内側に寄せて細い真鍮の海岸線フレームを縁に出す（レイアウト非依存）。
+  setAttrs(sea, {
+    x: vbx + 1, y: vby + 1, width: W - 2, height: H - 2, fill: 'url(#sea-grad)', rx: 12,
+    stroke: 'rgba(208,168,108,0.22)', 'stroke-width': 2,
+  });
   svgEl_.appendChild(sea);
 
   // タッチ端末では盤面コンテンツ（タイル/数字/建物/港/盗賊）だけを viewBox 中心まわりに

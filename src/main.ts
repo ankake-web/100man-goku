@@ -73,7 +73,13 @@ function renderHome(
 
   const title = document.createElement('h1');
   title.className = 'home-title';
-  title.textContent = '🎲 カタン';
+  // 絵文字は通常描画のまま、文字「カタン」だけ金グラデにする（background-clip:text が
+  // 絵文字を塗りつぶしてしまうのを避けるため span で分離）。
+  title.append('🎲 ');
+  const titleText = document.createElement('span');
+  titleText.className = 'home-title-text';
+  titleText.textContent = 'カタン';
+  title.appendChild(titleText);
   screen.appendChild(title);
 
   const card = document.createElement('div');

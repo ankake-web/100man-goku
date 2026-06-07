@@ -1362,15 +1362,16 @@ function buildPlayerPanel(
   const div = el('div', `player-panel${isActive ? ' active' : ''}${isActive && isSelf && state.phase !== 'GAME_OVER' ? ' your-turn' : ''}${isWinner ? ' winner-glow' : ''}`);
   div.dataset.pid = pId;  // リソースアニメーション用
   const color = PLAYER_COLORS[pId] ?? '#aaa';
-  // プレイヤーカラーを反映（控えめ）：暗いベースに淡い着色＋濃い枠線。
-  // 文字可読性を優先するため背景は約80%暗色で、色は淡く乗せる程度。
-  div.style.background = `linear-gradient(rgba(16,18,26,0.80), rgba(16,18,26,0.80)), ${color}`;
+  // プレイヤーカラーを反映（控えめ）：暖色寄りの暗いベースに淡い着色＋濃い枠線。
+  // 文字可読性を優先するため背景は約82%暗色で、色は淡く乗せる程度。
+  div.style.background = `linear-gradient(rgba(18,26,28,0.84), rgba(13,20,23,0.88)), ${color}`;
   div.style.borderColor = `${color}aa`;
   div.style.borderLeftWidth = '4px';
+  div.style.boxShadow = '0 6px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,238,206,0.05)';
   if (isActive) {
     // 現在手番は枠を濃く＋発光で明確に区別
     div.style.borderColor = color;
-    div.style.boxShadow = `0 0 12px ${color}66`;
+    div.style.boxShadow = `0 6px 20px rgba(0,0,0,0.45), 0 0 14px ${color}66, inset 0 1px 0 rgba(255,238,206,0.07)`;
   }
 
   // 順位バッジ: 公開VPを基準にする（VP カードは非公開のため）
