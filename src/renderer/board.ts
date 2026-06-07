@@ -287,6 +287,9 @@ function renderEdges(
 
     if (edge.road) {
       const line = svgEl('line');
+      line.classList.add('road-line-built');
+      // 設置アニメ(C-4)で対象を引けるよう id を付ける（敷設済みは配置対象にならないので無害）。
+      line.setAttribute('data-road-edge-id', edge.id);
       setAttrs(line, {
         x1: vA.pixel.x + ox, y1: vA.pixel.y + oy,
         x2: vB.pixel.x + ox, y2: vB.pixel.y + oy,

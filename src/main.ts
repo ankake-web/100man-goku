@@ -1925,8 +1925,26 @@ function runTransitionFx(
     highlightProducingTiles(diceTotal);
   }
   triggerResourceAnimation(prevState, state, action, diceTotal);
+  animateBuildPlacement(action);
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);
+}
+
+// 建設フィードバック(C-4): 開拓地/都市はスケールインのポップ、道は辺をなぞる描画。
+// redraw 後に該当要素へ一時クラスを付けて CSS アニメで見せる（reduced-motion/instantは省略）。
+function animateBuildPlacement(action: Action | undefined): void {
+  if (!action || lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  if (action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY') {
+    const g = document.querySelector(`#board [data-vertex-id="${action.vertexId}"]`) as SVGGElement | null;
+    if (!g) return;
+    g.classList.add('just-built');
+    setTimeout(() => g.classList.remove('just-built'), 650);
+  } else if (action.type === 'BUILD_ROAD') {
+    const line = document.querySelector(`#board [data-road-edge-id="${action.edgeId}"]`) as SVGLineElement | null;
+    if (!line) return;
+    line.classList.add('road-draw');
+    setTimeout(() => line.classList.remove('road-draw'), 600);
+  }
 }
 
 // ROLL_DICE ならダイス演出を見せてから finish、それ以外は即 finish。

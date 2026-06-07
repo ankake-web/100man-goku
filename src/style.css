@@ -454,6 +454,26 @@ h1 {
   .hex-tile.valid-robber { stroke-width: 4; filter: brightness(1.45); }
 }
 
+/* ---- 建設フィードバック(C-4): 開拓地/都市のスケールイン、道の描画 ---- */
+[data-vertex-id].just-built {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: buildPop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes buildPop {
+  0%   { transform: scale(0.4); opacity: 0.5; filter: drop-shadow(0 0 0 rgba(255,238,206,0)); }
+  60%  { transform: scale(1.14); filter: drop-shadow(0 0 8px rgba(255,238,206,0.85)); }
+  100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 0 rgba(255,238,206,0)); }
+}
+.road-line-built.road-draw {
+  stroke-dasharray: 80;
+  animation: roadDraw 0.45s ease-out;
+}
+@keyframes roadDraw { from { stroke-dashoffset: 80; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-vertex-id].just-built, .road-line-built.road-draw { animation: none; }
+}
+
 /* ---- 仮置きプレビュー（確定待ち）のゴースト ---- */
 .vertex-preview {
   fill: rgba(0,255,136,0.35);
