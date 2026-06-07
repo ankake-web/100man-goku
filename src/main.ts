@@ -1381,20 +1381,22 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   overlay.className = 'victory-overlay';
   overlay.style.setProperty('--win-color', color);
 
-  // 紙吹雪
-  const confetti = document.createElement('div');
-  confetti.className = 'confetti';
-  for (let i = 0; i < 80; i++) {
-    const piece = document.createElement('span');
-    piece.className = 'confetti-piece';
-    piece.style.left = `${Math.random() * 100}%`;
-    piece.style.background = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)]!;
-    piece.style.animationDelay = `${Math.random() * 0.9}s`;
-    piece.style.animationDuration = `${1.8 + Math.random() * 1.6}s`;
-    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
-    confetti.appendChild(piece);
+  // 紙吹雪（アニメ抑制時は省略。勝者発表モーダルは静的に表示する）。
+  if (!prefersReducedMotion()) {
+    const confetti = document.createElement('div');
+    confetti.className = 'confetti';
+    for (let i = 0; i < 80; i++) {
+      const piece = document.createElement('span');
+      piece.className = 'confetti-piece';
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.background = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)]!;
+      piece.style.animationDelay = `${Math.random() * 0.9}s`;
+      piece.style.animationDuration = `${1.8 + Math.random() * 1.6}s`;
+      piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+      confetti.appendChild(piece);
+    }
+    overlay.appendChild(confetti);
   }
-  overlay.appendChild(confetti);
 
   // モーダル
   const modal = document.createElement('div');
