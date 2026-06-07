@@ -145,7 +145,7 @@ function genToken(): string {
 }
 
 function genCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい文字を除外
+  const chars = '0123456789'; // 数字4桁（スマホのテンキーで入力しやすい）
   let code = '';
   do {
     code = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');

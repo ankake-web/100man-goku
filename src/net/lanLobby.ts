@@ -168,18 +168,18 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     // 長さ制限は sanitize 側の slice(0,4) で行う。native maxLength を併用すると
     // 記号入りのペースト（例 "ab-12"）が先頭4文字で切られてから整形され、
     // 有効文字が削れてしまうため、ここでは付けない。
-    codeInput.placeholder = 'ルームコード';
-    // スマホの自動補正/予測変換による二重入力（A→AA 等）を防ぐ。
-    codeInput.setAttribute('autocapitalize', 'characters');
+    codeInput.placeholder = 'ルームコード（数字4桁）';
+    // 数字のみ。スマホではテンキーを出す。自動補正/予測変換による二重入力を防ぐ。
     codeInput.setAttribute('autocomplete', 'off');
     codeInput.setAttribute('autocorrect', 'off');
     codeInput.spellcheck = false;
-    codeInput.inputMode = 'text';
-    // value 全体を A-Z0-9 のみへ正規化する（手書きで old+typedChar を継ぎ足さない）。
+    codeInput.inputMode = 'numeric';
+    codeInput.pattern = '[0-9]*';
+    // value 全体を数字のみへ正規化する（手書きで old+typedChar を継ぎ足さない）。
     // IME変換中（isComposing）は書き換えず、確定後にのみ整えることで二重化を防ぐ。
     // 値が変わらないなら代入もしない（カーソル飛び・再入力ループを防ぐ）。
     const sanitizeCode = (): void => {
-      const cleaned = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+      const cleaned = codeInput.value.replace(/\D/g, '').slice(0, 4);
       if (cleaned !== codeInput.value) codeInput.value = cleaned;
     };
     codeInput.addEventListener('input', (e) => {
@@ -192,7 +192,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     joinBtn.textContent = '参加';
     const submitJoin = async (): Promise<void> => {
       sanitizeCode();
-      const code = codeInput.value.trim().toUpperCase();
+      const code = codeInput.value.trim();
       if (code.length < 4) { view.error = 'ルームコードを入力してください'; render(); return; }
       if (await ensureClient()) client!.send({ t: 'join', code, name: getName() });
     };

@@ -1341,7 +1341,7 @@ h1 {
 }
 .lan-join-row { display: flex; gap: 8px; align-items: stretch; }
 .lan-join-row .home-online-btn { flex: 0 0 auto; min-width: 88px; }
-.lan-code-input { flex: 1; text-transform: uppercase; letter-spacing: 0.18em; text-align: center; }
+.lan-code-input { flex: 1; letter-spacing: 0.3em; text-align: center; }
 /* スマホ縦持ち: コード入力欄の下に「参加」ボタンを縦配置し、押しやすく全幅に。 */
 @media (max-width: 480px) {
   .lan-join-row { flex-direction: column; }
@@ -2124,18 +2124,26 @@ h1 {
 }
 
 /* ============================================================
-   スマホ縦持ち専用: 盤面四隅のミニプレイヤーパネル（資源アニメの着地先）
-   通常のプレイヤーパネルは削除せず、縦持ち時の盤面上ミニ表示として追加する。
+   盤面四隅のミニプレイヤーパネル（資源アニメの着地先）
+   四隅レイアウトでない＝パネルが盤面下に回り込む全レイアウト（スマホ縦持ち含む）で、
+   盤面上のミニ表示として重ねる。通常のプレイヤーパネルは削除せず併存させる。
    ============================================================ */
 .mini-panels {
-  display: none;            /* 既定は非表示。縦持ち×タッチのみ表示する */
+  display: none;            /* 既定は非表示。盤面下回り込み(mini-mode)のみ表示する */
   position: absolute;
   inset: 0;
   pointer-events: none;     /* 盤面タップ・建設候補の操作を邪魔しない */
   z-index: 4;
 }
-@media (orientation: portrait) and (pointer: coarse) {
-  .mini-panels { display: block; }
+/* 盤面下回り込みレイアウト（JS が #board-area に付与）で表示。
+   広い画面でも盤面の左右端に沿うよう、盤面の実描画幅に合わせて中央寄せする
+   （#board は max-width:100% / max-height:78vh・縦横比 800:700 で描画される）。 */
+#board-area.mini-mode .mini-panels {
+  display: block;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(100%, calc(78vh * 800 / 700));
 }
 .mini-panel {
   position: absolute;

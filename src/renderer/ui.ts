@@ -1228,14 +1228,18 @@ export function renderUI(
   boardArea?.querySelector('.player-panels')?.remove();
   if (boardArea && useCornerLayout()) {
     boardArea.classList.add('corner-panels');
+    boardArea.classList.remove('mini-mode');
     boardArea.appendChild(allPanels);
   } else {
     boardArea?.classList.remove('corner-panels');
+    // 四隅レイアウトでない＝パネルが盤面下に回り込む。スマホ縦持ちと同様に
+    // 盤面内ミニパネルを表示し（mini-mode）、資源アニメもそこへ着地させる。
+    boardArea?.classList.add('mini-mode');
     container.appendChild(allPanels);
   }
 
-  // スマホ縦持ち時のみ、盤面四隅にミニプレイヤーパネルを重ねる（資源アニメの着地先）。
-  // 表示/非表示は CSS のメディアクエリ（縦持ち×タッチ）で制御する。
+  // 盤面四隅のミニプレイヤーパネルを重ねる（資源アニメの着地先）。
+  // 実際の表示/非表示は #board-area.mini-mode（=盤面下回り込みレイアウト）で CSS が制御する。
   renderMiniPanels(state, viewerId);
 }
 
