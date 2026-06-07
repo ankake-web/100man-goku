@@ -1820,12 +1820,37 @@ function flashBonus(pid: PlayerId, label: string): void {
 function maybeYourTurnCue(prevState: GameState, newState: GameState): void {
   if (newState.phase === 'GAME_OVER') return;
   const me = selfPlayerId();
-  if (!me) return;
   const prevCur = prevState.playerOrder[prevState.currentPlayerIndex];
   const newCur = newState.playerOrder[newState.currentPlayerIndex];
   if (newCur === me && prevCur !== me) {
     setTimeout(() => playSE('yourTurn'), 140);
   }
+  // 手番開始の明示（MAINのみ。手番は公開情報なのでLAN全クライアントで一致）。
+  if (newState.phase === 'MAIN' && newCur && newCur !== prevCur) {
+    showTurnToast(newCur, newCur === me);
+  }
+}
+
+// 手番開始トースト（盤面上に短く「○○の番」。レイアウトは崩さない absolute 配置）。
+function showTurnToast(pid: string, isMe: boolean): void {
+  const host = document.getElementById('board-area');
+  if (!host || !state) return;
+  document.getElementById('turn-toast')?.remove();
+  const p = state.players[pid];
+  if (!p) return;
+  const color = PLAYER_HEX[pid] ?? '#aaa';
+  const toast = document.createElement('div');
+  toast.id = 'turn-toast';
+  if (isMe) toast.classList.add('mine');
+  toast.style.setProperty('--turn-color', color);
+  const dot = document.createElement('span');
+  dot.className = 'turn-toast-dot';
+  dot.style.background = color;
+  const txt = document.createElement('span');
+  txt.textContent = isMe ? 'あなたの番！' : `${p.name} の番`;
+  toast.append(dot, txt);
+  host.appendChild(toast);
+  setTimeout(() => toast.remove(), 1700);
 }
 
 // ダイスのロール演出（擬似3D）。盤面中央で2つのサイコロが転がり、最初は速く→徐々に

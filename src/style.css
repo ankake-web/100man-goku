@@ -1607,6 +1607,30 @@ h1 {
 /* スライド中は盤面の静的コマを隠す（二重表示防止） */
 .robber-sliding .robber { opacity: 0; }
 
+/* ---- 手番開始トースト（盤面上中央・短時間） ---- */
+#turn-toast {
+  position: absolute;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(12,14,20,0.9);
+  border: 1.5px solid var(--turn-color, #fff);
+  box-shadow: 0 3px 14px rgba(0,0,0,0.5);
+  color: #fff; font-weight: 700; font-size: 0.92rem;
+  white-space: nowrap; pointer-events: none;
+  animation: turnToastIn 0.28s ease-out, turnToastOut 0.4s ease-in 1.3s forwards;
+}
+#turn-toast.mine { background: rgba(40,30,12,0.94); box-shadow: 0 0 16px var(--turn-color, #ffd700); }
+.turn-toast-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.7); }
+@keyframes turnToastIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes turnToastOut { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #turn-toast { animation: none; }
+}
+
 /* ---- 略奪演出: 伏せカード（種類は出さない）が被害者→略奪者へ飛ぶ ---- */
 .steal-card {
   position: fixed;
