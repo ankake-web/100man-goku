@@ -6,7 +6,7 @@
 // DOM/CTM 変換は実機目視（命中率そのもの）に委ね、ここでは幾何ロジックを担保する。
 
 import { describe, it, expect } from 'vitest';
-import { nearestValidVertexId, nearestValidEdgeId } from '../src/renderer/events';
+import { nearestValidVertexId, nearestValidEdgeId, resolvePlacePreviewAction } from '../src/renderer/events';
 import { applyAction } from '../src/engine/game';
 import { canBuildRoad } from '../src/engine/actions';
 import { makeGameState } from './helpers';
@@ -62,5 +62,29 @@ describe('nearestValidEdgeId', () => {
   it('配置フェーズでなければ（道を求めていない）null を返す', () => {
     const s = makeGameState({ phase: 'MAIN', turnPhase: 'TRADE_BUILD' });
     expect(nearestValidEdgeId(s, 'player1', 'idle', 400, 350)).toBeNull();
+  });
+});
+
+describe('resolvePlacePreviewAction (確認ステップの確定)', () => {
+  it('合法な開拓地頂点を BUILD_SETTLEMENT に変換する', () => {
+    const s = setupSettlementState();
+    const vid = Object.keys(s.vertices)[0]!;
+    expect(resolvePlacePreviewAction(s, 'player1', 'settlement', vid)).toEqual({ type: 'BUILD_SETTLEMENT', vertexId: vid });
+  });
+
+  it('合法な道の辺を BUILD_ROAD に変換する', () => {
+    let s = setupSettlementState();
+    const vid = Object.keys(s.vertices)[0]!;
+    s = applyAction(s, { type: 'BUILD_SETTLEMENT', vertexId: vid });
+    const eid = s.vertices[vid]!.adjacentEdgeIds.find(e => canBuildRoad(s, 'player1', e))!;
+    expect(resolvePlacePreviewAction(s, 'player1', 'road', eid)).toEqual({ type: 'BUILD_ROAD', edgeId: eid });
+  });
+
+  it('非合法ターゲットは null を返す（確定しても何も起きない）', () => {
+    let s = setupSettlementState();
+    const vid = Object.keys(s.vertices)[0]!;
+    s = applyAction(s, { type: 'BUILD_SETTLEMENT', vertexId: vid });
+    // PLACE_ROAD 中に開拓地確定を試みても null（フェーズ不一致）
+    expect(resolvePlacePreviewAction(s, 'player1', 'settlement', vid)).toBeNull();
   });
 });

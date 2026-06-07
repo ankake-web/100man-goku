@@ -130,24 +130,67 @@ export function attachBoardEvents(
     const pt = clickToBoardPixel(svg, e.clientX, e.clientY);
     if (pt) {
       const vid = nearestValidVertexId(state, pid, mode, pt.x, pt.y);
-      if (vid) { handleVertexClick(vid, state, pid, mode, dispatch); return; }
+      if (vid) { placeVertex(vid, state, pid, mode, setUIPhase, dispatch); return; }
       const eid = nearestValidEdgeId(state, pid, mode, pt.x, pt.y);
-      if (eid) { handleEdgeClick(eid, state, pid, mode, dispatch); return; }
+      if (eid) { placeEdge(eid, state, pid, mode, setUIPhase, dispatch); return; }
     }
 
     // ---- フォールバック: 直接ヒットした要素（マウスの精密クリック等）----
     const vertexEl = target.closest('[data-vertex-id]');
     if (vertexEl) {
       const vertexId = vertexEl.getAttribute('data-vertex-id');
-      if (vertexId) handleVertexClick(vertexId, state, pid, mode, dispatch);
+      if (vertexId) placeVertex(vertexId, state, pid, mode, setUIPhase, dispatch);
       return;
     }
     const edgeEl = target.closest('[data-edge-id]');
     if (edgeEl) {
       const edgeId = edgeEl.getAttribute('data-edge-id');
-      if (edgeId) handleEdgeClick(edgeId, state, pid, mode, dispatch);
+      if (edgeId) placeEdge(edgeId, state, pid, mode, setUIPhase, dispatch);
     }
   });
+}
+
+// 配置タップで確認ステップを挟むか（誤配置防止）。タッチ端末のみ。マウスは即配置。
+function requireConfirm(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+}
+
+// 頂点への配置: タッチなら仮置きプレビュー（確定待ち）、マウスなら即配置。
+function placeVertex(
+  vid: string, state: GameState, pid: PlayerId, mode: BuildMode,
+  setUIPhase: (p: UIPhase) => void, dispatch: (a: Action) => void,
+): void {
+  const action = resolveVertexAction(state, pid, mode, vid);
+  if (!action) return;
+  if (requireConfirm()) {
+    setUIPhase({ type: 'placePreview', kind: action.type === 'BUILD_CITY' ? 'city' : 'settlement', targetId: vid });
+  } else {
+    dispatch(action);
+  }
+}
+
+// 辺への配置: タッチなら仮置きプレビュー、マウスなら即配置。
+function placeEdge(
+  eid: string, state: GameState, pid: PlayerId, mode: BuildMode,
+  setUIPhase: (p: UIPhase) => void, dispatch: (a: Action) => void,
+): void {
+  const action = resolveEdgeAction(state, pid, mode, eid);
+  if (!action) return;
+  if (requireConfirm()) {
+    setUIPhase({ type: 'placePreview', kind: 'road', targetId: eid });
+  } else {
+    dispatch(action);
+  }
+}
+
+// 仮置きプレビューを確定して実アクションへ変換する（main.ts の確認バーから呼ぶ）。
+export function resolvePlacePreviewAction(
+  state: GameState, pid: PlayerId, kind: 'settlement' | 'city' | 'road', targetId: string,
+): Action | null {
+  if (kind === 'road') return resolveEdgeAction(state, pid, 'road', targetId);
+  return resolveVertexAction(state, pid, kind, targetId);
 }
 
 // ============================================================
@@ -186,50 +229,29 @@ function handleTileClick(
   }
 }
 
-function handleVertexClick(
-  vertexId: string,
-  state: GameState,
-  pid: PlayerId,
-  mode: BuildMode,
-  dispatch: (a: Action) => void,
-): void {
+// 頂点タップに対応する建設アクション（合法なら）を返す。なければ null。
+function resolveVertexAction(state: GameState, pid: PlayerId, mode: BuildMode, vertexId: string): Action | null {
   const isSetup = state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD';
-
   if (isSetup && state.setupSubPhase === 'PLACE_SETTLEMENT') {
-    if (canBuildSettlement(state, pid, vertexId)) {
-      dispatch({ type: 'BUILD_SETTLEMENT', vertexId });
-    }
-    return;
+    return canBuildSettlement(state, pid, vertexId) ? { type: 'BUILD_SETTLEMENT', vertexId } : null;
   }
-
   if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD') {
-    if (mode === 'settlement' && canBuildSettlement(state, pid, vertexId)) {
-      dispatch({ type: 'BUILD_SETTLEMENT', vertexId });
-    } else if (mode === 'city' && canBuildCity(state, pid, vertexId)) {
-      dispatch({ type: 'BUILD_CITY', vertexId });
-    }
+    if (mode === 'settlement' && canBuildSettlement(state, pid, vertexId)) return { type: 'BUILD_SETTLEMENT', vertexId };
+    if (mode === 'city' && canBuildCity(state, pid, vertexId)) return { type: 'BUILD_CITY', vertexId };
   }
+  return null;
 }
 
-function handleEdgeClick(
-  edgeId: string,
-  state: GameState,
-  pid: PlayerId,
-  mode: BuildMode,
-  dispatch: (a: Action) => void,
-): void {
+// 辺タップに対応する道アクション（合法なら）を返す。なければ null。
+function resolveEdgeAction(state: GameState, pid: PlayerId, mode: BuildMode, edgeId: string): Action | null {
   const isSetup = state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD';
-
   if (isSetup && state.setupSubPhase === 'PLACE_ROAD') {
-    if (canBuildRoad(state, pid, edgeId)) {
-      dispatch({ type: 'BUILD_ROAD', edgeId });
-    }
-    return;
+    return canBuildRoad(state, pid, edgeId) ? { type: 'BUILD_ROAD', edgeId } : null;
   }
-
   if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD') {
-    if (mode === 'road' && canBuildRoad(state, pid, edgeId)) {
-      dispatch({ type: 'BUILD_ROAD', edgeId });
+    if ((mode === 'road' || state.roadBuildingRoadsRemaining > 0) && canBuildRoad(state, pid, edgeId)) {
+      return { type: 'BUILD_ROAD', edgeId };
     }
   }
+  return null;
 }

@@ -22,6 +22,7 @@ export type UIPhase =
   | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
   | { type: 'monopoly'; resource: ResourceType | null }
   | { type: 'robberTarget'; tileId: string; opponents: PlayerId[] }
+  | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road'; targetId: string }
   | { type: 'playerTradeOffer'; give: ResourceHand; receive: ResourceHand; targetPids: PlayerId[] };
 
 // ============================================================

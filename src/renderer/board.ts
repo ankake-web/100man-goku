@@ -14,6 +14,9 @@ export interface BoardRenderOptions {
   validVertexIds?: Set<string>;
   validEdgeIds?: Set<string>;
   validTileIds?: Set<string>;
+  // 仮置きプレビュー（確定待ち）のターゲット。ゴースト表示する。
+  previewVertexId?: string;
+  previewEdgeId?: string;
 }
 
 // 強盗コマをタイル中心から下へずらす量（数字チップとの重なり回避）。
@@ -294,6 +297,13 @@ function renderEdges(
       line.setAttribute('data-edge-id', edge.id);
       setAttrs(line, { x1, y1, x2, y2 });
       g.appendChild(line);
+      // 仮置きプレビュー（確定待ち）のゴースト道。
+      if (opts?.previewEdgeId === edge.id) {
+        const ghost = svgEl('line');
+        ghost.classList.add('edge-preview');
+        setAttrs(ghost, { x1, y1, x2, y2 });
+        g.appendChild(ghost);
+      }
       // タッチ用の透明な太い当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。
       if (isValid) {
         const hit = svgEl('line');
@@ -410,6 +420,14 @@ function renderVertices(
       if (isValid) dot.classList.add('valid');
       setAttrs(dot, { cx: vx, cy: vy, r: isValid ? 7 : 5 });
       vg.appendChild(dot);
+    }
+
+    // 仮置きプレビュー（確定待ち）のゴースト。建物の有無に関わらず目立つリングを出す。
+    if (opts?.previewVertexId === vertex.id) {
+      const ghost = svgEl('circle');
+      ghost.classList.add('vertex-preview');
+      setAttrs(ghost, { cx: vx, cy: vy, r: 12 });
+      vg.appendChild(ghost);
     }
 
     // タッチ用の透明な大きめ当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。

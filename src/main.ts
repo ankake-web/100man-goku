@@ -25,7 +25,7 @@ import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
-import { attachBoardEvents } from './renderer/events';
+import { attachBoardEvents, resolvePlacePreviewAction } from './renderer/events';
 import type { BuildMode } from './renderer/events';
 import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
@@ -604,25 +604,41 @@ function redraw(): void {
     uiPhase = { type: 'idle' };
   }
 
+  // 仮置きプレビュー(placePreview)は、配置できない局面/GAME_OVER では破棄する。
+  if (uiPhase.type === 'placePreview' && !isPlaceablePhase(state)) {
+    uiPhase = { type: 'idle' };
+  }
+
+  // 仮置きプレビューのゴーストを board へ渡す（computeHighlights の結果へ付加）。
+  const withPreview = (opts: BoardRenderOptions): BoardRenderOptions => {
+    if (uiPhase.type === 'placePreview') {
+      if (uiPhase.kind === 'road') opts.previewEdgeId = uiPhase.targetId;
+      else opts.previewVertexId = uiPhase.targetId;
+    }
+    return opts;
+  };
+
   // LAN対戦: 操作UIは viewer の手番のみ有効化（lanMode）。建設ハイライトも
   // 自分の手番のときだけ出す。CPUスケジュール/ウォッチドッグは動かさない。
   if (netMode) {
     const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
-    const opts = myTurn ? computeHighlights(state, buildMode) : {};
+    const opts = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
     renderBoard(svgBoard, state, opts);
     renderUI(
       uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
       viewerPlayerId ?? undefined, /* lanMode */ true,
     );
     updateGameNav();
+    updatePlaceConfirmBar();
     updateLandscapeSheet();
     return;
   }
 
-  const opts = computeHighlights(state, buildMode);
+  const opts = withPreview(computeHighlights(state, buildMode));
   renderBoard(svgBoard, state, opts);
   renderUI(uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch);
   updateGameNav();
+  updatePlaceConfirmBar();
   // CPUが責任を持つ場面ならフリーズ対策ウォッチドッグを再武装
   armCpuWatchdog();
   // CPU手番ステータスバナーの更新
@@ -2000,7 +2016,47 @@ function setBuildMode(mode: BuildMode): void {
   buildMode = mode;
   // 建設モードに入ったら横持ちシートは畳む（盤面をタップしやすく）。
   if (mode !== 'idle') landscapeSheetUserOpen = false;
+  // モード変更で仮置きプレビューは破棄（別の建設物を選び直したとみなす）。
+  if (uiPhase.type === 'placePreview') uiPhase = { type: 'idle' };
   redraw();
+}
+
+// 配置（建設）が可能な局面か。仮置きプレビューの有効/破棄判定に使う。
+function isPlaceablePhase(s: GameState): boolean {
+  if (s.phase === 'SETUP_FORWARD' || s.phase === 'SETUP_BACKWARD') return s.setupSubPhase != null;
+  return s.phase === 'MAIN' && s.turnPhase === 'TRADE_BUILD';
+}
+
+// 仮置きプレビュー中の確認バー（盤面に被らない固定位置）。確定で建設、やめるで取消。
+function updatePlaceConfirmBar(): void {
+  document.getElementById('place-confirm')?.remove();
+  if (!state || uiPhase.type !== 'placePreview') return;
+  const label = uiPhase.kind === 'road' ? '道' : uiPhase.kind === 'city' ? '都市' : '開拓地';
+
+  const bar = document.createElement('div');
+  bar.id = 'place-confirm';
+  const text = document.createElement('span');
+  text.className = 'place-confirm-text';
+  text.textContent = `${label}をここに建てる？`;
+
+  const ok = document.createElement('button');
+  ok.className = 'place-confirm-ok';
+  ok.textContent = '✓ 確定';
+  ok.addEventListener('click', () => {
+    if (uiPhase.type !== 'placePreview') return;
+    const act = resolvePlacePreviewAction(state, currentPid(state), uiPhase.kind, uiPhase.targetId);
+    uiPhase = { type: 'idle' };
+    if (act) dispatch(act);
+    redraw();
+  });
+
+  const cancel = document.createElement('button');
+  cancel.className = 'place-confirm-cancel';
+  cancel.textContent = '✕ やめる';
+  cancel.addEventListener('click', () => { uiPhase = { type: 'idle' }; redraw(); });
+
+  bar.append(text, ok, cancel);
+  document.body.appendChild(bar);
 }
 
 function setUIPhase(phase: UIPhase): void {
