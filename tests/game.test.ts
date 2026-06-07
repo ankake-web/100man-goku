@@ -526,6 +526,28 @@ describe('発展カード使用タイミング', () => {
   });
 });
 
+describe('進歩カードは MAIN/TRADE_BUILD 以外（7の捨て札・盗賊フェーズ）では使えない', () => {
+  const inPhase = (turnPhase: 'DISCARD' | 'ROBBER', devType: 'year_of_plenty' | 'monopoly' | 'road_building'): GameState =>
+    makeGameState({
+      turnPhase, diceRolledThisTurn: true, globalTurnNumber: 2,
+      players: {
+        player1: makePlayer('player1', { devCards: [makeDevCard(devType, 1)], hand: makeHand({ wood: 5, brick: 5 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+
+  it('DISCARD フェーズ中は年の豊穣/独占/街道建設を弾く', () => {
+    expect(() => applyAction(inPhase('DISCARD', 'year_of_plenty'), { type: 'PLAY_YEAR_OF_PLENTY', resources: ['wood', 'grain'] })).toThrow('TRADE_BUILD');
+    expect(() => applyAction(inPhase('DISCARD', 'monopoly'), { type: 'PLAY_MONOPOLY', resource: 'wood' })).toThrow('TRADE_BUILD');
+    expect(() => applyAction(inPhase('DISCARD', 'road_building'), { type: 'PLAY_ROAD_BUILDING' })).toThrow('TRADE_BUILD');
+  });
+
+  it('ROBBER フェーズ中も弾く', () => {
+    expect(() => applyAction(inPhase('ROBBER', 'monopoly'), { type: 'PLAY_MONOPOLY', resource: 'wood' })).toThrow('TRADE_BUILD');
+    expect(() => applyAction(inPhase('ROBBER', 'year_of_plenty'), { type: 'PLAY_YEAR_OF_PLENTY', resources: ['ore', 'ore'] })).toThrow('TRADE_BUILD');
+  });
+});
+
 // ============================================================
 // BANK_TRADE
 // ============================================================
@@ -697,22 +719,23 @@ describe('victory detection integration', () => {
       players: {
         player1: makePlayer('player1', {
           hand: makeHand({ wood: 1, brick: 1, wool: 1, grain: 1 }),
-          hasLongestRoad: true,   // +2
+          // hasLongestRoad is intentionally NOT set here: it is now recomputed
+          // by updateLongestRoad on BUILD_SETTLEMENT, so a synthetic flag would
+          // be stripped. Use VP cards instead to reach the same target.
           hasLargestArmy: true,   // +2
           devCards: [
             { id: 'vp1', type: 'victory_point', purchasedOnTurn: 0 },
             { id: 'vp2', type: 'victory_point', purchasedOnTurn: 0 },
             { id: 'vp3', type: 'victory_point', purchasedOnTurn: 0 },
-          ], // +3
+            { id: 'vp4', type: 'victory_point', purchasedOnTurn: 0 },
+            { id: 'vp5', type: 'victory_point', purchasedOnTurn: 0 },
+          ], // +5
         }),
         player2: makePlayer('player2'),
       },
     });
-    // Add 2 cities (2+2=4) and we'll add the settlement to get to 10:
-    // 2(city) + 2(city) + 4(bonuses) + 3(vp cards) = 11... let's do 2 cities + 1 settlement + bonuses + vp cards
-    // 2+2+1+4+3=12... too many. Let me think:
-    // hasLongestRoad=2, hasLargestArmy=2, 3 vp cards = 3 → already 7
-    // Add 1 settlement = 8, 1 city = 10 → need a city vertex too
+    // VP plan: largestArmy(2) + 5 vp cards(5) + 1 city(2) = 9, already at 9.
+    // Building the final settlement (+1) reaches the target (10) → victory.
 
     // Find two non-adjacent vertices
     const allVids = Object.keys(s.vertices);
@@ -730,7 +753,7 @@ describe('victory detection integration', () => {
         [cityVid]: { ...s.vertices[cityVid]!, building: { type: 'city', playerId: 'player1' } },
       },
     };
-    // Now VP = 2(city)+2+2+3 = 9; adding settlement (1) → 10
+    // Now VP = 2(city)+2(army)+5(vp cards) = 9; adding settlement (1) → 10
     const eid = edgeAtVertex(s, settlementVid);
     s = withRoad(s, eid);
     const next = applyAction(s, { type: 'BUILD_SETTLEMENT', vertexId: settlementVid });

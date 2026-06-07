@@ -245,6 +245,9 @@ export function applyAction(
         }
       }
 
+      // 開拓地が相手の道路を分断した場合に最長道路ボーナスを再計算する。
+      // SETUP では道が短く no-op、MAIN でのみ意味を持つ（BUILD_ROAD と同順序）。
+      next = updateLongestRoad(next);
       next = checkVictory(next, pid);
 
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
@@ -353,6 +356,8 @@ export function applyAction(
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: already played a dev card this turn');
       // 騎士以外はダイス後（交易・建設フェーズ）のみ使用可
       if (!state.diceRolledThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: must roll dice first');
+      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_YEAR_OF_PLENTY: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const [r1, r2] = action.resources;
       const cardIdx = player.devCards.findIndex(
@@ -393,6 +398,8 @@ export function applyAction(
     case 'PLAY_MONOPOLY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_MONOPOLY: already played a dev card this turn');
       if (!state.diceRolledThisTurn) throw new Error('PLAY_MONOPOLY: must roll dice first');
+      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_MONOPOLY: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const { resource } = action;
       const cardIdx = player.devCards.findIndex(
@@ -435,6 +442,8 @@ export function applyAction(
     case 'PLAY_ROAD_BUILDING': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_ROAD_BUILDING: already played a dev card this turn');
       if (!state.diceRolledThisTurn) throw new Error('PLAY_ROAD_BUILDING: must roll dice first');
+      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_ROAD_BUILDING: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const cardIdx = player.devCards.findIndex(
         c => c.type === 'road_building' && c.purchasedOnTurn < state.globalTurnNumber,
