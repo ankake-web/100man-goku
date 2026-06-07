@@ -701,6 +701,31 @@ describe('A-4 evaluateTradeOffer (相手提案の受諾判断)', () => {
 });
 
 // ============================================================
+// A-6: 発展カード使用タイミング（騎士＝最大騎士力狙い）
+//   進歩カード(豊作/独占/街道建設)の目標志向は Group D で網羅。ここでは
+//   「ロール前に騎士を使い最大騎士力(+2)で勝つ」経路を end-to-end で固定する。
+// ============================================================
+
+describe('A-6 騎士で最大騎士力を取り勝利する', () => {
+  it('勝利間近で使用可能な騎士があれば、ロール前に使い最大騎士力で勝つ', () => {
+    const vpCards: DevCard[] = Array.from({ length: 8 }, (_, i) => makeDevCard('victory_point', i)); // 公開VPには出ないが calcVP では +8
+    const s = makeGameState({
+      turnPhase: 'PRE_ROLL', diceRolledThisTurn: false, globalTurnNumber: 5,
+      largestArmyHolder: null,
+      players: {
+        player1: makePlayer('player1', { type: 'ai', aiDifficulty: 'normal', knightsPlayed: 2, devCards: [...vpCards, makeDevCard('knight', 1)] }),
+        player2: makePlayer('player2'),
+      },
+    });
+    const act = chooseAction(s, 'player1');
+    expect(act).toEqual({ type: 'PLAY_KNIGHT' });               // ロール前に騎士を使う
+    const next = applyAction(s, act!, createRng(1));
+    expect(next.phase).toBe('GAME_OVER');                       // 3つ目の騎士で最大騎士力(+2)→ 8+2=10
+    expect(next.winner).toBe('player1');
+  });
+});
+
+// ============================================================
 // フルゲームシミュレーション（難易度別）
 // ============================================================
 
