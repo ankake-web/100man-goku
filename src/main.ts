@@ -8,7 +8,7 @@ import type { PlayerOrderMode } from './engine/setup';
 import { makeHand, RESOURCE_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { PlayerSpec } from './engine/createState';
-import { applyAction } from './engine/game';
+import { applyAction, setupGainFor } from './engine/game';
 import { findPendingDiscarder } from './engine/robber';
 import {
   playSE, bgmStart, bgmStop, bgmSetVolume, setBgmTrack, BGM_TRACKS,
@@ -1594,7 +1594,8 @@ function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: nu
 }
 
 // 初期配置2軒目（SETUP_BACKWARD）で配る初期資源を公開情報から導出して飛ばす。
-// 配置頂点の隣接タイル（公開）＋バンク残（公開）だけで導けるので、LANで相手の手札が
+// 「どの資源を配るか」は付与(game.ts)と同じ setupGainFor に一本化（ロジックのドリフト防止）。
+// 配置頂点の隣接タイル＋バンク残はいずれも公開情報なので、LANで相手の手札が
 // マスクされていても全員分のアニメを出せる（手札差分だと相手は0で出なかった）。
 function animateSetupGain(oldState: GameState, vertexId: string): void {
   const pid = oldState.playerOrder[oldState.currentPlayerIndex];
@@ -1605,19 +1606,25 @@ function animateSetupGain(oldState: GameState, vertexId: string): void {
   if (tr.width === 0 && tr.height === 0) return;
   const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
 
-  // 配置頂点に隣接するタイルから1個ずつ（buildEngine と同じ順・バンク切れ/砂漠は除外）。
-  const tileIds = Object.entries(oldState.tileToVertices)
-    .filter(([, vids]) => vids.includes(vertexId))
-    .map(([tid]) => tid);
-  const bank = { ...oldState.bank };
+  // 獲得資源は付与と同じ純粋関数で導出。初期配置はバンク枯渇しないため現在の bank で可。
+  const gains = setupGainFor(oldState, vertexId, oldState.bank);
+  if (gains.length === 0) return;
+
+  // 飛び元（表示用）: 配置頂点に隣接する「その資源を産むタイル」を順に割り当てる。
+  const tilesByRes = new Map<ResourceType, string[]>();
+  for (const [tid, vids] of Object.entries(oldState.tileToVertices)) {
+    if (!vids.includes(vertexId)) continue;
+    const r = TILE_RESOURCE_MAP[oldState.tiles[tid]?.type ?? 'desert'];
+    if (!r) continue;
+    const list = tilesByRes.get(r) ?? [];
+    list.push(tid);
+    tilesByRes.set(r, list);
+  }
+
   let delay = 0;
-  for (const tid of tileIds) {
-    const tile = oldState.tiles[tid];
-    if (!tile || tile.type === 'desert') continue;
-    const r = TILE_RESOURCE_MAP[tile.type];
-    if (!r || bank[r] < 1) continue;
-    bank[r] -= 1;
-    const origin = tileScreenCenter(tid) ?? getBoardCenter();
+  for (const r of gains) {
+    const tid = tilesByRes.get(r)?.shift();
+    const origin = (tid ? tileScreenCenter(tid) : null) ?? getBoardCenter();
     const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
     spawnResFlyer(RES_EMOJI[r], target, jitter, delay);
     delay += RES_FLY_STAGGER;

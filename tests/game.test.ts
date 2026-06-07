@@ -3,7 +3,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { applyAction, buildDevDeck } from '../src/engine/game';
+import { applyAction, buildDevDeck, setupGainFor } from '../src/engine/game';
 import { makeHand, BUILD_COSTS, LARGEST_ARMY_MIN } from '../src/constants';
 import { makeGameState, makePlayer } from './helpers';
 import type { GameState, EdgeId, VertexId, DevCard, PlayerId } from '../src/types';
@@ -1421,5 +1421,37 @@ describe('Group C: discard double-discard prevention (M2)', () => {
     // player1 を再度捨てさせようとすると拒否される（余分なカード喪失の防止）
     expect(() => applyAction(s, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 4 } }))
       .toThrow('already discarded');
+  });
+});
+
+describe('setupGainFor (初期配置2軒目の資源導出・付与とアニメで共有)', () => {
+  // 頂点 vA に隣接: forest(wood) / desert(なし) / mountain(ore)。vB は無関係。
+  const state = {
+    tileToVertices: { t1: ['vA'], t2: ['vA', 'vB'], t3: ['vA'], t4: ['vB'] },
+    tiles: {
+      t1: { type: 'forest' },
+      t2: { type: 'desert' },
+      t3: { type: 'mountain' },
+      t4: { type: 'field' },
+    },
+  } as unknown as GameState;
+
+  it('隣接タイルの資源を列挙順で返し、砂漠は除外する', () => {
+    expect(setupGainFor(state, 'vA', makeHand({ wood: 19, ore: 19 }))).toEqual(['wood', 'ore']);
+  });
+
+  it('バンク在庫0の資源は除外する', () => {
+    expect(setupGainFor(state, 'vA', makeHand({ wood: 0, ore: 19 }))).toEqual(['ore']);
+    expect(setupGainFor(state, 'vA', makeHand({ wood: 19, ore: 0 }))).toEqual(['wood']);
+  });
+
+  it('同一資源の隣接が複数でも在庫分だけ返す', () => {
+    const twoForest = {
+      tileToVertices: { a: ['vX'], b: ['vX'] },
+      tiles: { a: { type: 'forest' }, b: { type: 'forest' } },
+    } as unknown as GameState;
+    expect(setupGainFor(twoForest, 'vX', makeHand({ wood: 2 }))).toEqual(['wood', 'wood']);
+    expect(setupGainFor(twoForest, 'vX', makeHand({ wood: 1 }))).toEqual(['wood']);
+    expect(setupGainFor(twoForest, 'vX', makeHand({ wood: 0 }))).toEqual([]);
   });
 });

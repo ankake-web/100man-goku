@@ -3,7 +3,7 @@
 // ============================================================
 
 import type {
-  GameState, Action, PlayerId, ResourceType, DevCard,
+  GameState, Action, PlayerId, ResourceType, DevCard, VertexId, ResourceHand,
 } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, makeHand, VP_TABLE } from '../constants';
 import { rollDice, distributeResources } from './dice';
@@ -35,6 +35,37 @@ function addToHand(hand: Record<string, number>, gains: Record<string, number>) 
   const next = { ...hand } as Record<string, number>;
   for (const r of RESOURCE_TYPES) next[r] = (next[r] ?? 0) + (gains[r] ?? 0);
   return next;
+}
+
+/**
+ * 初期配置2軒目で配る資源を、配置頂点に隣接するタイルから導出する純粋関数。
+ * 付与（applyAction の BUILD_SETTLEMENT）と資源アニメ（renderer 側）の双方が
+ * これを共有し、ロジックのドリフト（アニメだけズレる）を防ぐ。
+ *
+ * - 隣接タイルは tileToVertices の列挙順で走査（付与と同じ順序＝アニメ順も一致）。
+ * - 砂漠（resource なし）は除外。
+ * - bank 在庫が0の資源は除外。同一資源の隣接が複数あれば在庫が尽きた分から除外。
+ * 返り値は獲得した資源の順序付き配列（同じ資源が複数回入りうる）。
+ *
+ * 注意: bank 在庫の判定は「付与“時点”の bank」でのみ正しい。初期配置ではバンク枯渇は
+ *       起きない前提なので、アニメ側が付与“後”の bank（=現在値）を渡しても実害はない。
+ *       バンクが絡む他フェーズには流用しないこと（在庫差で結果がズレる）。
+ */
+export function setupGainFor(state: GameState, vertexId: VertexId, bank: ResourceHand): ResourceType[] {
+  const gains: ResourceType[] = [];
+  const remaining = { ...bank };
+  const tileIds = Object.entries(state.tileToVertices)
+    .filter(([, vids]) => vids.includes(vertexId))
+    .map(([tid]) => tid);
+  for (const tid of tileIds) {
+    const tile = state.tiles[tid];
+    if (!tile || tile.type === 'desert') continue;
+    const r = TILE_RESOURCE_MAP[tile.type];
+    if (!r || remaining[r] < 1) continue;
+    remaining[r] -= 1;
+    gains.push(r);
+  }
+  return gains;
 }
 
 /** 発展カードデッキをシャッフル生成（ゲーム開始時用） */
@@ -208,20 +239,10 @@ export function applyAction(
 
       let next = buildSettlement(state, pid, vertexId);
 
-      // SETUP 後半: 2個目開拓地の隣接タイルから初期資源を配布
+      // SETUP 後半: 2個目開拓地の隣接タイルから初期資源を配布。
+      // 導出は setupGainFor に一本化（資源アニメと同じロジック）。bank は付与“時点”の値を渡す。
       if (state.phase === 'SETUP_BACKWARD' && state.setupSubPhase === 'PLACE_SETTLEMENT') {
-        const tileIds = state.tileToVertices
-          ? Object.entries(state.tileToVertices)
-              .filter(([, vids]) => vids.includes(vertexId))
-              .map(([tid]) => tid)
-          : [];
-
-        for (const tid of tileIds) {
-          const tile = next.tiles[tid];
-          if (!tile || tile.type === 'desert') continue;
-          const resource = TILE_RESOURCE_MAP[tile.type];
-          if (!resource) continue;
-          if (next.bank[resource] < 1) continue;
+        for (const resource of setupGainFor(next, vertexId, next.bank)) {
           next = {
             ...next,
             bank: { ...next.bank, [resource]: next.bank[resource] - 1 },
