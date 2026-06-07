@@ -56,22 +56,41 @@ export function resolveUniqueName(
 }
 
 // ============================================================
-// CPU 名: ランダムな3文字カタカナ名（6通り）。ゲーム作成時に決定し state/room へ保存する。
-// 同一ゲーム内では重複させない。表示名のみで、CPUロジック・強さには一切関与しない。
+// CPU 名: 同卓の CPU 同士が一目で区別できるよう、字面・長さ・先頭文字を散らした
+// キュレーション済みプール。ゲーム作成時に決定し state/room へ保存する。
+// 設計方針:
+//   - 先頭文字が全員バラバラ（同卓で同じ文字始まりを選ばない＝下の距離ガード）。
+//   - すべて濁音/半濁音始まりにし、清音始まりの人間名プール(NAME_POOL)と住み分け
+//     （CPU と人間も一目で別物に見える）。
+//   - 長さ2〜4文字で変化をつけ、近い綴り・近い読み(ニアホモフォン)のペアを避ける。
+// 表示名のみで、CPUロジック・強さには一切関与しない。
 // ============================================================
 export const CPU_NAME_POOL: readonly string[] = [
-  'ハルト', 'ミナト', 'ソラノ', 'リクヤ', 'ナツキ', 'コハル',
+  'ガロ', 'ボンゴ', 'ザック', 'デューク', 'ピノ', 'ブルーノ', 'ゴロー', 'ダリア',
 ];
 
-/** 既存名と重複しない CPU 名を1つ返す（尽きたら末尾数字で一意化）。 */
-export function pickCpuName(existing: readonly string[] = [], rng: () => number = Math.random): string {
-  const used = new Set(existing);
-  const free = CPU_NAME_POOL.filter(n => !used.has(n));
-  if (free.length > 0) return pickRandom(free, rng);
-  return uniquifyWithNumber(pickRandom(CPU_NAME_POOL, rng), used);
+// 先頭の1文字（サロゲートペア安全に）。同卓 CPU の先頭文字重複回避に使う。
+function firstChar(name: string): string {
+  return [...name][0] ?? '';
 }
 
-/** 重複しない CPU 名を count 個返す（人間名など existing も避ける）。 */
+/**
+ * 既存名と重複せず、かつ先頭文字も既存と被らない CPU 名を1つ返す。
+ * - まず「名前未使用 かつ 先頭文字未使用」の候補から選ぶ（一目で区別できる）。
+ * - 先頭文字条件で尽きたら「名前未使用」だけで選ぶ（最低限の一意性は担保）。
+ * - プールが尽きたら末尾数字で一意化する。
+ */
+export function pickCpuName(existing: readonly string[] = [], rng: () => number = Math.random): string {
+  const usedNames = new Set(existing);
+  const usedFirst = new Set(existing.map(firstChar));
+  const distinct = CPU_NAME_POOL.filter(n => !usedNames.has(n) && !usedFirst.has(firstChar(n)));
+  if (distinct.length > 0) return pickRandom(distinct, rng);
+  const free = CPU_NAME_POOL.filter(n => !usedNames.has(n));
+  if (free.length > 0) return pickRandom(free, rng);
+  return uniquifyWithNumber(pickRandom(CPU_NAME_POOL, rng), usedNames);
+}
+
+/** 重複しない CPU 名を count 個返す（人間名など existing も避ける／先頭文字も散らす）。 */
 export function pickCpuNames(count: number, existing: readonly string[] = [], rng: () => number = Math.random): string[] {
   const out: string[] = [];
   const used = [...existing];
