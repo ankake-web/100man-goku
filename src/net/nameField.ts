@@ -32,6 +32,7 @@ export function attachNameField(input: HTMLInputElement): HTMLButtonElement {
   input.value = loadPlayerName() || generateRandomPlayerName();
   input.placeholder = `例: ${generateRandomPlayerName()}`;
   input.maxLength = 12; // 四隅パネルでも崩れない長さ
+  input.setAttribute('aria-label', 'プレイヤー名'); // 視覚ラベルとは別にスクリーンリーダー名を付与
 
   const dice = document.createElement('button');
   dice.type = 'button';

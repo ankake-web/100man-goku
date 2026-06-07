@@ -243,7 +243,6 @@ function buildDiscardUI(
 function buildRobberTargetUI(
   state: GameState,
   uiPhase: UIPhase,
-  setUIPhase: (p: UIPhase) => void,
   dispatch: (a: Action) => void,
 ): HTMLDivElement {
   const div = el('div', 'modal-panel');
@@ -978,7 +977,7 @@ function buildActionButtons(
 
   // ---- セカンダリUI（オーバーレイ）----
   if (uiPhase.type === 'robberTarget') {
-    div.appendChild(buildRobberTargetUI(state, uiPhase, setUIPhase, dispatch));
+    div.appendChild(buildRobberTargetUI(state, uiPhase, dispatch));
     return div;
   }
   if (uiPhase.type === 'bankTrade') {

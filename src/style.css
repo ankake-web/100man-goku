@@ -1165,6 +1165,8 @@ h1 {
   cursor: pointer;
   align-self: center;
 }
+/* outline:none でフォーカスが消えるため、キーボード操作時の可視フォーカスを補う。 */
+.bgm-volume:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bgm-volume::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px; height: 14px;

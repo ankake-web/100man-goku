@@ -170,6 +170,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     // 記号入りのペースト（例 "ab-12"）が先頭4文字で切られてから整形され、
     // 有効文字が削れてしまうため、ここでは付けない。
     codeInput.placeholder = 'ルームコード（数字4桁）';
+    codeInput.setAttribute('aria-label', 'ルームコード（数字4桁）'); // placeholder だけに頼らない読み上げ名
     // 数字のみ。スマホではテンキーを出す。自動補正/予測変換による二重入力を防ぐ。
     codeInput.setAttribute('autocomplete', 'off');
     codeInput.setAttribute('autocorrect', 'off');
