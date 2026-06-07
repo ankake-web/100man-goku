@@ -850,6 +850,18 @@ function updateGameNav(): void {
   seRow.append(seBtn, seVol);
   dd.appendChild(seRow);
 
+  // 触覚フィードバック（対応端末のみ表示。設定は localStorage に永続）。
+  if (hapticsSupported()) {
+    const hapBtn = document.createElement('button');
+    hapBtn.className = 'game-menu-btn';
+    hapBtn.textContent = isHapticsEnabled() ? '📳 振動 ON' : '📴 振動 OFF';
+    hapBtn.addEventListener('click', () => {
+      setHapticsEnabled(!isHapticsEnabled());
+      hapBtn.textContent = isHapticsEnabled() ? '📳 振動 ON' : '📴 振動 OFF';
+    });
+    dd.appendChild(hapBtn);
+  }
+
   // 出目分布グラフ
   const statsBtn = document.createElement('button');
   statsBtn.className = 'game-menu-btn';
@@ -1391,6 +1403,7 @@ function buildVictoryScoreboard(): HTMLDivElement {
 
 function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
+  vibrate([20, 40, 20, 40, 50]); // 勝利の触覚（多くは建設経由で勝つため DECLARE_VICTORY 以外でも鳴らす）
   if (!state) return;
   const winner = state.players[winnerId];
   if (!winner) return;
@@ -2006,6 +2019,13 @@ function dispatch(action: Action): void {
 
     // SE（applyNetState と共通の対応表を再利用）
     playActionSE(action);
+    // 触覚は自分の操作のみ（CPUの連続操作で鳴り続けないようにアクターを判定）。
+    {
+      const actorPid = action.type === 'DISCARD_RESOURCES' ? action.playerId
+        : action.type === 'RESPOND_TRADE' ? action.response.playerId
+        : prevState.playerOrder[prevState.currentPlayerIndex];
+      if (actorPid === selfPlayerId()) vibrateForAction(action);
+    }
     // 勝利確定: 派手な勝利演出（モーダル＋紙吹雪）＋勝利SE。CPUの後続処理は止める。
     if (state.phase === 'GAME_OVER' && prevState.phase !== 'GAME_OVER') {
       if (cpuWatchdog) { clearTimeout(cpuWatchdog); cpuWatchdog = null; }
@@ -2346,6 +2366,33 @@ function handleNetMessage(msg: import('./net/protocol').ServerMessage): void {
 }
 
 // アクション種別に応じた効果音。ローカル dispatch / LAN 受信の双方で使う。
+// ---- ハプティクス（触覚フィードバック・B-5）。対応端末のみ動作、設定で無効化可。 ----
+const HAPTICS_KEY = 'catan_haptics';
+let hapticsEnabled = (() => { try { const v = localStorage.getItem(HAPTICS_KEY); return v == null ? true : v === '1'; } catch { return true; } })();
+function isHapticsEnabled(): boolean { return hapticsEnabled; }
+function setHapticsEnabled(v: boolean): void {
+  hapticsEnabled = v;
+  try { localStorage.setItem(HAPTICS_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+  if (v) vibrate(15); // ON にした瞬間に確認の軽い振動
+}
+function hapticsSupported(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+}
+function vibrate(pattern: number | number[]): void {
+  if (!hapticsEnabled || !hapticsSupported()) return;
+  try { navigator.vibrate(pattern); } catch { /* ignore */ }
+}
+// アクション種別に応じた軽い触覚（音と同経路で local/LAN 双方から呼ばれる）。
+function vibrateForAction(action: Action): void {
+  switch (action.type) {
+    case 'BUILD_ROAD': case 'BUILD_SETTLEMENT': case 'BUILD_CITY': vibrate(18); break;
+    case 'ROLL_DICE':         vibrate([12, 45, 12]); break;
+    case 'CONFIRM_TRADE':     vibrate([10, 30, 10]); break;
+    case 'MOVE_ROBBER':       vibrate(28); break;
+    case 'DECLARE_VICTORY':   vibrate([20, 40, 20, 40, 50]); break;
+  }
+}
+
 function playActionSE(action: Action): void {
   switch (action.type) {
     case 'ROLL_DICE':         playSE('dice'); break;
@@ -2422,6 +2469,7 @@ function netDispatch(action: Action): void {
     action.type === 'RESPOND_TRADE'     ? action.response.playerId :
     currentPid(state);
   if (actor !== viewerPlayerId) return; // 自分の操作できる場面のみ送信
+  vibrateForAction(action); // 自分の操作の触覚は送信時に即返す（LANの往復待ちを避ける）
   lanClient.send({ t: 'action', action });
 }
 
