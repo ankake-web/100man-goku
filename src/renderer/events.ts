@@ -200,12 +200,13 @@ export function resolvePlacePreviewAction(
 // ピンチズーム＆パン（B-3）
 // ============================================================
 
-// パン/ピンチで指が動いた直後の click(配置) を1回だけ抑止する。
-let pendingSuppressClick = false;
-function consumeSuppressClick(): boolean {
-  if (pendingSuppressClick) { pendingSuppressClick = false; return true; }
-  return false;
-}
+// パン/ピンチ直後の合成 click(配置) を時間窓で抑止する。
+// boolフラグだとジェスチャ後に click が発火しない端末でフラグが残り、次の本物のタップを
+// 誤って飲み込むため、自動失効するタイムスタンプ方式にする。
+let suppressClickUntil = 0;
+const SUPPRESS_CLICK_MS = 350;
+function markGestureMoved(): void { suppressClickUntil = Date.now() + SUPPRESS_CLICK_MS; }
+function consumeSuppressClick(): boolean { return Date.now() < suppressClickUntil; }
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 2.6;
@@ -280,6 +281,8 @@ export function attachBoardGestures(
   });
 
   svg.addEventListener('pointerdown', (e) => {
+    // 指がSVG外へ出てもイベントを受け取り続ける（パン/ピンチがフリーズしない）。
+    try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
       mode = 'none';
@@ -308,6 +311,7 @@ export function attachBoardGestures(
         const sc = screenScale();
         next = { scale: next.scale, tx: next.tx + (m.x - lastMid.x) / sc, ty: next.ty + (m.y - lastMid.y) / sc };
         commit(next);
+        markGestureMoved();
       }
       lastDist = d; lastMid = m;
       return;
@@ -321,14 +325,16 @@ export function attachBoardGestures(
         mode = 'pan';
         const sc = screenScale();
         commit({ scale: vp.scale, tx: vp.tx + (e.clientX - last.x) / sc, ty: vp.ty + (e.clientY - last.y) / sc });
+        markGestureMoved();
       }
       last = { x: e.clientX, y: e.clientY };
     }
   }, { passive: false });
 
   const endPointer = (e: PointerEvent): void => {
+    try { svg.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     pointers.delete(e.pointerId);
-    if (mode === 'pan' || mode === 'pinch') pendingSuppressClick = true;
+    if (mode === 'pan' || mode === 'pinch') markGestureMoved();
     if (pointers.size === 0) {
       mode = 'none';
     } else if (pointers.size === 1) {

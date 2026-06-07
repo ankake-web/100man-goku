@@ -2175,6 +2175,7 @@ function updateZoomReset(): void {
     btn.id = 'zoom-reset';
     btn.textContent = '⟲';
     btn.title = 'ズームを元に戻す';
+    btn.setAttribute('aria-label', 'ズームを元に戻す');
     btn.addEventListener('click', () => {
       boardViewport = { scale: 1, tx: 0, ty: 0 };
       updateZoomReset();
