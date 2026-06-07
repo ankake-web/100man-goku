@@ -10,6 +10,19 @@ import type { ClientMessage, ServerMessage } from './protocol';
 
 export type LanHandler = (msg: ServerMessage) => void;
 
+// 接続先 WebSocket URL を解決する。
+// VITE_LAN_SERVER_URL が設定されていればそのホスト（別オリジンの本番サーバ）へ、
+// 未設定なら現在ページと同一オリジンの /lan へ接続する（ローカル dev / LAN 対戦）。
+function lanServerUrl(): string {
+  const base = import.meta.env.VITE_LAN_SERVER_URL?.trim();
+  if (base) {
+    // 末尾スラッシュを除いて /lan を付与（wss://host や wss://host/ の両方を許容）。
+    return `${base.replace(/\/$/, '')}${LAN_WS_PATH}`;
+  }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}${LAN_WS_PATH}`;
+}
+
 export class LanClient {
   private ws: WebSocket | null = null;
   private handler: LanHandler;
@@ -30,10 +43,15 @@ export class LanClient {
     this.onClose = cb;
   }
 
-  /** 同一オリジンの /lan へ接続。open で resolve、失敗で reject。 */
+  /**
+   * 対戦サーバの /lan へ接続。open で resolve、失敗で reject。
+   * 接続先はビルド時環境変数 VITE_LAN_SERVER_URL で切り替える:
+   *   - 設定あり（例 wss://catan-xxxx.onrender.com）… その別ホストへ接続。
+   *     GitHub Pages など、サーバが別オリジンに居る本番構成で使う。
+   *   - 未設定 … 従来どおり同一オリジンの /lan へ接続（ローカル dev / LAN 対戦）。
+   */
   connect(): Promise<void> {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${location.host}${LAN_WS_PATH}`;
+    const url = lanServerUrl();
     this.ws = new WebSocket(url);
     return new Promise<void>((resolve, reject) => {
       const ws = this.ws!;

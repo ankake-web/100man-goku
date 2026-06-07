@@ -36,6 +36,12 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # オンライン対戦サーバ（Render）の接続先。リポジトリの
+          # Settings → Secrets and variables → Actions → Variables に
+          # VITE_LAN_SERVER_URL = wss://<app>.onrender.com を登録すると焼き込まれる。
+          # 未設定なら同一オリジン接続のまま（オンライン対戦は無効）。
+          VITE_LAN_SERVER_URL: ${{ vars.VITE_LAN_SERVER_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

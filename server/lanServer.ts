@@ -77,6 +77,18 @@ export interface LanServerOptions {
   graceMs?: number;
   cpuStepMs?: number;
   cpuAfterRollMs?: number;
+  // 接続を受理する Origin の許可リスト（本番=スタンドアロン起動で指定）。
+  // 未指定なら Origin 検証を行わない（dev で Vite に相乗りする場合の従来挙動）。
+  allowedOrigins?: string[];
+}
+
+// 接続元 Origin が許可リストに含まれるか判定する（WebSocket upgrade 前の門番）。
+// Origin ヘッダが無い接続（非ブラウザ＝テスト/CLI。ws ライブラリの既定）は素通しする。
+// 許可リストに '*' を含めれば全オリジンを許可する。
+export function isOriginAllowed(origin: string | undefined, allowlist: string[]): boolean {
+  if (!origin) return true;
+  if (allowlist.includes('*')) return true;
+  return allowlist.includes(origin);
 }
 
 interface Member {
@@ -350,6 +362,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
   const graceMs = opts.graceMs ?? DISCONNECT_GRACE_MS;
   const cpuStepMs = opts.cpuStepMs ?? CPU_STEP_MS;
   const cpuAfterRollMs = opts.cpuAfterRollMs ?? CPU_AFTER_ROLL_MS;
+  const allowedOrigins = opts.allowedOrigins; // 未指定なら Origin 検証なし（dev 相乗り）。
 
   // ホスト URL 表示用に、実際に listen しているポートを動的取得する。
   const currentUrls = (): string[] => {
@@ -363,6 +376,12 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
     try { pathname = new URL(req.url ?? '/', 'http://localhost').pathname; } catch { /* noop */ }
     // /lan 以外（Vite HMR 等）は触らない＝他のリスナに委ねる
     if (pathname !== LAN_WS_PATH) return;
+    // Origin 検証（許可リスト指定時のみ）。許可外は 403 でソケットを閉じる。
+    if (allowedOrigins && !isOriginAllowed(req.headers.origin, allowedOrigins)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws));
   });
 
