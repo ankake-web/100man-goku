@@ -805,6 +805,7 @@ function updateGameNav(): void {
   volSlider.value = String(Math.round(getBgmVolume() * 100));
   volSlider.className = 'bgm-volume';
   volSlider.title = 'BGM 音量';
+  volSlider.setAttribute('aria-label', 'BGM 音量');
   volSlider.addEventListener('input', () => bgmSetVolume(parseInt(volSlider.value) / 100));
   bgmRow.append(bgmBtn, volSlider);
   dd.appendChild(bgmRow);
@@ -843,6 +844,7 @@ function updateGameNav(): void {
   seVol.value = String(Math.round(getSeVolume() * 100));
   seVol.className = 'bgm-volume';
   seVol.title = '効果音 音量';
+  seVol.setAttribute('aria-label', '効果音 音量');
   seVol.addEventListener('input', () => setSeVolume(parseInt(seVol.value, 10) / 100));
   // スライダーを離したときに現在音量で確認音を鳴らす（聞いて調整できる）。
   seVol.addEventListener('change', () => { if (isSeEnabled()) playSE('click'); });

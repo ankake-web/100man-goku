@@ -348,8 +348,10 @@ export function attachBoardGestures(
   svg.addEventListener('pointerup', endPointer);
   svg.addEventListener('pointercancel', endPointer);
 
-  // PC: ホイールでカーソル位置中心に拡縮（任意）。
+  // PC: トラックパッドのピンチ（ctrlKey付き wheel）/ Ctrl+ホイール のみ拡縮。
+  // 通常のホイールはページスクロールに任せる（盤面上でスクロールが奪われない）。
   svg.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
     e.preventDefault();
     const vp = getViewport();
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;

@@ -2218,10 +2218,13 @@ h1 {
   100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
 }
 
-/* 動きを抑える設定では点滅・派手な演出を止める */
+/* 動きを抑える設定では点滅・派手な演出を止める（要素はJSのタイマーで消える） */
 @media (prefers-reduced-motion: reduce) {
   .turn-banner.mine,
-  .player-panel.your-turn { animation: none; }
+  .player-panel.your-turn,
+  .vp-pop, .bonus-pop,
+  .player-panel.vp-gain-flash,
+  .player-panel.bonus-flash { animation: none; }
 }
 
 /* 横持ちコンパクト時: 手番バナーの高さを抑える（盤面を圧迫しない） */
