@@ -13,8 +13,9 @@ import { attachNameField, savePlayerName } from './nameField';
 import { saveResume, clearResume } from './resume';
 import type { ResumeInfo } from './resume';
 
+// 盤面/パネル/スコアボードと同じ正準パレットに合わせる（ロビーのドット色を統一）。
 const COLOR_HEX: Record<PlayerColor, string> = {
-  red: '#e23b3b', blue: '#3b7fe2', purple: '#9b5bd6', orange: '#e2913b',
+  red: '#e03030', blue: '#3060e0', purple: '#a855f7', orange: '#f0a020',
 };
 
 export interface LanLobbyCallbacks {

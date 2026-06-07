@@ -18,7 +18,7 @@
   --accent-hover: #eab052;
   --accent-gradient: linear-gradient(135deg, #e0a948 0%, #c47e2a 100%);
   --accent-ink: #2a1c08;            /* 明るいアクセント面に乗せる濃い文字色 */
-  --gold: #f2c14e;
+  --gold: #ffd700;
   --danger: #d3553f;
   --success: #4e9a52;
   --text: #f4ead6;
@@ -882,7 +882,7 @@ h1 {
 /* ---- F-07: VP 内訳・スコアボード ---- */
 .rank-badge {
   font-size: 0.68rem;
-  color: rgba(255,255,255,0.4);
+  color: var(--text-dim);
   margin-left: 4px;
 }
 .rank-badge.rank-1 { color: #ffd700; font-size: 0.85rem; }
@@ -895,7 +895,7 @@ h1 {
 }
 .vp-item {
   font-size: 0.68rem;
-  color: rgba(255,255,255,0.45);
+  color: var(--text-dim);
   cursor: default;
 }
 .vp-item.bonus { color: #ffd700; }
@@ -908,7 +908,7 @@ h1 {
   gap: 6px;
   margin-bottom: 5px;
   font-size: 0.66rem;
-  color: rgba(255,255,255,0.5);
+  color: var(--text-dim);
 }
 .panel-meta-item.held { color: #ffd700; font-weight: bold; }
 .panel-meta-sep { color: rgba(255,255,255,0.25); }
@@ -1097,9 +1097,9 @@ h1 {
 .game-menu-label { font-size: 0.8rem; color: rgba(255,255,255,0.75); white-space: nowrap; }
 .game-menu-select {
   flex: 1;
-  background: rgba(0,0,0,0.4);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.25);
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border-col);
   border-radius: 6px;
   padding: 5px 6px;
   font-size: 0.82rem;
@@ -1330,7 +1330,7 @@ h1 {
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
-.home-input::placeholder { color: rgba(244,234,214,0.38); }
+.home-input::placeholder { color: rgba(244,234,214,0.55); }
 .home-input:focus {
   border-color: var(--accent);
   background: rgba(14,24,26,0.7);
@@ -1431,32 +1431,13 @@ h1 {
   color: #fff;
 }
 
-.home-coming-soon {
-  margin-top: 16px;
-  text-align: center;
-  font-size: 0.82rem;
-  color: rgba(255,255,255,0.38);
-  line-height: 1.6;
-}
-
-.home-coming-soon-msg {
-  display: none;
-  margin-top: 10px;
-  padding: 10px 14px;
-  background: rgba(255,200,50,0.12);
-  border: 1px solid rgba(255,200,50,0.25);
-  border-radius: 8px;
-  color: #ffd700;
-  font-size: 0.83rem;
-  text-align: center;
-}
 
 /* ---- LAN対戦ロビー ---- */
 .lan-lobby { display: flex; flex-direction: column; gap: 12px; }
 .lan-divider {
   text-align: center;
   font-size: 0.78rem;
-  color: rgba(255,255,255,0.4);
+  color: var(--text-dim);
   position: relative;
 }
 .lan-join-row { display: flex; gap: 8px; align-items: stretch; }
@@ -1543,14 +1524,14 @@ h1 {
 .name-dice-btn {
   flex: 0 0 auto;
   width: 46px;
-  border: 1px solid rgba(255,255,255,0.28);
+  border: 1px solid var(--border-col);
   border-radius: 8px;
-  background: rgba(0,0,0,0.4);
-  color: #fff;
+  background: rgba(208,168,108,0.10);
+  color: var(--text);
   font-size: 1.2rem;
   cursor: pointer;
 }
-.name-dice-btn:hover { background: rgba(255,255,255,0.16); }
+.name-dice-btn:hover { background: rgba(208,168,108,0.22); }
 
 /* CPU 人数設定（ホストのみ） */
 .lan-cpu-ctrl {
@@ -1565,10 +1546,10 @@ h1 {
 .lan-cpu-label { font-size: 0.86rem; color: rgba(255,255,255,0.8); }
 .lan-cpu-btn {
   width: 38px; height: 38px;
-  border: 1px solid rgba(255,255,255,0.28);
+  border: 1px solid var(--border-col);
   border-radius: 8px;
-  background: rgba(0,0,0,0.45);
-  color: #fff; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+  background: rgba(208,168,108,0.14);
+  color: var(--text); font-size: 1.2rem; font-weight: bold; cursor: pointer;
 }
 .lan-cpu-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .lan-cpu-val { min-width: 1.4em; text-align: center; font-size: 1.2rem; font-weight: bold; }
@@ -1594,11 +1575,11 @@ h1 {
 .lan-turn-wait {
   margin-top: 6px;
   padding: 8px 10px;
-  background: rgba(80,140,255,0.12);
-  border: 1px solid rgba(80,140,255,0.28);
+  background: var(--surface-alt);
+  border: 1px solid var(--border-col);
   border-radius: 8px;
   font-size: 0.86rem;
-  color: #bcd6ff;
+  color: var(--text-dim);
   text-align: center;
 }
 
@@ -1805,7 +1786,7 @@ h1 {
   display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
   position: sticky; bottom: 0;
   margin-top: 14px; padding-top: 12px;
-  background: linear-gradient(rgba(18,19,27,0), rgba(18,19,27,0.97) 42%);
+  background: linear-gradient(rgba(13,20,23,0), rgba(13,20,23,0.97) 42%);
 }
 .victory-btns .btn-nav { padding: 10px 18px; font-size: 0.9rem; }
 
@@ -2099,7 +2080,7 @@ h1 {
   transition: background 0.1s;
 }
 .st-se-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
-.st-se-btn:active { background: rgba(74,144,217,0.4); }
+.st-se-btn:active { background: rgba(208,168,108,0.3); }
 
 /* ---- CPU交易提案UI ---- */
 .cpu-trade-row {
@@ -2134,16 +2115,16 @@ h1 {
 }
 .home-order-slot {
   font-size: 0.82rem;
-  color: rgba(255,255,255,0.6);
+  color: var(--text-dim);
   min-width: 48px;
 }
 .home-order-select {
   flex: 1;
   padding: 5px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(0,0,0,0.35);
-  color: #fff;
+  border: 1px solid rgba(208,168,108,0.26);
+  background: rgba(10,18,20,0.55);
+  color: var(--text);
   font-size: 0.85rem;
 }
 
