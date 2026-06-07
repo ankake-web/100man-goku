@@ -2122,14 +2122,18 @@ h1 {
   z-index: 4;
 }
 /* 盤面下回り込みレイアウト（JS が #board-area に付与）で表示。
-   広い画面でも盤面の左右端に沿うよう、盤面の実描画幅に合わせて中央寄せする
-   （#board は max-width:100% / max-height:78vh・縦横比 800:700 で描画される）。 */
+   広い画面でも盤面の左右端に沿うよう、盤面の実描画幅に合わせて中央寄せする。
+   幅の真実は JS が書き出す --board-draw-width（盤面の実測 px）。未設定でも崩れないよう
+   既定値に従来の式（#board は max-width:100% / max-height:78vh・縦横比 800:700）を残す。 */
+#board-area.mini-mode {
+  --board-draw-width: min(100%, calc(78vh * 800 / 700));
+}
 #board-area.mini-mode .mini-panels {
   display: block;
   left: 50%;
   right: auto;
   transform: translateX(-50%);
-  width: min(100%, calc(78vh * 800 / 700));
+  width: var(--board-draw-width);
 }
 .mini-panel {
   position: absolute;

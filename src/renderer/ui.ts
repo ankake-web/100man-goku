@@ -1235,6 +1235,21 @@ export function renderUI(
   // 盤面四隅のミニプレイヤーパネルを重ねる（資源アニメの着地先）。
   // 実際の表示/非表示は #board-area.mini-mode（=盤面下回り込みレイアウト）で CSS が制御する。
   renderMiniPanels(state, viewerId);
+
+  // ミニパネルの中央寄せ幅を、盤面の実描画幅(px)に同期させる。
+  syncBoardDrawWidth();
+}
+
+// 盤面の実描画幅(px)を #board-area の CSS 変数 --board-draw-width へ書き出す。
+// ミニパネル(mini-mode)の中央寄せ幅はこの変数を参照する（盤面幅の単一の真実）。
+// CSS 側に既定値 min(100%, calc(78vh*800/700)) があるため、未設定でも崩れない。
+// resize/orientationchange でも呼び、リロードなしで追従させる。
+export function syncBoardDrawWidth(): void {
+  const boardArea = document.getElementById('board-area');
+  const boardEl = document.getElementById('board');
+  if (!boardArea || !boardEl) return;
+  const w = boardEl.getBoundingClientRect().width;
+  if (w > 0) boardArea.style.setProperty('--board-draw-width', `${Math.round(w)}px`);
 }
 
 // 四隅レイアウトを使うか: 広い画面 or 横持ちスマホ（横長かつ低い高さ）。

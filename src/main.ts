@@ -23,7 +23,7 @@ import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions } from './renderer/board';
-import { renderUI } from './renderer/ui';
+import { renderUI, syncBoardDrawWidth } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
 import { attachBoardEvents } from './renderer/events';
 import type { BuildMode } from './renderer/events';
@@ -2299,9 +2299,18 @@ function returnToHome(): void {
 // 起動
 // ============================================================
 
-window.addEventListener('resize', () => {
-  if (state) redraw();
-});
+// 画面サイズ/向きの変化に追従（四隅⇄ミニパネルの切替も含めリロード不要）。
+// ミニパネルの幅(--board-draw-width)はドラッグ中もズレないよう即時に同期し、
+// 重い再描画（レイアウト判定込み）は ~100ms デバウンスして連打を抑える。
+let viewportChangeTimer: ReturnType<typeof setTimeout> | null = null;
+function onViewportChange(): void {
+  if (!state) return;
+  syncBoardDrawWidth();
+  if (viewportChangeTimer) clearTimeout(viewportChangeTimer);
+  viewportChangeTimer = setTimeout(() => { viewportChangeTimer = null; if (state) redraw(); }, 100);
+}
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', onViewportChange);
 
 // メニュー外クリックで閉じる
 document.addEventListener('click', (e) => {
