@@ -1650,6 +1650,16 @@ h1 {
   /* ゆっくり飛ばして、誰に何が入ったか目で追えるようにする */
   animation: resFlyTo 1.3s cubic-bezier(0.25,0.8,0.5,1) forwards;
 }
+/* 資源の着地ポップ(C-2): フライが着いた瞬間にパネル/ミニパネルを一瞬弾ませる。 */
+.player-panel.res-landed, .mini-panel.res-landed { animation: resLandPop 0.26s ease-out; }
+@keyframes resLandPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-panel.res-landed, .mini-panel.res-landed { animation: none; }
+}
 
 /* ---- 盗賊の移動演出（スライド＋着地ハイライト） ---- */
 .robber-fly {

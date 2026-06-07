@@ -1172,6 +1172,7 @@ function spawnResFlyer(
   target: { x: number; y: number },   // 着地先（ビューポート座標。.res-fly は position:fixed）
   origin: { x: number; y: number },
   delay: number,
+  landEl?: HTMLElement | null,        // 着地時にポップさせるパネル（C-2）
 ): void {
   setTimeout(() => {
     const span = document.createElement('span');
@@ -1185,7 +1186,17 @@ function spawnResFlyer(
     span.style.setProperty('--ty', `${target.y - origin.y}px`);
     document.body.appendChild(span);
     requestAnimationFrame(() => requestAnimationFrame(() => { span.classList.add('fly-in'); }));
-    setTimeout(() => { span.remove(); playSE('resource'); }, RES_FLY_MS);
+    setTimeout(() => {
+      span.remove();
+      playSE('resource');
+      // 着地ポップ: パネルを一瞬だけ弾ませる（reduced-motion時はCSS側でアニメ無効）。
+      if (landEl) {
+        landEl.classList.remove('res-landed');
+        void landEl.offsetWidth; // リフローで連続着地でも再生されるよう再起動
+        landEl.classList.add('res-landed');
+        setTimeout(() => landEl.classList.remove('res-landed'), 260);
+      }
+    }, RES_FLY_MS);
   }, delay);
 }
 
@@ -1655,7 +1666,7 @@ function animateSetupGain(oldState: GameState, vertexId: string): void {
     const tid = tilesByRes.get(r)?.shift();
     const origin = (tid ? tileScreenCenter(tid) : null) ?? getBoardCenter();
     const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-    spawnResFlyer(RES_EMOJI[r], target, jitter, delay);
+    spawnResFlyer(RES_EMOJI[r], target, jitter, delay, targetEl);
     delay += RES_FLY_STAGGER;
   }
 }
@@ -1704,7 +1715,7 @@ function triggerResourceAnimation(
       const origin = isDice ? originForGain(diceTotal!, pid, r) : getBoardCenter();
       for (let i = 0; i < n && count < MAX_PER_PLAYER; i++) {
         const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-        spawnResFlyer(RES_EMOJI[r], target, jitter, delay);
+        spawnResFlyer(RES_EMOJI[r], target, jitter, delay, targetEl);
         delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
         count++;
       }
