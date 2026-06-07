@@ -379,12 +379,11 @@ function chooseSetupAction(state: GameState, pid: PlayerId, rng: () => number): 
     );
     if (valid.length === 0) return null;
 
-    return {
-      type: 'BUILD_ROAD',
-      edgeId: difficulty === 'weak'
-        ? valid[Math.floor(rng() * valid.length)]!
-        : valid[0]!,
-    };
+    if (difficulty === 'weak') {
+      return { type: 'BUILD_ROAD', edgeId: valid[Math.floor(rng() * valid.length)]! };
+    }
+    // 直前に置いた開拓地から、良い拡張先（新資源・高pip）へ向かう辺を選ぶ。
+    return { type: 'BUILD_ROAD', edgeId: pickByScore(valid, eid => roadEdgeValue(state, pid, eid), rng) };
   }
 
   return null;
