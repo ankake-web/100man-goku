@@ -2126,6 +2126,14 @@ function updateZoomReset(): void {
   }
 }
 
+// 飛行中の一時演出ノード（ダイス/資源/盗賊/略奪/得点ポップ/手番トースト）を掃除する。
+// ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
+function clearTransientFx(): void {
+  document
+    .querySelectorAll('.dice-roll-overlay, .res-fly, .robber-fly, .steal-card, .vp-pop, .bonus-pop, #turn-toast')
+    .forEach(n => n.remove());
+}
+
 // ============================================================
 // LAN対戦: ゲーム開始 / サーバメッセージ処理 / Action送信
 // ============================================================
@@ -2158,6 +2166,8 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   buildMode = 'idle';
   uiPhase = { type: 'idle' };
   landscapeSheetUserOpen = false;
+  diceAnimating = false;
+  clearTransientFx();
   diceStats = new Array(13).fill(0);
 
   // 以降のサーバメッセージ（状態更新・切断等）は main 側で処理する。
@@ -2371,6 +2381,8 @@ function startGame(cfg: HomeConfig): void {
   buildMode = 'idle';
   uiPhase = { type: 'idle' };
   landscapeSheetUserOpen = false;
+  diceAnimating = false;
+  clearTransientFx();
   cpuPlayerTradeOfferedThisTurn = false;
   lastCpuOfferSignature = null;
   diceStats = new Array(13).fill(0); // 新規ゲームで出目分布をリセット
@@ -2408,6 +2420,8 @@ function returnToHome(): void {
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
   document.getElementById('zoom-reset')?.remove(); document.getElementById('place-confirm')?.remove();
   boardViewport = { scale: 1, tx: 0, ty: 0 };
+  diceAnimating = false;
+  clearTransientFx();
   // 横持ちボトムシートの状態をリセット
   landscapeSheetUserOpen = false;
   document.body.classList.remove('lsheet-open');
