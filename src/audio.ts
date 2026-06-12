@@ -9,15 +9,46 @@ function getAudioCtx(): AudioContext {
   if (!_audioCtx || _audioCtx.state === 'closed') {
     _audioCtx = new AudioContext();
   }
+  // iOS Safari 等: ユーザージェスチャ外（CPU手番の setTimeout 起点など）で生成された ctx は
+  // suspended のまま固定され、以後セッション全体で SE が無音になる。running 以外なら resume を
+  // 試みる（iOS 非標準の 'interrupted' も拾うため !== 'running' で判定。running 時は無害な no-op）。
+  if (_audioCtx.state !== 'running') {
+    try { void _audioCtx.resume(); } catch { /* ignore */ }
+  }
   return _audioCtx;
+}
+
+// ジェスチャ外の resume() を拒否し続ける端末向け: ユーザー操作・前面復帰のたびに resume を試みる。
+// ctx 未生成時は何もしない（SE無効ユーザーに不要な AudioContext を作らない）。
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', () => {
+    if (_audioCtx && _audioCtx.state !== 'running') {
+      try { void _audioCtx.resume(); } catch { /* ignore */ }
+    }
+  }, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && _audioCtx && _audioCtx.state !== 'running') {
+      try { void _audioCtx.resume(); } catch { /* ignore */ }
+    }
+  });
 }
 
 // -------------------------------------------------------
 // BGM: Cメジャーペンタトニックの穏やかなメロディ
 // ドローンや不協和音を使わず、酒場風の明るい雰囲気
 // -------------------------------------------------------
-let _bgmEnabled  = false;
-let _bgmVolume   = 0.07;  // かなり控えめ
+// BGM の有効/音量も SE・ハプティクス・曲選択と同様に localStorage へ永続化する
+// （曲だけ記憶されて再生設定が毎回リセットされる非対称を解消）。既定は OFF・7%。
+const BGM_ON_KEY  = 'catan_bgm_on';
+const BGM_VOL_KEY = 'catan_bgm_vol';
+function loadBgmOn(): boolean {
+  try { return localStorage.getItem(BGM_ON_KEY) === '1'; } catch { return false; }
+}
+function loadBgmVol(): number {
+  try { const v = parseFloat(localStorage.getItem(BGM_VOL_KEY) ?? ''); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.07; } catch { return 0.07; }
+}
+let _bgmEnabled  = loadBgmOn();
+let _bgmVolume   = loadBgmVol();  // かなり控えめ（既定 0.07）
 let _bgmLoopId   = 0;
 let _bgmOscs: OscillatorNode[] = [];
 let _bgmMaster: GainNode | null = null;   // 手続き生成BGMのマスターゲイン（フェード用）
@@ -169,6 +200,9 @@ function bgmStartProcedural(tr: BgmTrack): void {
       g.gain.linearRampToValueAtTime(0.0001, t + dur);  // 終端まで鳴らす＝隙間を作らない
       osc.connect(g); g.connect(masterGain);
       osc.start(t); osc.stop(t + dur + 0.02);
+      // 再生終了したノードは配列から自動除去（長時間再生でのメモリ蓄積防止。
+      // bgmStop は配列を差し替えるため、停止後に遅れて発火しても indexOf=-1 で無害）。
+      osc.onended = () => { const i = _bgmOscs.indexOf(osc); if (i >= 0) _bgmOscs.splice(i, 1); };
       _bgmOscs.push(osc);
       // 低音ハーモニー（一オクターブ下、半音量）
       if (beats >= 2) {
@@ -181,6 +215,7 @@ function bgmStartProcedural(tr: BgmTrack): void {
         bg.gain.linearRampToValueAtTime(0.0001, t + dur);
         bass.connect(bg); bg.connect(masterGain);
         bass.start(t); bass.stop(t + dur + 0.02);
+        bass.onended = () => { const i = _bgmOscs.indexOf(bass); if (i >= 0) _bgmOscs.splice(i, 1); };
         _bgmOscs.push(bass);
       }
       t += dur;
@@ -205,7 +240,8 @@ function bgmStop(): void {
 }
 
 function bgmSetVolume(v: number): void {
-  _bgmVolume = v;
+  _bgmVolume = Math.max(0, Math.min(1, v));
+  try { localStorage.setItem(BGM_VOL_KEY, String(_bgmVolume)); } catch { /* ignore */ }
   if (_bgmMaster) {
     try {
       const ctx = getAudioCtx();
@@ -370,9 +406,25 @@ function playSE(type: SEType): void {
   } catch { /* ignore */ }
 }
 
+// 前回 BGM ON で終了していた場合: 自動再生制約があるため、最初のユーザー操作で開始する。
+// 発火までにメニューで OFF へ切り替えられた場合は _bgmEnabled ガードで鳴らさない。
+// 既にメニュー操作で再生開始済みの場合も二重開始しない（_bgmAudio / _bgmOscs で判定）。
+if (typeof document !== 'undefined' && _bgmEnabled) {
+  const startOnGesture = (): void => {
+    document.removeEventListener('pointerdown', startOnGesture);
+    document.removeEventListener('keydown', startOnGesture);
+    if (_bgmEnabled && !_bgmAudio && _bgmOscs.length === 0) bgmStart();
+  };
+  document.addEventListener('pointerdown', startOnGesture, { passive: true });
+  document.addEventListener('keydown', startOnGesture);
+}
+
 // ---- 公開API（main.ts の設定UI・dispatch から使用）----
 export function isBgmEnabled(): boolean { return _bgmEnabled; }
-export function setBgmEnabled(v: boolean): void { _bgmEnabled = v; }
+export function setBgmEnabled(v: boolean): void {
+  _bgmEnabled = v;
+  try { localStorage.setItem(BGM_ON_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+}
 export function getBgmVolume(): number { return _bgmVolume; }
 export function getBgmTrack(): number { return _bgmTrack; }
 export function isSeEnabled(): boolean { return _seEnabled; }

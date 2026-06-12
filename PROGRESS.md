@@ -1,5 +1,23 @@
 # 仕上げ作業ログ（finishing-touches ブランチ）
 
+## 第2回 多エージェント監査と修正（2026-06-12）
+
+6観点（公式ルール突合/エンジン境界/AI品質/ネット同期/UI状態/性能）の監査で **16件確認**（7件は敵対的検証で棄却）＋手動精読で**エンジンガード漏れ2件**を発見し、全て修正。検証: `tsc --noEmit`（src/test 両方）緑・**531テスト**（+11）緑・`npm run build` 緑・Chromium スモーク（起動→CPU対戦→ホーム復帰→ゾンビ進行なし→再開始、コンソールエラー0）。
+
+| 重大度 | 修正 | 場所 |
+|---|---|---|
+| 高(チート) | `PLAY_KNIGHT` フェーズガード無し→DISCARD中の騎士で全員の捨て札を踏み倒せた。`BANK_TRADE` も PRE_ROLL/DISCARD 中に実行可能だった | `game.ts` +回帰テスト6件 |
+| 高(停止) | 捨て札済みCPU（16枚→8枚残）を再選択し **LANサーバCPU駆動が恒久デッドロック** / ローカルは8秒フリーズ | `lanCpu.ts`/`main.ts`/`ai.ts` +回帰テスト |
+| 高(AI) | CPUが「羊1↔鉄6」級の搾取交易を受諾。銀行レート・枚数損得ガードを追加（即建設可能になる+1枚のみ許容） | `ai.ts evaluateTradeOffer` +テスト5件 |
+| 高(UI) | ホーム復帰後の旧ゲーム「ゾンビ進行」（ダイス演出finish/resize→watchdog 経由）。世代ガード+`inGame` フラグで遮断 | `main.ts` |
+| 高(UI) | ローカル戦で人間がCPUの盗賊移動・盗み相手選択・初期配置を代行操作できた。`canAct` 述語+CPU手番のハイライト抑止 | `events.ts`/`main.ts` |
+| 高(perf) | 毎redrawで最長交易路DFSを最大5回再計算→エンジン維持の `longestRoadLength` キャッシュ参照に | `ui.ts` |
+| 中 | 街道建設カードが「盤面順で最初の辺」に配置→`bestRoadEdge` 評価に / 資源フライの遅延スポーンに世代ガード / `fxSpeed()` でLANへのCPU速度設定漏れ防止 / LAN再接続の二重スケジュール一本化+孤児クライアントclose / LAN後のCPU再戦で lanClient 残骸が state を乗っ取る問題 / ダイス演出中のLAN配信をキューイング | `ai.ts`/`main.ts` |
+| 中(iOS) | AudioContext を resume せず初回SEがジェスチャ外だと全セッション無音→`resume()` + pointerdown/visibilitychange 復帰 | `audio.ts` |
+| 低 | BGM ON/音量の localStorage 永続化（曲選択と対称に）/ `_bgmOscs` の onended 間引き / モバイルでVP・称号ポップが画面外→`flyTargetFor` 共用+mini-panel CSS / モーダル+/−で盤面SVG全再構築→`skipBoard` / `perMessageDeflate`（state配信35KB/通の帯域削減） | `audio.ts`/`main.ts`/`style.css`/`lanServer.ts` |
+
+---
+
 > 「完成一歩手前」の仕上げ＋拡張プランの残（発展）項目。**動いている機能を壊さない**ことを最優先に、小さく安全な単位で実施。
 > 検証は各コミットで `npx tsc --noEmit` / `npx vitest run`（**520件 緑**）/ `npm run build`（緑）を確認済み。
 > 実機ブラウザ（Chromium / Playwright）で起動・CPU対戦開始・開拓地配置・ホーム復帰→再開を通し、**コンソールエラー無し**を確認。

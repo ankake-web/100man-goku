@@ -290,6 +290,31 @@ export function evaluateTradeOffer(
   const helps = RESOURCE_TYPES.some(r => (gain[r] ?? 0) > 0 && me.hand[r] < needed[r]);
   if (!helps) return false;
 
+  // ---- 損得検査（搾取防止）----
+  // これが無いと「羊1↔鉄6」のような極端に不利な提案でも、目標の不足を埋めさえすれば
+  // 受けてしまい、人間が安資源1枚で CPU の手札を大量に抜ける。
+  const totalGain = RESOURCE_TYPES.reduce((s, r) => s + (gain[r] ?? 0), 0);
+  const totalCost = RESOURCE_TYPES.reduce((s, r) => s + (cost[r] ?? 0), 0);
+
+  // 銀行レートガード: 自分の銀行/港レートで同等以上の交換ができるなら相手に利だけ渡す提案。
+  // 複数資源を渡す場合は最も有利な（小さい）レートで保守的に判定する。
+  const minRate = RESOURCE_TYPES.reduce(
+    (m, r) => (cost[r] ?? 0) > 0 ? Math.min(m, getEffectiveTradeRate(state, responderId, r)) : m,
+    4,
+  );
+  if (totalCost >= minRate * totalGain) return false;
+
+  // 枚数で損する交易は、超過1枚まで・かつ「交換後に建設目標が即達成できるようになる」
+  // 場合のみ受ける（焦点の建設を完成させるための小さな上乗せだけ許容）。
+  if (totalCost > totalGain) {
+    if (totalCost > totalGain + 1) return false;
+    const afterHand = { ...me.hand };
+    for (const r of RESOURCE_TYPES) afterHand[r] += (gain[r] ?? 0) - (cost[r] ?? 0);
+    const canBuildAfter = goals.some(g => hasEnoughResources(afterHand, g));
+    const canBuildBefore = goals.some(g => hasEnoughResources(me.hand, g));
+    if (!canBuildAfter || canBuildBefore) return false;
+  }
+
   // 渡す資源が目標必要数を割らないか（必要資源は温存）
   for (const r of RESOURCE_TYPES) {
     if ((cost[r] ?? 0) === 0) continue;
@@ -415,6 +440,10 @@ function choosePreRollAction(state: GameState, pid: PlayerId): Action {
 function chooseDiscard(state: GameState, pid: PlayerId, rng: () => number = Math.random): Action | null {
   const player = state.players[pid];
   if (!player) return null;
+
+  // 既にこの7で捨て済みなら何もしない（エンジンの二重捨てガードと整合。
+  // 捨て後も8枚以上残るケースで違法な二重捨てアクションを生成しないための防御）。
+  if ((state.discardedThisRound ?? []).includes(pid)) return null;
 
   const total = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
   if (total < 8) return null;
@@ -542,9 +571,10 @@ function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number):
 // ============================================================
 
 function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
-  // 街道建設カード使用中: 無料道を置く（置けなければ効果完了）
+  // 街道建設カード使用中: 無料道を拡張先評価(bestRoadEdge)で置く（置けなければ効果完了）。
+  // 「盤面順で最初の合法辺」では自陣の内側など無価値な辺に置かれ、カードがほぼ無駄になる。
   if (state.roadBuildingRoadsRemaining > 0) {
-    const roadEdge = Object.keys(state.edges).find(eid => canBuildRoad(state, pid, eid));
+    const roadEdge = bestRoadEdge(state, pid, rng);
     if (roadEdge) return { type: 'BUILD_ROAD', edgeId: roadEdge };
     return { type: 'FINISH_ROAD_BUILDING' };
   }

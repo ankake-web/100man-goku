@@ -112,10 +112,15 @@ export function attachBoardEvents(
   getBuildMode: () => BuildMode,
   setUIPhase: (p: UIPhase) => void,
   dispatch: (action: Action) => void,
+  canAct: () => boolean = () => true,
 ): void {
   svg.addEventListener('click', (e) => {
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
     if (consumeSuppressClick()) return;
+    // 手番の操作権が無い（ローカルでCPUの手番 / LANで他人の手番）なら盤面操作を無視する。
+    // これが無いとCPUの盗賊待ち時間に人間がタイルをタップして盗賊移動・盗み相手選択・
+    // 初期配置・街道建設の道を代行でき、エンジンは手番プレイヤーの合法手として受理してしまう。
+    if (!canAct()) return;
     const target = e.target as SVGElement;
     const state = getState();
     const pid = state.playerOrder[state.currentPlayerIndex]!;

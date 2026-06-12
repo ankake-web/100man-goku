@@ -548,9 +548,59 @@ describe('進歩カードは MAIN/TRADE_BUILD 以外（7の捨て札・盗賊フ
   });
 });
 
+describe('騎士は PRE_ROLL/TRADE_BUILD 以外（7の捨て札・盗賊フェーズ）では使えない', () => {
+  const inPhase = (turnPhase: 'DISCARD' | 'ROBBER'): GameState =>
+    makeGameState({
+      turnPhase, diceRolledThisTurn: true, globalTurnNumber: 2,
+      players: {
+        // 手札8枚 = DISCARD の捨て札対象。騎士で ROBBER へ遷移できると捨て札を踏み倒せる。
+        player1: makePlayer('player1', { devCards: [makeDevCard('knight', 1)], hand: makeHand({ wood: 4, brick: 4 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+
+  it('DISCARD フェーズ中の騎士を弾く（捨て札の踏み倒し防止）', () => {
+    expect(() => applyAction(inPhase('DISCARD'), { type: 'PLAY_KNIGHT' })).toThrow('PRE_ROLL or TRADE_BUILD');
+  });
+
+  it('ROBBER フェーズ中の騎士を弾く', () => {
+    expect(() => applyAction(inPhase('ROBBER'), { type: 'PLAY_KNIGHT' })).toThrow('PRE_ROLL or TRADE_BUILD');
+  });
+
+  it('TRADE_BUILD では引き続き使える', () => {
+    const s: GameState = { ...inPhase('ROBBER'), turnPhase: 'TRADE_BUILD' };
+    expect(() => applyAction(s, { type: 'PLAY_KNIGHT' })).not.toThrow();
+  });
+});
+
 // ============================================================
 // BANK_TRADE
 // ============================================================
+
+describe('BANK_TRADE のフェーズガード', () => {
+  const inPhase = (turnPhase: 'PRE_ROLL' | 'DISCARD' | 'ROBBER'): GameState =>
+    makeGameState({
+      turnPhase,
+      diceRolledThisTurn: turnPhase !== 'PRE_ROLL',
+      players: {
+        // 手札8枚 = DISCARD の捨て札対象。4:1交易で8枚未満へ圧縮できると捨て札を回避できる。
+        player1: makePlayer('player1', { hand: makeHand({ wood: 4, brick: 4 }) }),
+        player2: makePlayer('player2'),
+      },
+    });
+
+  it('PRE_ROLL（ダイス前）の銀行交易を弾く', () => {
+    expect(() => applyAction(inPhase('PRE_ROLL'), { type: 'BANK_TRADE', give: 'wood', receive: 'ore' })).toThrow('TRADE_BUILD');
+  });
+
+  it('DISCARD フェーズ中の銀行交易を弾く（捨て札回避の防止）', () => {
+    expect(() => applyAction(inPhase('DISCARD'), { type: 'BANK_TRADE', give: 'wood', receive: 'ore' })).toThrow('TRADE_BUILD');
+  });
+
+  it('ROBBER フェーズ中の銀行交易を弾く', () => {
+    expect(() => applyAction(inPhase('ROBBER'), { type: 'BANK_TRADE', give: 'wood', receive: 'ore' })).toThrow('TRADE_BUILD');
+  });
+});
 
 describe('BANK_TRADE', () => {
   it('executes bank trade at 4:1', () => {

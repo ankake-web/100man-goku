@@ -698,6 +698,38 @@ describe('A-4 evaluateTradeOffer (相手提案の受諾判断)', () => {
     const offer = { give: { ore: 1 }, receive: { wood: 1 } }; // 単独なら受諾する好条件
     expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
   });
+
+  // ---- 損得検査（搾取防止）----
+
+  it('搾取提案（羊1↔鉄3）は不足資源でも拒否する', () => {
+    // 旧実装は「不足を埋め、残りが needed を割らない」だけで受諾し、鉄を大量に抜かれた
+    const s = tradeState({ ore: 6 });
+    const offer = { give: { wool: 1 }, receive: { ore: 3 } }; // 受け取り羊1・支払い鉄3
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
+  });
+
+  it('極端な搾取提案（羊1↔鉄6）も拒否する', () => {
+    const s = tradeState({ ore: 9 });
+    const offer = { give: { wool: 1 }, receive: { ore: 6 } };
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
+  });
+
+  it('銀行レートで再現できる提案（羊1↔木4）は拒否する', () => {
+    const s = tradeState({ wood: 5, brick: 1, grain: 1 });
+    const offer = { give: { wool: 1 }, receive: { wood: 4 } }; // 4:1 で銀行から買えるのと同等
+    expect(evaluateTradeOffer(s, 'player1', offer, 'player2')).toBe(false);
+  });
+
+  it('1枚の上乗せ（鉄1↔麦2）は、即建設が可能になる場合のみ受諾する', () => {
+    // 受諾: 麦4鉄2 → 鉄1受領・麦2支払で都市(麦2鉄3)が即建設可能になる
+    const enable = tradeState({ grain: 4, ore: 2 });
+    const offer = { give: { ore: 1 }, receive: { grain: 2 } };
+    expect(evaluateTradeOffer(enable, 'player1', offer, 'player2')).toBe(true);
+
+    // 拒否: 麦4鉄1 → 交換後も鉄2で都市は建たない（損な枚数差だけが残る）
+    const noBuild = tradeState({ grain: 4, ore: 1 });
+    expect(evaluateTradeOffer(noBuild, 'player1', offer, 'player2')).toBe(false);
+  });
 });
 
 // ============================================================

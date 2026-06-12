@@ -2301,13 +2301,15 @@ h1 {
   75%  { opacity: 1; transform: translate(-50%, -24px) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -44px) scale(1); }
 }
-.player-panel.vp-gain-flash { animation: vpFlash 0.9s ease-out; }
+.player-panel.vp-gain-flash,
+.mini-panel.vp-gain-flash { animation: vpFlash 0.9s ease-out; }
 @keyframes vpFlash {
   0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
   30%  { box-shadow: 0 0 18px 3px rgba(255,215,0,0.85); }
   100% { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
 }
-.player-panel.bonus-flash { animation: bonusFlash 1.45s ease-out; }
+.player-panel.bonus-flash,
+.mini-panel.bonus-flash { animation: bonusFlash 1.45s ease-out; }
 @keyframes bonusFlash {
   0%   { box-shadow: 0 0 0 0 rgba(255,215,0,0); }
   20%  { box-shadow: 0 0 22px 5px rgba(255,215,0,0.9); }
@@ -2320,7 +2322,9 @@ h1 {
   .player-panel.your-turn,
   .vp-pop, .bonus-pop,
   .player-panel.vp-gain-flash,
-  .player-panel.bonus-flash { animation: none; }
+  .mini-panel.vp-gain-flash,
+  .player-panel.bonus-flash,
+  .mini-panel.bonus-flash { animation: none; }
 }
 
 /* 横持ちコンパクト時: 手番バナーの高さを抑える（盤面を圧迫しない） */

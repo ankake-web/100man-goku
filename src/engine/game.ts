@@ -319,6 +319,10 @@ export function applyAction(
     // PLAY_KNIGHT
     // ----------------------------------------------------------
     case 'PLAY_KNIGHT': {
+      // 騎士はロール前(PRE_ROLL)とロール後(TRADE_BUILD)のみ。DISCARD/ROBBER 中に許すと
+      // 「7の捨て札待ちで騎士→ROBBERへ遷移」で全員の捨て札を踏み倒せてしまう（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
+        throw new Error('PLAY_KNIGHT: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_KNIGHT: already played a dev card this turn');
       const player = state.players[pid]!;
       const cardIdx = player.devCards.findIndex(
@@ -478,6 +482,10 @@ export function applyAction(
     // BANK_TRADE
     // ----------------------------------------------------------
     case 'BANK_TRADE': {
+      // 銀行/港交易はダイス後の交易・建設フェーズのみ。これが無いと PRE_ROLL での先行交易や、
+      // DISCARD 中に 4:1 で手札を 8 枚未満へ圧縮して捨て札を回避する不正が可能になる。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
+        throw new Error('BANK_TRADE: must be in MAIN TRADE_BUILD phase');
       const { give, receive } = action;
       if (!canBankTrade(state, pid, give, receive)) throw new Error('BANK_TRADE: invalid');
       return executeBankTrade(state, pid, give, receive);

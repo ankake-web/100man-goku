@@ -396,6 +396,31 @@ describe('LAN mixed human+CPU: server-side CPU drive', () => {
     expect(sum).toBe(4); // floor(8/2)
   });
 
+  it('does not re-select a CPU that already discarded but still holds 8+ (deadlock regression)', () => {
+    // 16枚から半分(8枚)捨てても 8枚 残るケース: discardedThisRound に入った CPU を
+    // 再選択すると、エンジンの二重捨てガードで全アクションが拒否され CPU 駆動が恒久停止する。
+    const base = tradeReadyState({ wood: 4, brick: 4 }, { wood: 4, brick: 4 });
+    const bothCpu: GameState = {
+      ...base,
+      turnPhase: 'DISCARD',
+      discardedThisRound: ['player1'],
+      players: {
+        player1: { ...base.players.player1!, type: 'ai', aiDifficulty: 'normal' }, // 捨て済み・8枚残
+        player2: { ...base.players.player2!, type: 'ai', aiDifficulty: 'normal' }, // 未捨て・8枚
+      },
+    };
+    // 捨て済みの player1 ではなく、未捨ての player2 を選ぶ
+    const step = nextCpuAction(bothCpu, () => 0.5);
+    expect(step?.pid).toBe('player2');
+    expect(step?.action.type).toBe('DISCARD_RESOURCES');
+    // 生成された一手はエンジンが必ず受理する（違法アクションを生成しない）
+    expect(() => applyAction(bothCpu, step!.action, createRng(1))).not.toThrow();
+
+    // 全員捨て済みなら null（人間待ち扱いで違法な二重捨ては生成しない）
+    const allDone: GameState = { ...bothCpu, discardedThisRound: ['player1', 'player2'] };
+    expect(nextCpuAction(allDone, () => 0.5)).toBeNull();
+  });
+
   it('makes a CPU accept a beneficial trade but reject one that costs a needed resource', () => {
     // 受諾: CPU(player2) は不足している wood を受け取り、余剰(brick2)から brick1 を渡す
     const acceptBase = tradeReadyState({ wood: 2 }, { brick: 2 });

@@ -59,8 +59,13 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
 
   // ---- 捨て札（手番に関わらず 8枚以上の CPU を1人ずつ処理）----
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+    // 捨て札済み(discardedThisRound)の CPU は除外する。16枚以上から半分捨てても8枚以上
+    // 残るため、これが無いと同じ CPU を再選択し続け、エンジンの二重捨てガードで
+    // 全アクションが拒否されてサーバの CPU 駆動が恒久停止する（デッドロック）。
     const dpid = state.playerOrder.find(p =>
-      isCpu(state, p) && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8,
+      isCpu(state, p)
+      && !(state.discardedThisRound ?? []).includes(p)
+      && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8,
     );
     if (dpid) {
       const action = chooseAction(state, dpid, { rng });

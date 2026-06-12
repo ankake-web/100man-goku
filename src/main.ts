@@ -549,6 +549,16 @@ let lanClient: LanClient | null = null;
 // AI タイムアウト世代管理（世代が変わった setTimeout は無視）
 let gameGeneration = 0;
 
+// ゲーム画面がアクティブか。ホーム復帰後に resize/演出残骸経由で redraw→
+// ウォッチドッグ/CPUループが再武装され、放棄したゲームが裏で進む「ゾンビ進行」を防ぐ。
+let inGame = false;
+
+// 演出速度の一元参照。lastConfig はCPU対戦専用の設定なので、LAN対戦では参照しない
+// （前回CPU対戦の「最速」がLANに漏れて全演出が消える等の混線を防ぐ）。
+function fxSpeed(): CpuSpeed {
+  return netMode ? 'normal' : (lastConfig?.cpuSpeed ?? 'normal');
+}
+
 // このターンにCPUがプレイヤー間交易を提案済みか（連続提案防止）
 let cpuPlayerTradeOfferedThisTurn = false;
 
@@ -587,7 +597,12 @@ function cpuOfferSignature(cpuPid: string, offer: TradeOffer): string {
 // 再描画
 // ============================================================
 
-function redraw(): void {
+/**
+ * 再描画。skipBoard=true は「盤面SVGの入力（state / buildMode / placePreview）が不変」と
+ * 呼び出し側が保証できる UI 限定更新（交易・捨て札モーダルの +/− 等）用で、盤面の全再構築と
+ * ハイライト計算を省く（スマホでの連打タップ遅延・実行中CSSアニメの破棄を防ぐ）。
+ */
+function redraw(skipBoard = false): void {
   if (!state) return;
 
   // DISCARD フェーズの uiPhase 自動同期。
@@ -623,10 +638,12 @@ function redraw(): void {
   // LAN対戦: 操作UIは viewer の手番のみ有効化（lanMode）。建設ハイライトも
   // 自分の手番のときだけ出す。CPUスケジュール/ウォッチドッグは動かさない。
   if (netMode) {
-    const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
-    const opts: BoardRenderOptions = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
-    opts.viewport = boardViewport;
-    renderBoard(svgBoard, state, opts);
+    if (!skipBoard) {
+      const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
+      const opts: BoardRenderOptions = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
+      opts.viewport = boardViewport;
+      renderBoard(svgBoard, state, opts);
+    }
     renderUI(
       uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch,
       viewerPlayerId ?? undefined, /* lanMode */ true,
@@ -638,9 +655,14 @@ function redraw(): void {
     return;
   }
 
-  const opts = withPreview(computeHighlights(state, buildMode));
-  opts.viewport = boardViewport;
-  renderBoard(svgBoard, state, opts);
+  if (!skipBoard) {
+    // ローカル: 配置/盗賊ハイライトは人間の手番のみ（CPUの手番に緑ハイライトを出すと
+    // 「人間が代わりに操作できる」ように見え、実際にクリックを誘発していた）。
+    const humanTurn = state.players[currentPid(state)]?.type === 'human';
+    const opts: BoardRenderOptions = humanTurn ? withPreview(computeHighlights(state, buildMode)) : {};
+    opts.viewport = boardViewport;
+    renderBoard(svgBoard, state, opts);
+  }
   renderUI(uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch);
   updateGameNav();
   updatePlaceConfirmBar();
@@ -1019,8 +1041,12 @@ function scheduleAiTurn(): void {
   const gen = gameGeneration;
 
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
+    // 捨て札済み(discardedThisRound)の AI は除外（cpuIsResponsible / safeFallbackAction と同一条件）。
+    // 16枚以上から半分捨てても8枚以上残るため、これが無いと同じ AI を再選択して違法な
+    // 二重捨てを dispatch し、watchdog(8秒) まで進行が止まる。
     const discardPid = state.playerOrder.find(pid => {
       if (state.players[pid]?.type !== 'ai') return false;
+      if ((state.discardedThisRound ?? []).includes(pid)) return false;
       const h = state.players[pid]!.hand;
       return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
     });
@@ -1100,6 +1126,7 @@ function progressToken(): string {
 /** ウォッチドッグを再武装（CPU責任時のみ）。redraw のたびに呼ぶ。 */
 function armCpuWatchdog(): void {
   if (cpuWatchdog) { clearTimeout(cpuWatchdog); cpuWatchdog = null; }
+  if (!inGame) return; // ホーム復帰後は武装しない（ゾンビ進行防止）
   if (!cpuIsResponsible()) return;
   const token = progressToken();
   const gen = gameGeneration;
@@ -1186,7 +1213,11 @@ function spawnResFlyer(
   delay: number,
   landEl?: HTMLElement | null,        // 着地時にポップさせるパネル（C-2）
 ): void {
+  // 遅延スポーンは世代ガード必須: delay は最大数秒あり、ホーム復帰/新ゲーム開始後に
+  // 旧ゲームの絵文字が画面上を飛び続けるのを防ぐ（clearTransientFx は未発火タイマーを消せない）。
+  const gen = gameGeneration;
   setTimeout(() => {
+    if (gen !== gameGeneration) return;
     const span = document.createElement('span');
     span.className = 'res-fly';
     span.textContent = glyph;
@@ -1200,6 +1231,7 @@ function spawnResFlyer(
     requestAnimationFrame(() => requestAnimationFrame(() => { span.classList.add('fly-in'); }));
     setTimeout(() => {
       span.remove();
+      if (gen !== gameGeneration) return; // 着地SE/ポップも旧ゲーム分は抑止
       playSE('resource');
       // 着地ポップ: パネルを一瞬だけ弾ませる（reduced-motion時はCSS側でアニメ無効）。
       if (landEl) {
@@ -1259,7 +1291,7 @@ function totalCardsOf(s: GameState, pid: string): number {
 
 // 略奪演出: 伏せカード(種類非公開)が被害者パネル→略奪者パネルへ1枚飛ぶ。
 function animateStealCard(fromPid: string, toPid: string): void {
-  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
   const fromEl = flyTargetFor(fromPid);
   const toEl = flyTargetFor(toPid);
   if (!fromEl || !toEl) return;
@@ -1281,7 +1313,7 @@ function animateStealCard(fromPid: string, toPid: string): void {
 
 /** 盗賊が移動元→移動先へスライドする演出。移動先で着地ハイライト。 */
 function animateRobberMove(fromTileId: string, toTileId: string): void {
-  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion() || fromTileId === toTileId) return;
+  if (fxSpeed() === 'instant' || prefersReducedMotion() || fromTileId === toTileId) return;
   const from = tileScreenCenter(fromTileId);
   const to = tileScreenCenter(toTileId);
   if (!from || !to) return;
@@ -1588,7 +1620,7 @@ function getBoardCenter(): { x: number; y: number } {
 
 /** ダイス目に対応する産出タイルを一時的に強調表示（どのタイルから資源が出たか分かりやすく） */
 function highlightProducingTiles(diceTotal: number): void {
-  if (lastConfig?.cpuSpeed === 'instant') return;
+  if (fxSpeed() === 'instant') return;
   const boardEl = document.getElementById('board');
   if (!boardEl) return;
   for (const tile of Object.values(state.tiles)) {
@@ -1690,7 +1722,7 @@ function triggerResourceAnimation(
   action?: Action,
   diceTotal?: number,
 ): void {
-  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
   // 盗み取り(MOVE_ROBBER)は飛ばさない（奪った資源の種類を秘匿するため）。
   if (action?.type === 'MOVE_ROBBER') return;
 
@@ -1745,7 +1777,7 @@ function selfPlayerId(): PlayerId | undefined {
 // 得点(VP)が増えたプレイヤーのパネルを光らせ「+N VP」をポップ表示する。
 // 自分は VPカード込み、相手は公開VPのみで判定する（相手の非公開VPカードは演出しない＝秘匿維持）。
 function triggerVpGainEffects(prevState: GameState, newState: GameState): void {
-  if (lastConfig?.cpuSpeed === 'instant') return;
+  if (fxSpeed() === 'instant') return;
   const me = selfPlayerId();
   for (const pid of newState.playerOrder) {
     const before = pid === me ? calcVP(prevState, pid) : calcPublicVP(prevState, pid);
@@ -1767,7 +1799,7 @@ function triggerVpGainEffects(prevState: GameState, newState: GameState): void {
 
 // 称号バッジが旧保持者→新保持者のパネルへ飛ぶ演出（C-7）。reduced-motion/instantは省略。
 function flyBadge(fromPid: string, toPid: string, glyph: string): void {
-  if (lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
   const fromEl = flyTargetFor(fromPid);
   const toEl = flyTargetFor(toPid);
   if (!fromEl || !toEl) return;
@@ -1790,9 +1822,15 @@ function flyBadge(fromPid: string, toPid: string, glyph: string): void {
 
 // プレイヤーパネル上に「+N VP」を浮かせ、パネルを短時間発光させる。
 function popVpGain(pid: PlayerId, delta: number): void {
-  const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
-  if (!panelEl) return;
-  const rect = panelEl.getBoundingClientRect();
+  // 資源フライと同じ flyTargetFor を使う: スマホ縦持ち(mini-mode)では実パネルが盤面下・
+  // 横持ちのシート収納時は #ui ごと不可視のため、表示中のミニパネルを優先しないと
+  // ポップが画面外/原点付近に出て見えない。非表示なら DOM ポップは省略（SEは鳴らす）。
+  const panelEl = flyTargetFor(pid);
+  const rect = panelEl?.getBoundingClientRect();
+  if (!panelEl || !rect || (rect.width === 0 && rect.height === 0)) {
+    setTimeout(() => playSE('vpGain'), 220);
+    return;
+  }
   const pop = document.createElement('div');
   pop.className = 'vp-pop';
   pop.textContent = `+${delta}★`;
@@ -1808,11 +1846,12 @@ function popVpGain(pid: PlayerId, delta: number): void {
 
 // 称号獲得の演出（パネル発光＋ラベルポップ＋ファンファーレSE）。
 function flashBonus(pid: PlayerId, label: string): void {
-  const panelEl = document.querySelector(`.player-panel[data-pid="${pid}"]`) as HTMLElement | null;
-  if (panelEl) {
+  // popVpGain と同様、表示中のミニパネル優先（モバイルで称号ポップが画面外に出るのを防ぐ）。
+  const panelEl = flyTargetFor(pid);
+  const rect = panelEl?.getBoundingClientRect();
+  if (panelEl && rect && (rect.width > 0 || rect.height > 0)) {
     panelEl.classList.add('bonus-flash');
     setTimeout(() => panelEl.classList.remove('bonus-flash'), 1500);
-    const rect = panelEl.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = 'bonus-pop';
     pop.textContent = label;
@@ -1880,7 +1919,7 @@ function setDiePips(face: HTMLElement, value: number): void {
 }
 // ロール演出の長さ（ms）。速度設定に連動。
 function diceRollMs(): number {
-  switch (lastConfig?.cpuSpeed) {
+  switch (fxSpeed()) {
     case 'instant': return 0;
     case 'fast':    return 750;
     case 'slow':    return 2150;
@@ -1983,7 +2022,7 @@ function runTransitionFx(
 // 建設フィードバック(C-4): 開拓地/都市はスケールインのポップ、道は辺をなぞる描画。
 // redraw 後に該当要素へ一時クラスを付けて CSS アニメで見せる（reduced-motion/instantは省略）。
 function animateBuildPlacement(action: Action | undefined): void {
-  if (!action || lastConfig?.cpuSpeed === 'instant' || prefersReducedMotion()) return;
+  if (!action || fxSpeed() === 'instant' || prefersReducedMotion()) return;
   if (action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY') {
     const g = document.querySelector(`#board [data-vertex-id="${action.vertexId}"]`) as SVGGElement | null;
     if (!g) return;
@@ -2097,7 +2136,11 @@ function dispatch(action: Action): void {
     }
 
     // 再描画＋演出（applyNetState と共通本体）。その後にローカル専用の進行（CPU/交易）を続ける。
+    // 世代ガード: ダイス演出（最大2秒超）中にホーム復帰/新ゲーム開始されると、この finish が
+    // 新世代の scheduleAiTurn を呼び、放棄した旧ゲームが裏で進行し続ける（ゾンビ進行）。
+    const gen = gameGeneration;
     const finish = (): void => {
+      if (gen !== gameGeneration) return;
       runTransitionFx(prevState, action, diceTotal, robberFromTile);
       // 交易提案後は CPU ターゲットが自動応答 / CPU起案時は人間の応答を待つ
       if (action.type === 'OFFER_TRADE' || action.type === 'RESPOND_TRADE') {
@@ -2163,8 +2206,11 @@ function updatePlaceConfirmBar(): void {
 }
 
 function setUIPhase(phase: UIPhase): void {
+  // 盤面SVGの入力は state / buildMode / placePreview のみ（computeHighlights は uiPhase 非参照）。
+  // 仮置きプレビューの出し入れ以外の uiPhase 変更（モーダルの +/− 等）では盤面再構築を省く。
+  const skipBoard = uiPhase.type !== 'placePreview' && phase.type !== 'placePreview';
   uiPhase = phase;
-  redraw();
+  redraw(skipBoard);
 }
 
 // ============================================================
@@ -2218,6 +2264,14 @@ function currentPid(s: GameState): PlayerId {
   return s.playerOrder[s.currentPlayerIndex]!;
 }
 
+// 盤面クリック（配置・盗賊）を受け付けてよいか。LAN=自分の手番のみ、ローカル=人間の手番のみ。
+// startGame / startLanGame のどちらで登録されても同一の述語で両モードを判定する。
+function boardCanAct(): boolean {
+  if (!state) return false;
+  if (netMode) return viewerPlayerId != null && viewerPlayerId === currentPid(state);
+  return state.players[currentPid(state)]?.type === 'human';
+}
+
 // LAN で送信を許可する Action（クライアント側ガード。サーバでも二重に検証）。
 const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
@@ -2235,6 +2289,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
 
   netMode = true;
+  inGame = true;
   viewerPlayerId = viewerId;
   lanClient = client;
   state = initial;
@@ -2243,6 +2298,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   landscapeSheetUserOpen = false;
   diceAnimating = false;
   clearTransientFx();
+  pendingNetStates = [];
   diceStats = new Array(13).fill(0);
 
   // 以降のサーバメッセージ（状態更新・切断等）は main 側で処理する。
@@ -2252,7 +2308,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
   // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
   if (!boardEventsAttached) {
-    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch);
+    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct);
     attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
   }
@@ -2274,6 +2330,20 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
 let reconnectTries = 0;
 const MAX_RECONNECT = 6;
+
+// 再接続のスケジュールを一本化する。WebSocket の接続失敗は error と close の両方が
+// 発火するため、素朴に両方から setTimeout すると試行が指数的に分岐し、複数ソケットが
+// 並行接続 → 孤児クライアントがブロードキャストを二重処理（SE二重・演出二重）し得る。
+let reconnectTimer: number | null = null;
+function scheduleReconnect(): void {
+  if (!netMode) return;
+  if (reconnectTimer != null) return; // 既にスケジュール済みなら重複させない
+  const delay = Math.min(500 * Math.max(1, reconnectTries), 3000);
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    attemptReconnect();
+  }, delay);
+}
 
 function showReconnecting(): void {
   let el = document.getElementById('reconnect-banner');
@@ -2300,16 +2370,17 @@ function attemptReconnect(): void {
   showReconnecting();
   const client = new LanClient(handleNetMessage);
   client.setOnClose(() => {
-    // 再接続中にまた切れたらバックオフして再試行。
-    const delay = Math.min(500 * reconnectTries, 3000);
-    window.setTimeout(attemptReconnect, delay);
+    // 再接続中にまた切れたらバックオフして再試行（error/close の二重発火は scheduleReconnect が吸収）。
+    scheduleReconnect();
   });
   client.connect().then(() => {
+    // 旧クライアントが残っていれば閉じる（孤児接続の二重メッセージ処理を防ぐ。
+    // close() は closedByUs を立てるため旧側の onClose → 再接続ループは発火しない）。
+    if (lanClient && lanClient !== client) lanClient.close();
     lanClient = client;
     client.send({ t: 'resume', code: info.code, you: info.you, token: info.token });
   }).catch(() => {
-    const delay = Math.min(500 * reconnectTries, 3000);
-    window.setTimeout(attemptReconnect, delay);
+    scheduleReconnect();
   });
 }
 
@@ -2339,6 +2410,7 @@ function handleNetMessage(msg: import('./net/protocol').ServerMessage): void {
       if (!netMode) { startLanGame(msg.state, msg.you, lanClient!); break; }
       viewerPlayerId = msg.you;
       state = msg.state;
+      pendingNetStates = []; // 正本を受け直したので保留中の旧配信は破棄
       redraw();
       break;
     case 'state':
@@ -2415,9 +2487,19 @@ function playActionSE(action: Action): void {
   }
 }
 
+// LAN: ダイス演出中に届いた後続のサーバ配信を一時保留するキュー。
+// 即時適用すると (1) 演出が打ち切られ手札が先に増えて見える、(2) 残った settle タイマーが
+// 古い prevState と最新 state を比較して VP ポップ等を二重再生する、ため演出終了後に順次適用する。
+let pendingNetStates: Array<{ action: Action | undefined; state: GameState }> = [];
+
 // LAN: サーバ配信の新 state を反映し、アクション種別に応じた演出を再現する。
 // ローカル applyAction は行わない（正本はサーバ）。CPU/ログ処理も走らせない。
 function applyNetState(action: Action | undefined, newState: GameState): void {
+  if (diceAnimating) {
+    pendingNetStates.push({ action, state: newState });
+    return;
+  }
+  const gen = gameGeneration;
   const prevState = state;
   state = newState;
 
@@ -2455,7 +2537,16 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
   }
 
   // 再描画＋演出（dispatch と共通本体）。LAN では後続スケジューリングはしない（サーバが駆動）。
-  runWithDiceAnim(action, () => runTransitionFx(prevState, action, diceTotal, robberFromTile));
+  // 世代ガード: ダイス演出中のホーム復帰後に旧ゲームの演出を走らせない。
+  runWithDiceAnim(action, () => {
+    if (gen !== gameGeneration) return;
+    runTransitionFx(prevState, action, diceTotal, robberFromTile);
+    // 演出中に溜まった配信を順次適用（後続が ROLL_DICE なら再び演出に入りキューが続く）。
+    while (pendingNetStates.length > 0 && !diceAnimating) {
+      const next = pendingNetStates.shift()!;
+      applyNetState(next.action, next.state);
+    }
+  });
 }
 
 // LAN: クライアント操作をサーバへ送る（ローカル state は変更しない）。
@@ -2478,7 +2569,20 @@ function startGame(cfg: HomeConfig): void {
   gameGeneration++;
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
 
-  netMode = false; // CPU対戦はローカル完結（LAN状態を確実に解除）
+  // CPU対戦はローカル完結。LAN終了画面からの「もう一度プレイ」等で LAN セッションが残って
+  // いると、古いハンドラに後続の 'state' 配信が届いてローカルゲームを上書きするため確実に破棄する。
+  if (netMode || lanClient) {
+    lanClient?.close();
+    lanClient = null;
+    viewerPlayerId = null;
+  }
+  netMode = false;
+  reconnectTries = 0;
+  if (reconnectTimer != null) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  hideReconnecting();
+  clearResume();
+  pendingNetStates = [];
+  inGame = true;
   lastConfig = cfg;
   state = initGameState(cfg);
   buildMode = 'idle';
@@ -2503,6 +2607,7 @@ function startGame(cfg: HomeConfig): void {
       () => buildMode,
       setUIPhase,
       dispatch,
+      boardCanAct,
     );
     attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
@@ -2520,6 +2625,8 @@ function startGame(cfg: HomeConfig): void {
 function returnToHome(): void {
   // AI タイムアウトを無効化
   gameGeneration++;
+  inGame = false;
+  pendingNetStates = [];
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
   document.getElementById('zoom-reset')?.remove(); document.getElementById('place-confirm')?.remove();
   boardViewport = { scale: 1, tx: 0, ty: 0 };
@@ -2538,6 +2645,7 @@ function returnToHome(): void {
   }
   // 明示的にホームへ戻ったので再接続情報は破棄（自動復帰しない）。
   reconnectTries = 0;
+  if (reconnectTimer != null) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   hideReconnecting();
   clearResume();
 
@@ -2558,14 +2666,15 @@ function returnToHome(): void {
 // 重い再描画（レイアウト判定込み）は ~100ms デバウンスして連打を抑える。
 let viewportChangeTimer: ReturnType<typeof setTimeout> | null = null;
 function onViewportChange(): void {
-  if (!state) return;
+  // ホーム画面では何もしない（redraw→armCpuWatchdog 経由で放棄したゲームが再起動するのを防ぐ）。
+  if (!inGame || !state) return;
   syncBoardDrawWidth();
   if (viewportChangeTimer) clearTimeout(viewportChangeTimer);
   viewportChangeTimer = setTimeout(() => {
     viewportChangeTimer = null;
     // ダイス演出中の再描画は避ける。出目が止まる前に手札カウントが更新され「資源が
     // 先に増えて見える」ため。演出完了時に runTransitionFx が必ず再描画するので取り残されない。
-    if (state && !diceAnimating) redraw();
+    if (inGame && state && !diceAnimating) redraw();
   }, 100);
 }
 window.addEventListener('resize', onViewportChange);

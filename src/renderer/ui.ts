@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId, ResourceType, Player, ResourceHand } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
-import { calcVP, calcPublicVP, calcLongestRoad } from '../engine/scoring';
+import { calcVP, calcPublicVP } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
@@ -1159,7 +1159,9 @@ export function renderUI(
   const laHolder = state.largestArmyHolder ? state.players[state.largestArmyHolder] : null;
   const t1 = el('span', 'turn-title-item');
   t1.textContent = lrHolder
-    ? `🛤最長 ${lrHolder.name}(${calcLongestRoad(state, state.longestRoadHolder as PlayerId)})`
+    // エンジンが updateLongestRoad で全プレイヤー分を維持するキャッシュを参照する
+    // （毎 redraw の DFS 再計算は道が密集した終盤にモーダル操作のジャンクになる）。
+    ? `🛤最長 ${lrHolder.name}(${lrHolder.longestRoadLength})`
     : '🛤最長 未獲得';
   const t2 = el('span', 'turn-title-item');
   t2.textContent = laHolder ? `⚔最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : '⚔最大騎士 未獲得';
@@ -1431,7 +1433,7 @@ function buildPlayerPanel(
 
   // 称号の現在値＋残コマ数（公開情報。未使用発展カードや手札内訳は出さない）
   const meta = el('div', 'panel-meta');
-  const lrLen = calcLongestRoad(state, pId);
+  const lrLen = player.longestRoadLength; // エンジン維持のキャッシュ（calcLongestRoad の再計算は不要）
   const lrItem = el('span', `panel-meta-item${player.hasLongestRoad ? ' held' : ''}`);
   lrItem.textContent = `🛤${lrLen}`;
   lrItem.title = player.hasLongestRoad

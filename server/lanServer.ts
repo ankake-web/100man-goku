@@ -368,7 +368,10 @@ function applyCpuStep(room: Room, pid: PlayerId, action: Action): Action['type']
  * @param fallbackPort  address() が取れない場合のポート（既定 5173）
  */
 export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: LanServerOptions = {}): void {
-  const wss = new WebSocketServer({ noServer: true });
+  // perMessageDeflate: state ブロードキャストの73%は開始後不変の盤面ジオメトリ（約26KB/通）で、
+  // 反復的な JSON は deflate で概ね 1/5〜1/10 に縮む。モバイル回線でのオンライン対戦の帯域と
+  // 受信遅延を大きく削減する（プロトコル・クライアント変更は不要）。
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: { threshold: 1024 } });
   // タイミング設定（テストでは短縮値を注入。未指定なら本番既定値）。
   const graceMs = opts.graceMs ?? DISCONNECT_GRACE_MS;
   const cpuStepMs = opts.cpuStepMs ?? CPU_STEP_MS;
