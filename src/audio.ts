@@ -308,6 +308,10 @@ function playSE(type: SEType): void {
 
   try {
     const ctx = getAudioCtx();
+    // suspended 中は currentTime が凍結され、積んだ SE が resume 成功時に同時刻から
+    // 一斉再生されてバースト音になる。鳴らせない間の SE は古い情報なので破棄する
+    // （getAudioCtx が resume を試みた直後の再判定。次のジェスチャ後の SE から鳴る）。
+    if (ctx.state !== 'running') return;
     const mg = ctx.createGain();
     mg.gain.value = _seVolume;
     mg.connect(ctx.destination);

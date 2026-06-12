@@ -2374,6 +2374,11 @@ function attemptReconnect(): void {
     scheduleReconnect();
   });
   client.connect().then(() => {
+    // ハンドシェイク中にホーム復帰やローカル新ゲーム開始（netMode=false）が起きた場合、
+    // この接続は誰からも参照されておらず returnToHome/startGame の後始末では閉じられない。
+    // ここで resume を送ると放棄した LAN ゲームが 'started' で復活し、進行中のローカル
+    // ゲームやホーム画面を乗っ取るため、破棄して終了する。
+    if (!netMode) { client.close(); return; }
     // 旧クライアントが残っていれば閉じる（孤児接続の二重メッセージ処理を防ぐ。
     // close() は closedByUs を立てるため旧側の onClose → 再接続ループは発火しない）。
     if (lanClient && lanClient !== client) lanClient.close();

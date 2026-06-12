@@ -1,5 +1,15 @@
 # 仕上げ作業ログ（finishing-touches ブランチ）
 
+## マージ前最終レビュー（2026-06-13）
+
+第2回監査の修正一式を main へマージする直前に、4観点（エンジン正しさ/LAN同期/UIライフサイクル/オーディオ・モバイル）のレビュー＋指摘ごとに3視点の敵対的検証を実施。生7件中 **3件確認**（4件棄却）、全て修正済み。検証: `tsc --noEmit` 緑・531テスト緑・`npm run build` 緑。
+
+| 重大度 | 修正 | 場所 |
+|---|---|---|
+| 中 | 再接続ハンドシェイク中（connect ペンディング）にホーム復帰→ローカル新ゲームを始めると、遅れて成立した接続が resume を送り、放棄したLANゲームが 'started' でローカルゲーム/ホーム画面を乗っ取る。`connect().then()` 冒頭に netMode ガードを追加し破棄 | `main.ts attemptReconnect` |
+| 低 | `.mini-panel.mine`（後方・同特異度の `animation` 指定）が vp-gain-flash / bonus-flash を source order で打ち消し、自分の手番中＝VP獲得の主ケースでミニパネルが光らなかった。`.mine` 複合セレクタを明示（reduced-motion 側も対称に） | `style.css` |
+| 低 | suspended な AudioContext に SE を積むと currentTime 凍結で同時刻に蓄積され、resume 成功時に一斉再生されバースト音になる（CPU先行手番→初タップ時）。`playSE` で running 以外は破棄 | `audio.ts` |
+
 ## 第2回 多エージェント監査と修正（2026-06-12）
 
 6観点（公式ルール突合/エンジン境界/AI品質/ネット同期/UI状態/性能）の監査で **16件確認**（7件は敵対的検証で棄却）＋手動精読で**エンジンガード漏れ2件**を発見し、全て修正。検証: `tsc --noEmit`（src/test 両方）緑・**531テスト**（+11）緑・`npm run build` 緑・Chromium スモーク（起動→CPU対戦→ホーム復帰→ゾンビ進行なし→再開始、コンソールエラー0）。
@@ -22,7 +32,7 @@
 > 検証は各コミットで `npx tsc --noEmit` / `npx vitest run`（**520件 緑**）/ `npm run build`（緑）を確認済み。
 > 実機ブラウザ（Chromium / Playwright）で起動・CPU対戦開始・開拓地配置・ホーム復帰→再開を通し、**コンソールエラー無し**を確認。
 
-作業ブランチ: `finishing-touches`（`main` から分岐。**push はしていない**）。
+作業ブランチ: `finishing-touches`（`main` から分岐）。2026-06-13 に `main` へマージし `origin` へ push 済み。
 
 ---
 
