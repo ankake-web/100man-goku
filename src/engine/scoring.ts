@@ -67,49 +67,57 @@ export function calcPublicVP(state: GameState, playerId: PlayerId): number {
 // ============================================================
 
 /**
- * 指定プレイヤーの最長連続道路長を DFS で計算する。
+ * 指定プレイヤーの最長連続「交易路」長を DFS で計算する（道＋船・航海者対応）。
  *
  * 切断ルール（rules.md §7-2）:
- *   - 相手プレイヤーの建物がある頂点は通過不可（道路が切断される）。
+ *   - 相手プレイヤーの建物がある頂点は通過不可（交易路が切断される）。
  *   - 自分の建物がある頂点は通過可能。
+ * 道↔船の切替（航海者 §船）:
+ *   - 道と船は種別が異なるため、連続させるには切替点に自分の建物が必要。
+ *     建物の無い頂点では同種（道→道 / 船→船）のみ繋がる。基本ゲームは船が無く常に道のみ。
  *
  * アルゴリズム:
- *   各自分の道 Edge を起点に DFS し、使用済み辺を visited に入れて
+ *   各自分の道/船 Edge を起点に DFS し、使用済み辺を visited に入れて
  *   到達可能な最長パスを求める。全起点の最大値を返す。
  */
 export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
-  // 自分の道だけ収集
-  const myEdges = new Set<EdgeId>();
+  // 自分の道・船を種別付きで収集（船は航海者拡張）。
+  const myEdges = new Map<EdgeId, 'road' | 'ship'>();
   for (const [eid, edge] of Object.entries(state.edges)) {
-    if (edge.road?.playerId === playerId) myEdges.add(eid);
+    if (edge.road?.playerId === playerId) myEdges.set(eid, 'road');
+    else if (edge.ship?.playerId === playerId) myEdges.set(eid, 'ship');
   }
   if (myEdges.size === 0) return 0;
 
-  // 相手の建物がある頂点は通過不可（道路が切断される）。自分の建物は通過可。
+  // 相手の建物がある頂点は通過不可（交易路が切断される）。自分の建物は通過可＆道↔船の切替点。
   const isBlocked = (vid: VertexId): boolean => {
     const v = state.vertices[vid];
     return v?.building != null && v.building.playerId !== playerId;
   };
+  const isOwnBuilding = (vid: VertexId): boolean =>
+    state.vertices[vid]?.building?.playerId === playerId;
 
   let longest = 0;
 
   // 「方向付き」DFS。tipVid（フロンティア頂点）から1本ずつ前方にだけ伸ばす。
-  // これにより分岐点で枝を合算してしまうバグを防ぐ（直前に来た頂点へは戻らない）。
-  // visited は使用済みの辺の集合（同じ道を2回数えない）。
-  const extend = (tipVid: VertexId, visited: Set<EdgeId>, lengthSoFar: number): number => {
+  // fromType は tipVid へ来た辺の種別。種別が変わる接続は自分の建物のある頂点でのみ許す。
+  const extend = (tipVid: VertexId, fromType: 'road' | 'ship', visited: Set<EdgeId>, lengthSoFar: number): number => {
     let best = lengthSoFar;
-    // 相手建物のある頂点で道は分断される（その先へは伸ばせない）
     if (isBlocked(tipVid)) return best;
     const tip = state.vertices[tipVid];
     if (!tip) return best;
+    const canSwitch = isOwnBuilding(tipVid);
     for (const nextEid of tip.adjacentEdgeIds) {
-      if (!myEdges.has(nextEid)) continue;
+      const nextType = myEdges.get(nextEid);
+      if (!nextType) continue;
       if (visited.has(nextEid)) continue;
+      // 道↔船の切替は自分の建物のある頂点でのみ。同種はどこでも繋がる。
+      if (nextType !== fromType && !canSwitch) continue;
       const nextEdge = state.edges[nextEid]!;
       const otherVid = nextEdge.vertexIds[0] === tipVid
         ? nextEdge.vertexIds[1] : nextEdge.vertexIds[0];
       visited.add(nextEid);
-      const count = extend(otherVid!, visited, lengthSoFar + 1);
+      const count = extend(otherVid!, nextType, visited, lengthSoFar + 1);
       if (count > best) best = count;
       visited.delete(nextEid);
     }
@@ -117,12 +125,12 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
   };
 
   // 各辺をどちらの端からも起点として、前方へ伸ばした最長を取る
-  for (const eid of myEdges) {
+  for (const [eid, type] of myEdges) {
     const edge = state.edges[eid]!;
     for (const startVid of edge.vertexIds) {
       const otherVid = edge.vertexIds[0] === startVid ? edge.vertexIds[1] : edge.vertexIds[0];
       const visited = new Set<EdgeId>([eid]);
-      const count = extend(otherVid!, visited, 1);
+      const count = extend(otherVid!, type, visited, 1);
       if (count > longest) longest = count;
     }
   }
