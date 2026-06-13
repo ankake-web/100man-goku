@@ -22,7 +22,7 @@ export type UIPhase =
   | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
   | { type: 'goldChoice'; playerId: PlayerId; slots: (ResourceType | null)[] }
   | { type: 'monopoly'; resource: ResourceType | null }
-  | { type: 'robberTarget'; tileId: string; opponents: PlayerId[] }
+  | { type: 'robberTarget'; tileId: string; opponents: PlayerId[]; kind?: 'robber' | 'pirate' }
   | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road' | 'ship'; targetId: string }
   | { type: 'playerTradeOffer'; give: ResourceHand; receive: ResourceHand; targetPids: PlayerId[] };
 
@@ -247,11 +247,11 @@ function buildRobberTargetUI(
   dispatch: (a: Action) => void,
 ): HTMLDivElement {
   const div = el('div', 'modal-panel');
-  const header = el('div', 'modal-header');
-  header.textContent = '強盗：盗む相手を選んでください';
-  div.appendChild(header);
-
   if (uiPhase.type !== 'robberTarget') return div;
+  const isPirate = uiPhase.kind === 'pirate';
+  const header = el('div', 'modal-header');
+  header.textContent = isPirate ? '🏴‍☠️ 海賊：奪う相手を選んでください' : '🦹 強盗：盗む相手を選んでください';
+  div.appendChild(header);
 
   const row = el('div', 'modal-res-row');
   for (const opponentPid of uiPhase.opponents) {
@@ -265,7 +265,9 @@ function buildRobberTargetUI(
       `${opponent.name}（手札${totalCards}枚）`,
       'btn-build',
       false,
-      () => dispatch({ type: 'MOVE_ROBBER', tileId: uiPhase.tileId, stealFromPlayerId: opponentPid }),
+      () => dispatch(isPirate
+        ? { type: 'MOVE_PIRATE', tileId: uiPhase.tileId, stealFromPlayerId: opponentPid }
+        : { type: 'MOVE_ROBBER', tileId: uiPhase.tileId, stealFromPlayerId: opponentPid }),
     );
     btn.style.borderLeft = `4px solid ${color}`;
     row.appendChild(btn);

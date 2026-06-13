@@ -21,6 +21,8 @@ export interface BoardRenderOptions {
   previewEdgeId?: string;
   // 船の仮置きプレビュー（確定待ち）。
   previewShipEdgeId?: string;
+  // 航海者: 海賊コマのいる海タイルID（🏴‍☠️ マーカーを描く）。
+  piratePosition?: string;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
 }
@@ -202,6 +204,21 @@ function renderTile(
       rg.appendChild(eye);
     }
     g.appendChild(rg);
+  }
+
+  // 海賊コマ（航海者）: 海タイルに 🏴‍☠️ マーカー。盗賊と排他（海タイルに盗賊は乗らない）。
+  if (opts?.piratePosition === tile.id) {
+    const pg = svgEl('g');
+    pg.classList.add('pirate');
+    const shadow = svgEl('ellipse');
+    setAttrs(shadow, { cx, cy: cy + 11, rx: 9, ry: 2.6, fill: 'rgba(0,0,0,0.4)' });
+    pg.appendChild(shadow);
+    const flag = svgEl('text');
+    flag.classList.add('pirate-flag');
+    setAttrs(flag, { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': '20' });
+    flag.textContent = '🏴‍☠️';
+    pg.appendChild(flag);
+    g.appendChild(pg);
   }
 
   return g;

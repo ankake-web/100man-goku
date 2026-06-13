@@ -116,7 +116,8 @@ export function cpuFallbackAction(state: GameState, pid: PlayerId): Action {
   if (state.turnPhase === 'PRE_ROLL') return { type: 'ROLL_DICE' };
   if (state.turnPhase === 'ROBBER') {
     const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
-    const tileId = Object.keys(state.tiles).find(t => t !== robberTile) ?? robberTile!;
+    // 強盗は陸タイルのみ（海を除外）。
+    const tileId = Object.keys(state.tiles).find(t => t !== robberTile && state.tiles[t]?.type !== 'sea') ?? robberTile!;
     return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
   }
   if (state.turnPhase === 'DISCARD') {

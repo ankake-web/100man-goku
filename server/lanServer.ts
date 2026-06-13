@@ -43,8 +43,8 @@ const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
   // 航海者: 船の移動（航海）/ 金タイル産出の任意資源選択
   'MOVE_SHIP', 'CHOOSE_GOLD',
-  // 7 / 捨て札 / 盗賊（MVP4）
-  'MOVE_ROBBER', 'DISCARD_RESOURCES',
+  // 7 / 捨て札 / 盗賊 / 海賊（MVP4・航海者）
+  'MOVE_ROBBER', 'MOVE_PIRATE', 'DISCARD_RESOURCES',
   // 交易（MVP4）
   'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
   // 発展カード使用（MVP4）

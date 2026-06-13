@@ -15,7 +15,7 @@ import {
   canBuildCity, buildCity,
   hasEnoughResources,
 } from './actions';
-import { moveRobber, discardResources, stealResource, getRobbablePlayerIds, discardCount } from './robber';
+import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount } from './robber';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP } from './scoring';
 import { newIslandBonusRep } from './islands';
@@ -224,6 +224,8 @@ export function applyAction(
       if (state.turnPhase !== 'ROBBER') throw new Error('MOVE_ROBBER: not in ROBBER phase');
       const { tileId, stealFromPlayerId } = action;
 
+      // 強盗は陸タイルのみ（海は海賊の領分）。これが無いと盗賊が海上で空振りになる。
+      if (state.tiles[tileId]?.type === 'sea') throw new Error('MOVE_ROBBER: robber cannot move onto a sea tile (use the pirate)');
       // 強盗は必ず現在地とは別ヘクスへ移動する（標準ルール）。
       const currentRobberTileId = Object.keys(state.tiles).find(tid => state.tiles[tid]!.hasRobber);
       if (currentRobberTileId === tileId) throw new Error('MOVE_ROBBER: must move to a different tile');
@@ -238,6 +240,29 @@ export function applyAction(
       }
 
       // 騎士カードをダイス前に使った場合はPRE_ROLLへ戻る（ダイスをまだ振っていない）
+      const nextPhase = state.diceRolledThisTurn ? 'TRADE_BUILD' : 'PRE_ROLL';
+      return { ...next, turnPhase: nextPhase };
+    }
+
+    // ----------------------------------------------------------
+    // MOVE_PIRATE（航海者・海賊＝盗賊の海版）。7/騎士で盗賊の代わりに動かせる。
+    // ----------------------------------------------------------
+    case 'MOVE_PIRATE': {
+      if (state.turnPhase !== 'ROBBER') throw new Error('MOVE_PIRATE: not in ROBBER phase');
+      const { tileId, stealFromPlayerId } = action;
+      const tile = state.tiles[tileId];
+      if (!tile || tile.type !== 'sea') throw new Error('MOVE_PIRATE: must target a sea tile');
+      if (state.piratePosition === tileId) throw new Error('MOVE_PIRATE: must move to a different tile');
+
+      let next = movePirate(state, tileId);
+
+      if (stealFromPlayerId != null) {
+        // 盗む相手は「海賊タイルに隣接する船を持つ相手」に限る。
+        if (!getPirateRobbablePlayerIds(next, tileId, pid).includes(stealFromPlayerId))
+          throw new Error('MOVE_PIRATE: steal target has no ship adjacent to the pirate tile');
+        next = stealResource(next, pid, stealFromPlayerId, rng);
+      }
+
       const nextPhase = state.diceRolledThisTurn ? 'TRADE_BUILD' : 'PRE_ROLL';
       return { ...next, turnPhase: nextPhase };
     }

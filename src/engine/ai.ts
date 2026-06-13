@@ -298,12 +298,10 @@ function getDifficulty(state: GameState, pid: PlayerId): AiDifficulty {
   return state.players[pid]?.aiDifficulty ?? 'normal';
 }
 
-/** 強盗の現在地以外の最初のタイルIDを返す（フォールバック用）。 */
+/** 強盗の現在地以外の最初の陸タイルIDを返す（フォールバック用）。海タイルは除外（陸のみ）。 */
 function fallbackTileId(state: GameState, excludeId: string | undefined): string {
-  return (
-    Object.keys(state.tiles).find(tid => tid !== excludeId) ??
-    Object.keys(state.tiles)[0]!
-  );
+  const land = Object.keys(state.tiles).filter(tid => state.tiles[tid]?.type !== 'sea');
+  return land.find(tid => tid !== excludeId) ?? land[0] ?? Object.keys(state.tiles)[0]!;
 }
 
 // ============================================================
@@ -678,8 +676,9 @@ function robberHexScore(state: GameState, tileId: string, pid: PlayerId): number
  */
 export function chooseRobberHex(state: GameState, pid: PlayerId, rng: () => number = Math.random): string {
   const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
+  // 強盗は陸タイルのみ（海は海賊の領分）。砂漠・現在地・海を除外。
   const candidates = Object.keys(state.tiles).filter(
-    tid => tid !== current && state.tiles[tid]?.type !== 'desert',
+    tid => tid !== current && state.tiles[tid]?.type !== 'desert' && state.tiles[tid]?.type !== 'sea',
   );
   const scored = candidates.filter(tid => robberHexScore(state, tid, pid) > -Infinity);
   if (scored.length > 0) {
@@ -707,10 +706,10 @@ function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number):
   const difficulty = getDifficulty(state, pid);
 
   if (difficulty === 'weak') {
-    // 弱: 現在地以外の非砂漠からランダム。盗む相手は選ばない。
+    // 弱: 現在地以外の非砂漠・非海の陸タイルからランダム。盗む相手は選ばない。
     const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
     const candidates = Object.keys(state.tiles).filter(
-      tid => tid !== current && state.tiles[tid]?.type !== 'desert',
+      tid => tid !== current && state.tiles[tid]?.type !== 'desert' && state.tiles[tid]?.type !== 'sea',
     );
     const tileId = candidates.length > 0
       ? candidates[Math.floor(rng() * candidates.length)]!

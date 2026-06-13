@@ -99,6 +99,32 @@ export function moveRobber(state: GameState, tileId: TileId): GameState {
 }
 
 // ============================================================
+// 海賊（航海者・盗賊の海版）
+// ============================================================
+
+/** 海賊コマを指定の海タイルへ移動する（piratePosition を更新）。 */
+export function movePirate(state: GameState, tileId: TileId): GameState {
+  return { ...state, piratePosition: tileId };
+}
+
+/**
+ * 海賊タイルに隣接する辺に「船」を持つ他プレイヤーの一覧（重複なし）。
+ * 海賊は建物ではなく船から奪う。手札0枚も含む（呼び出し側で選択可否を判断）。
+ */
+export function getPirateRobbablePlayerIds(
+  state: GameState,
+  tileId: TileId,
+  activePlayerId: PlayerId,
+): PlayerId[] {
+  const seen = new Set<PlayerId>();
+  for (const eid of state.tileToEdges[tileId] ?? []) {
+    const pid = state.edges[eid]?.ship?.playerId;
+    if (pid && pid !== activePlayerId) seen.add(pid);
+  }
+  return [...seen];
+}
+
+// ============================================================
 // 盗み
 // ============================================================
 

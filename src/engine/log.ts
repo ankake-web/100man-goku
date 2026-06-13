@@ -94,6 +94,12 @@ export function buildActionLog(
       push(actor, 'ROBBER', msg);
       break;
     }
+    case 'MOVE_PIRATE': {
+      let msg = `🏴‍☠️ ${nm(actor)} が海賊を移動`;
+      if (action.stealFromPlayerId) msg += `し ${nm(action.stealFromPlayerId)} から1枚奪った`; // 種類は秘匿
+      push(actor, 'ROBBER', msg);
+      break;
+    }
     case 'DISCARD_RESOURCES': {
       // 捨てた枚数のみ（内容は秘匿）
       const count = RESOURCE_TYPES.reduce((s, r) => s + (action.resources[r] ?? 0), 0);

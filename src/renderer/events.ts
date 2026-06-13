@@ -4,6 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
+import { getPirateRobbablePlayerIds } from '../engine/robber';
 import type { UIPhase } from './ui';
 import type { BoardViewport } from './board';
 
@@ -465,7 +466,22 @@ function handleTileClick(
   dispatch: (a: Action) => void,
 ): void {
   if (state.phase !== 'MAIN' || state.turnPhase !== 'ROBBER') return;
+  const tile = state.tiles[tileId];
+  if (!tile) return;
 
+  // ---- 海タイル: 海賊を移動（隣接船の所有者から奪う）----
+  if (tile.type === 'sea') {
+    if (state.piratePosition === tileId) return; // 同じ場所へは動かせない
+    const opponents = getPirateRobbablePlayerIds(state, tileId, pid);
+    if (opponents.length <= 1) {
+      dispatch({ type: 'MOVE_PIRATE', tileId, stealFromPlayerId: opponents[0] ?? null });
+    } else {
+      setUIPhase({ type: 'robberTarget', tileId, opponents, kind: 'pirate' });
+    }
+    return;
+  }
+
+  // ---- 陸タイル: 盗賊を移動（隣接建物の所有者から盗む）----
   const currentRobberTile = Object.values(state.tiles).find(t => t.hasRobber);
   if (currentRobberTile?.id === tileId) return;
 
@@ -485,7 +501,7 @@ function handleTileClick(
     });
   } else {
     // 複数の相手がいる場合：UIで選択させる
-    setUIPhase({ type: 'robberTarget', tileId, opponents });
+    setUIPhase({ type: 'robberTarget', tileId, opponents, kind: 'robber' });
   }
 }
 

@@ -516,9 +516,10 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
 
   if (state.phase === 'MAIN') {
     if (state.turnPhase === 'ROBBER') {
+      // 盗賊(陸)＋海賊(海)の移動先。現在地（盗賊タイル/海賊タイル）は除外。
       const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
       opts.validTileIds = new Set(
-        Object.keys(state.tiles).filter(tid => tid !== robberTile),
+        Object.keys(state.tiles).filter(tid => tid !== robberTile && tid !== state.piratePosition),
       );
       return opts;
     }
@@ -695,6 +696,7 @@ function redraw(skipBoard = false): void {
       const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
       const opts: BoardRenderOptions = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
       opts.viewport = boardViewport;
+      if (state.piratePosition) opts.piratePosition = state.piratePosition;
       renderBoard(svgBoard, state, opts);
     }
     renderUI(
@@ -714,6 +716,7 @@ function redraw(skipBoard = false): void {
     const humanTurn = state.players[currentPid(state)]?.type === 'human';
     const opts: BoardRenderOptions = humanTurn ? withPreview(computeHighlights(state, buildMode)) : {};
     opts.viewport = boardViewport;
+    if (state.piratePosition) opts.piratePosition = state.piratePosition;
     renderBoard(svgBoard, state, opts);
   }
   renderUI(uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch);
@@ -1265,7 +1268,8 @@ function safeFallbackAction(): Action | null {
   if (!cur || state.players[cur]?.type !== 'ai') return null; // 人間の番は強制しない
   if (state.turnPhase === 'ROBBER') {
     const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
-    const tileId = Object.keys(state.tiles).find(t => t !== robberTile);
+    // 強盗は陸タイルのみ（海を除外しないと MOVE_ROBBER が弾かれ進行が止まりうる）。
+    const tileId = Object.keys(state.tiles).find(t => t !== robberTile && state.tiles[t]?.type !== 'sea');
     if (tileId) return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
     return null;
   }
@@ -2398,7 +2402,7 @@ function boardCanAct(): boolean {
 const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'MOVE_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
-  'MOVE_ROBBER', 'DISCARD_RESOURCES', 'CHOOSE_GOLD',
+  'MOVE_ROBBER', 'MOVE_PIRATE', 'DISCARD_RESOURCES', 'CHOOSE_GOLD',
   'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
   'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
   'FINISH_ROAD_BUILDING',
@@ -2603,7 +2607,8 @@ function playActionSE(action: Action): void {
     case 'PLAY_ROAD_BUILDING':
     case 'PLAY_YEAR_OF_PLENTY':
     case 'PLAY_MONOPOLY':     playSE('devCard'); break;
-    case 'MOVE_ROBBER':       playSE('robber'); break;
+    case 'MOVE_ROBBER':
+    case 'MOVE_PIRATE':       playSE('robber'); break;
     case 'CONFIRM_TRADE':     playSE('tradeOk'); break;
     case 'RESPOND_TRADE':
       if ((action as { response: { status: string } }).response.status === 'REJECT') playSE('tradeNg');

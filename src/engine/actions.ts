@@ -8,7 +8,7 @@ import type {
 import { BUILD_COSTS, RESOURCE_TYPES } from '../constants';
 import {
   isDistanceRuleOk, isEdgeConnectedForPiece,
-  isSeaEdge, isLandEdge, isLandVertex,
+  isSeaEdge, isLandEdge, isLandVertex, edgeTileIds,
 } from './board';
 import { isHomeIslandVertex } from './islands';
 
@@ -92,6 +92,8 @@ export function canBuildShip(state: GameState, playerId: PlayerId, edgeId: EdgeI
   if (edge.road != null || edge.ship != null) return false;
   // 船は海に面した辺のみ。
   if (!isSeaEdge(edge, state.vertices, state.tiles)) return false;
+  // 航海者: 海賊コマのいる海タイルに面した辺には船を建設できない（建設封鎖）。
+  if (state.piratePosition != null && edgeTileIds(edge, state.vertices).includes(state.piratePosition)) return false;
 
   const free = isSetupPhase(state);
   if (!free && !hasEnoughResources(player.hand, BUILD_COSTS.ship)) return false;

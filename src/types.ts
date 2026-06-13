@@ -226,6 +226,9 @@ export interface GameState {
   roadBuildingRoadsRemaining: number;
   // 航海者: このターンに船を移動したか（航海は1ターン1回）。END_TURN でリセット。
   shipMovedThisTurn?: boolean;
+  // 航海者: 海賊コマの現在地（海タイルID）。未配置は undefined。盗賊の海版で、隣接する
+  // 自分の船建設を封じ、隣接船の所有者から1枚奪える。基本ゲームでは未使用。
+  piratePosition?: TileId;
   // このターンに騎士・進歩カードを使ったか（1ターン1枚制限）
   devCardPlayedThisTurn: boolean;
 
@@ -269,6 +272,7 @@ export interface LogEntry {
 export type Action =
   | { type: 'ROLL_DICE' }
   | { type: 'MOVE_ROBBER';         tileId: TileId; stealFromPlayerId: PlayerId | null }
+  | { type: 'MOVE_PIRATE';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand> }
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
   | { type: 'BUILD_SHIP';          edgeId: EdgeId }
