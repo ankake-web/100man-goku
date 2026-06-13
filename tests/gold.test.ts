@@ -5,7 +5,7 @@ import { createRng } from '../src/engine/setup';
 import { applyAction } from '../src/engine/game';
 import { computeGoldPicks } from '../src/engine/dice';
 import { chooseAction } from '../src/engine/ai';
-import { RESOURCE_TYPES } from '../src/constants';
+import { RESOURCE_TYPES, makeHand } from '../src/constants';
 import type { GameState, VertexId } from '../src/types';
 
 const SPECS: PlayerSpec[] = [
@@ -100,6 +100,60 @@ describe('CHOOSE_GOLD の解決', () => {
     expect(() => applyAction(dry, { type: 'CHOOSE_GOLD', playerId: 'player1', resources: { ore: 2 } })).toThrow();
     const notGold: GameState = { ...s, turnPhase: 'TRADE_BUILD' };
     expect(() => applyAction(notGold, { type: 'CHOOSE_GOLD', playerId: 'player1', resources: { ore: 2 } })).toThrow();
+  });
+});
+
+describe('GOLD 多人数×バンク枯渇でソフトロックしない（レビュー指摘の修正）', () => {
+  // 金タイルの2頂点に player1/player2 の建物を置き、出目10を振る state を作る。
+  function twoOwners(bank: ReturnType<typeof makeHand>): GameState {
+    const g = seafarers();
+    const vids = g.tileToVertices[GOLD_TILE] ?? [];
+    const [v1, v2] = vids as VertexId[];
+    return {
+      ...g, phase: 'MAIN', turnPhase: 'PRE_ROLL', setupSubPhase: null, currentPlayerIndex: 0, bank,
+      vertices: {
+        ...g.vertices,
+        [v1!]: { ...g.vertices[v1!]!, building: { type: 'settlement', playerId: 'player1' } },
+        [v2!]: { ...g.vertices[v2!]!, building: { type: 'settlement', playerId: 'player2' } },
+      },
+    };
+  }
+
+  it('owed 合計はバンク総在庫を超えない（逐次キャップ）', () => {
+    // バンク総在庫1・2人 owed → 取れる人だけ owed になり、解決して TRADE_BUILD へ。
+    const s = twoOwners(makeHand({ wool: 1 }));
+    const rolled = applyAction(s, { type: 'ROLL_DICE' }, () => 0.7); // 5+5=10（金タイルの出目）
+    expect(rolled.turnPhase).toBe('GOLD');
+    const owed = rolled.pendingGoldChoice ?? {};
+    const sum = Object.values(owed).reduce((a, b) => a + b, 0);
+    expect(sum).toBeLessThanOrEqual(1); // バンク総在庫を超えない
+    let st = rolled;
+    for (const pid of Object.keys(owed)) {
+      st = applyAction(st, { type: 'CHOOSE_GOLD', playerId: pid, resources: { wool: owed[pid] } });
+    }
+    expect(st.turnPhase).toBe('TRADE_BUILD'); // 全員解決でき soft-lock しない
+  });
+
+  it('バンク総在庫2・2人 owed → どの順で解決しても TRADE_BUILD（順序非依存）', () => {
+    const s = twoOwners(makeHand({ wool: 1, grain: 1 }));
+    const rolled = applyAction(s, { type: 'ROLL_DICE' }, () => 0.7);
+    expect(rolled.pendingGoldChoice).toEqual({ player1: 1, player2: 1 });
+    // player2 を先に解決（在庫を先に引く）→ player1 が残在庫で必ず取れる
+    const mid = applyAction(rolled, { type: 'CHOOSE_GOLD', playerId: 'player2', resources: { wool: 1 } });
+    expect(mid.turnPhase).toBe('GOLD');
+    const done = applyAction(mid, { type: 'CHOOSE_GOLD', playerId: 'player1', resources: { grain: 1 } });
+    expect(done.turnPhase).toBe('TRADE_BUILD');
+  });
+
+  it('CPU も枯渇時に合法手を出せる（chooseAction が owed 枚ちょうど）', () => {
+    const base = twoOwners(makeHand({ wool: 1 }));
+    const rolled = applyAction(base, { type: 'ROLL_DICE' }, () => 0.7);
+    for (const pid of Object.keys(rolled.pendingGoldChoice ?? {})) {
+      const a = chooseAction(rolled, pid as 'player1' | 'player2', { rng: createRng(1) });
+      expect(a?.type).toBe('CHOOSE_GOLD');
+      // 出した手は必ず適用できる（在庫内・owed 枚ちょうど）
+      expect(() => applyAction(rolled, a!)).not.toThrow();
+    }
   });
 });
 

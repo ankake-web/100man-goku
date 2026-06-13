@@ -120,13 +120,15 @@ export function applyAction(
       } else {
         next = distributeResources({ ...next, turnPhase: 'TRADE_BUILD' }, total);
         // 航海者: 金タイル産出があれば、任意資源の選択待ち(GOLD)へ。無ければ通常どおり TRADE_BUILD。
-        // 各プレイヤーの選択枚数はバンク総在庫で頭打ちにする（在庫切れでの手詰まり回避）。
+        // 複数人が同時に owed になりうるため、選択枚数は「逐次的に減るバンク総在庫」で頭打ちにする。
+        // 全体総和が在庫を超えないよう playerOrder 順に bankLeft から差し引くことで、どの順に
+        // CHOOSE_GOLD を解決しても最後の人まで必ず owed 枚を取れる（在庫切れの手詰まり=ソフトロック回避）。
         const rawPicks = computeGoldPicks(next, total);
-        const bankTotal = RESOURCE_TYPES.reduce((s, r) => s + next.bank[r], 0);
+        let bankLeft = RESOURCE_TYPES.reduce((s, r) => s + next.bank[r], 0);
         const goldPicks: Record<string, number> = {};
         for (const pid of next.playerOrder) {
-          const capped = Math.min(rawPicks[pid] ?? 0, bankTotal);
-          if (capped > 0) goldPicks[pid] = capped;
+          const capped = Math.min(rawPicks[pid] ?? 0, bankLeft);
+          if (capped > 0) { goldPicks[pid] = capped; bankLeft -= capped; }
         }
         next = Object.keys(goldPicks).length > 0
           ? { ...next, turnPhase: 'GOLD', pendingGoldChoice: goldPicks }
