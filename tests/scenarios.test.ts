@@ -120,6 +120,22 @@ describe('scenarios: 航海者「群島」(2つ目の盤面)', () => {
     expect(sizes).toEqual([7, 3, 2]);
   });
 
+  it('海岸線に港が配置され、沿岸の陸頂点に harborType が付く（両航海者マップ）', () => {
+    for (const id of ['seafarers_newshores', 'seafarers_archipelago'] as const) {
+      const st = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), id);
+      expect(st.harbors.length).toBeGreaterThan(0);
+      expect(st.harbors.length).toBeLessThanOrEqual(4);
+      for (const h of st.harbors) {
+        for (const v of h.vertexIds) {
+          expect(st.vertices[v]?.harborType).toBe(h.type);
+          const adj = (st.vertices[v]?.adjacentTileIds ?? []).map(t => st.tiles[t]?.type);
+          expect(adj.includes('sea')).toBe(true);                       // 海に面する
+          expect(adj.some(t => t != null && t !== 'sea')).toBe(true);   // 陸にも面する
+        }
+      }
+    }
+  });
+
   it('新島A・Bは本島と隣接しない（航海でのみ到達）', () => {
     // 本島(左 q=-2,-1)と新島(右 q=1,2)の間 q=0 列は全て海
     for (const r of [-2, -1, 0, 1, 2]) expect(s.tiles[`0,${r}`]?.type).toBe('sea');

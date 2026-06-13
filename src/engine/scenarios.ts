@@ -10,8 +10,8 @@
 //
 // 注意: 純粋関数（DOM非依存）。createInitialGameState から使う。
 
-import type { AxialCoord, Tile, TileId, TileType, Harbor } from '../types';
-import { getAllTileCoords, tileId, type BoardGeometry } from './board';
+import type { AxialCoord, Tile, TileId, TileType, Harbor, HarborType } from '../types';
+import { getAllTileCoords, tileId, edgeTileIds, type BoardGeometry } from './board';
 import { createRandomBoard } from './setup';
 
 export type ScenarioId = 'classic' | 'seafarers_newshores' | 'seafarers_archipelago';
@@ -60,11 +60,45 @@ const NEW_SHORES_LAND: Record<string, { type: TileType; number: number | null; r
   '2,0':   { type: 'hill',     number: 2 },
 };
 
+// 海岸線（陸1・海1 に面する辺）に港を決定論的に配置する。
+// 各辺の2頂点は陸の沿岸頂点なので、そこに港を持たせる。港が密集しないよう
+// 使用頂点とその隣接頂点を避けながら最大 max 個まで、種別をプールから順に割り当てる。
+const HARBOR_POOL: HarborType[] = ['generic', 'wood', 'brick', 'generic', 'wool', 'grain', 'ore'];
+function coastalHarbors(geo: BoardGeometry, tiles: Record<TileId, Tile>, max = 4): Harbor[] {
+  const coastEdges = Object.values(geo.edges)
+    .filter(e => {
+      const tids = edgeTileIds(e, geo.vertices);
+      return tids.length === 2 && tids.filter(t => tiles[t]?.type === 'sea').length === 1; // 陸1・海1＝海岸線
+    })
+    .sort((a, b) => (a.id < b.id ? -1 : 1)); // 決定論的順序
+
+  const harbors: Harbor[] = [];
+  const used = new Set<string>();
+  for (const e of coastEdges) {
+    if (harbors.length >= max) break;
+    const [va, vb] = e.vertexIds;
+    const vA = geo.vertices[va];
+    const vB = geo.vertices[vb];
+    if (!vA || !vB) continue;
+    // 使用済み頂点・その隣接頂点に被るなら避ける（港の密集を防ぐ）。
+    if (used.has(va) || used.has(vb)) continue;
+    if (vA.adjacentVertexIds.some(v => used.has(v)) || vB.adjacentVertexIds.some(v => used.has(v))) continue;
+    const type = HARBOR_POOL[harbors.length % HARBOR_POOL.length]!;
+    vA.harborType = type;
+    vB.harborType = type;
+    harbors.push({ id: `harbor_${harbors.length}`, type, vertexIds: [va, vb] });
+    used.add(va);
+    used.add(vb);
+  }
+  return harbors;
+}
+
 // 陸タイル定義表（タイルID→種別/数字/盗賊）から固定盤面を作る共通ビルダ。
 // 表に無いタイルは海(sea)。19タイル footprint 内で陸塊を海で分離する航海者マップ用。
+// 海岸線には港を自動配置する（沿岸開拓地の交易価値）。
 type LandMap = Record<string, { type: TileType; number: number | null; robber?: boolean }>;
 function buildFromLandMap(landMap: LandMap): (geo: BoardGeometry, rng: () => number) => ScenarioBoard {
-  return () => {
+  return (geo) => {
     const tiles: Record<TileId, Tile> = {};
     for (const coord of getAllTileCoords()) {
       const id = tileId(coord);
@@ -73,7 +107,7 @@ function buildFromLandMap(landMap: LandMap): (geo: BoardGeometry, rng: () => num
         ? { id, coord, type: land.type, number: land.number, hasRobber: !!land.robber }
         : { id, coord, type: 'sea', number: null, hasRobber: false }; // 外周＝海
     }
-    return { tiles, harbors: [] };
+    return { tiles, harbors: coastalHarbors(geo, tiles) };
   };
 }
 
