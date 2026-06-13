@@ -33,6 +33,7 @@ import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer, LanOrderMode } from '../src/net/protocol';
 import type { PlayerId, PlayerColor, PlayerType, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
+import type { ScenarioId } from '../src/engine/scenarios';
 import type { PlayerOrderMode } from '../src/engine/setup';
 
 // LAN 同期する Action（サーバ側ホワイトリスト）。
@@ -115,6 +116,7 @@ interface Room {
   cpuNames: string[];
   cpuDifficulty: AiDifficulty;  // ホスト設定のCPU強さ（弱い/普通/強い）
   orderMode: LanOrderMode;      // ホスト設定の手番順（ランダム/入室順）
+  scenario: ScenarioId;         // ホスト設定の盤面（基本/航海者/群島）
   // 視点別ログ（playerId → ログ配列）。各端末に「自分視点」のログを配信するため。
   memberLogs: Record<string, LogEntry[]>;
   // タイミング（attachLanServer のオプションから設定。テストでは短縮値を注入）。
@@ -251,6 +253,7 @@ function broadcastLobby(room: Room, urls: string[]): void {
     maxCpu: Math.max(0, MAX_PLAYERS - humans),
     cpuDifficulty: room.cpuDifficulty,
     orderMode: room.orderMode,
+    scenario: room.scenario,
   };
   for (const m of room.members) send(m.ws, msg);
 }
@@ -294,7 +297,7 @@ function startGame(room: Room): void {
   const allSpecs = [...humanSpecs, ...cpuSpecs];
   const orderMode: PlayerOrderMode = room.orderMode === 'joined' ? 'fixed' : 'random';
   const orderSpec = room.orderMode === 'joined' ? allSpecs.map(s => s.id) : undefined;
-  const state = createInitialGameState(allSpecs, orderMode, orderSpec);
+  const state = createInitialGameState(allSpecs, orderMode, orderSpec, undefined, room.scenario);
   room.started = true;
   room.state = state;
   room.memberLogs = {};
@@ -421,7 +424,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
           let code: string;
           try { code = genCode(c => rooms.has(c)); }
           catch { send(ws, { t: 'error', message: 'ルームを作成できませんでした。時間をおいて再度お試しください' }); return; }
-          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', memberLogs: {}, graceMs, cpuStepMs, cpuAfterRollMs };
+          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', scenario: 'classic', memberLogs: {}, graceMs, cpuStepMs, cpuAfterRollMs };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);
@@ -502,6 +505,9 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
           }
           if (msg.orderMode === 'random' || msg.orderMode === 'joined') {
             room.orderMode = msg.orderMode;
+          }
+          if (msg.scenario === 'classic' || msg.scenario === 'seafarers_newshores' || msg.scenario === 'seafarers_archipelago') {
+            room.scenario = msg.scenario;
           }
           broadcastLobby(room, currentUrls());
           break;

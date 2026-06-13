@@ -238,4 +238,29 @@ describe('lanServer integration (M8)', () => {
     expect(joined.started).toBe(true); // スロットが残っているので復帰できる
     expect(joined.you).toBe('player2');
   }, 12_000);
+
+  it('ホストが盤面シナリオを選ぶと、開始される盤面に反映される（航海者=海タイルあり）', async () => {
+    await startServer();
+    const host = await connect();
+    const hjP = host.next(isType('joined'));
+    host.send({ t: 'create', name: 'Alice' });
+    const hj = await hjP as Extract<ServerMessage, { t: 'joined' }>;
+
+    const guest = await connect();
+    const gjP = guest.next(isType('joined'));
+    guest.send({ t: 'join', code: hj.code, name: 'Bob' });
+    await gjP;
+
+    // ホストが群島(航海者)を選択 → lobby に反映を確認
+    const lobP = host.next(m => m.t === 'lobby' && (m as { scenario?: string }).scenario === 'seafarers_archipelago');
+    host.send({ t: 'setConfig', scenario: 'seafarers_archipelago' });
+    const lob = await lobP as Extract<ServerMessage, { t: 'lobby' }>;
+    expect(lob.scenario).toBe('seafarers_archipelago');
+
+    // 開始 → 配信 state が航海者盤面（海タイルあり）
+    const sP = host.next(isType('started'));
+    host.send({ t: 'start' });
+    const started = await sP as Extract<ServerMessage, { t: 'started' }>;
+    expect(Object.values(started.state.tiles).some(t => t.type === 'sea')).toBe(true);
+  }, 12_000);
 });

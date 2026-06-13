@@ -12,6 +12,7 @@
 // joined/lobby/started/error（S→C）。action / state は MVP3 以降で使う。
 
 import type { GameState, PlayerId, PlayerColor, Action, AiDifficulty } from '../types';
+import type { ScenarioId } from '../engine/scenarios';
 
 // WebSocket のパス（Vite dev サーバと同一オリジン上に同居）
 export const LAN_WS_PATH = '/lan';
@@ -35,7 +36,7 @@ export type ClientMessage =
   | { t: 'join';   code: string; name: string }         // ルーム参加
   | { t: 'rename'; name: string }                       // 名前変更（ロビー中）
   | { t: 'setCpu'; count: number }                       // CPU 人数設定（ホストのみ）
-  | { t: 'setConfig'; cpuDifficulty?: AiDifficulty; orderMode?: LanOrderMode } // CPU強さ/手番順（ホストのみ）
+  | { t: 'setConfig'; cpuDifficulty?: AiDifficulty; orderMode?: LanOrderMode; scenario?: ScenarioId } // CPU強さ/手番順/盤面（ホストのみ）
   | { t: 'start' }                                       // ホストがゲーム開始
   | { t: 'resume'; code: string; you: PlayerId; token: string } // 再接続（同一プレイヤーとして復帰）
   | { t: 'action'; action: Action };                     // 操作（MVP3 以降）
@@ -46,7 +47,7 @@ export type ServerMessage =
   | { t: 'joined'; code: string; you: PlayerId; isHost: boolean; token: string; started: boolean }
   | { t: 'lobby';  code: string; hostUrls: string[]; players: LobbyPlayer[];
       canStart: boolean; cpuCount: number; maxCpu: number;          // maxCpu=今追加できるCPU上限
-      cpuDifficulty: AiDifficulty; orderMode: LanOrderMode }        // ホスト設定（参加者は表示のみ）
+      cpuDifficulty: AiDifficulty; orderMode: LanOrderMode; scenario: ScenarioId } // ホスト設定（参加者は表示のみ）
   | { t: 'started'; you: PlayerId; state: GameState }               // 開始（state はマスク済み）
   | { t: 'state';   state: GameState; action?: Action; by?: PlayerId } // 状態更新（MVP3 以降）
   | { t: 'error';   message: string; fatal?: boolean };               // fatal=true で接続断などの致命的エラー

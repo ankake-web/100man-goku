@@ -8,6 +8,7 @@
 
 import { LanClient } from './lanClient';
 import type { ServerMessage, LobbyPlayer, LanOrderMode } from './protocol';
+import type { ScenarioId } from '../engine/scenarios';
 import type { GameState, PlayerId, PlayerColor, AiDifficulty } from '../types';
 import { attachNameField, savePlayerName } from './nameField';
 import { saveResume, clearResume } from './resume';
@@ -34,6 +35,7 @@ interface LobbyView {
   maxCpu: number;
   cpuDifficulty: AiDifficulty;
   orderMode: LanOrderMode;
+  scenario: ScenarioId;
   error: string;
 }
 
@@ -43,7 +45,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
   let client: LanClient | null = null;
   const view: LobbyView = {
     code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false,
-    cpuCount: 0, maxCpu: 3, cpuDifficulty: 'normal', orderMode: 'random', error: '',
+    cpuCount: 0, maxCpu: 3, cpuDifficulty: 'normal', orderMode: 'random', scenario: 'classic', error: '',
   };
   let stage: 'idle' | 'lobby' | 'resuming' = 'idle';
 
@@ -66,6 +68,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
         view.hostUrls = msg.hostUrls; view.canStart = msg.canStart;
         view.cpuCount = msg.cpuCount; view.maxCpu = msg.maxCpu;
         view.cpuDifficulty = msg.cpuDifficulty; view.orderMode = msg.orderMode;
+        view.scenario = msg.scenario;
         if (stage === 'lobby' || stage === 'resuming') { stage = 'lobby'; render(); }
         break;
       case 'started':
@@ -304,6 +307,11 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     const ORDER_OPTS: { value: LanOrderMode; text: string }[] = [
       { value: 'random', text: 'ランダム' }, { value: 'joined', text: '入室順' },
     ];
+    const SCENARIO_OPTS: { value: ScenarioId; text: string }[] = [
+      { value: 'classic', text: '基本' },
+      { value: 'seafarers_newshores', text: '航海者' },
+      { value: 'seafarers_archipelago', text: '群島' },
+    ];
     const segRow = <T extends string>(
       labelText: string, opts: { value: T; text: string }[], cur: T, onPick: (v: T) => void,
     ): HTMLDivElement => {
@@ -326,6 +334,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
       box.appendChild(grp);
       return box;
     };
+    root.appendChild(segRow('盤面（ルール）', SCENARIO_OPTS, view.scenario, v => client?.send({ t: 'setConfig', scenario: v })));
     root.appendChild(segRow('CPU 強さ', DIFF_OPTS, view.cpuDifficulty, v => client?.send({ t: 'setConfig', cpuDifficulty: v })));
     root.appendChild(segRow('手番順', ORDER_OPTS, view.orderMode, v => client?.send({ t: 'setConfig', orderMode: v })));
 
