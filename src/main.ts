@@ -1930,29 +1930,48 @@ function diceRollMs(): number {
   }
 }
 function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
-  // アニメ抑制設定ではタンブルを省略して即時に結果へ進む（静的な産出ハイライトは残す）。
-  const dur = prefersReducedMotion() ? 0 : diceRollMs();
-  if (dur <= 0 || d1 < 1 || d2 < 1) { onDone(); return; }
+  if (d1 < 1 || d2 < 1) { onDone(); return; }
+  // モーション抑制設定ではタンブル(回転)を省くが、出目のダイスは静的に見せる
+  // （演出が「全員の画面に」出るよう、モーション無しでも結果を視認できるようにする）。
+  // 最速(instant)は完全スキップ（UIからは選べないが保険として残す）。
+  const reduced = prefersReducedMotion();
+  if (!reduced && fxSpeed() === 'instant') { onDone(); return; }
+  const dur = reduced ? 0 : diceRollMs();
 
   const host = document.getElementById('board-area') ?? document.body;
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
   const row = document.createElement('div'); row.className = 'dice-row';
-  const die1 = document.createElement('div'); die1.className = 'dice-die rolling';
-  const die2 = document.createElement('div'); die2.className = 'dice-die rolling d2';
+  const die1 = document.createElement('div'); die1.className = dur > 0 ? 'dice-die rolling' : 'dice-die';
+  const die2 = document.createElement('div'); die2.className = dur > 0 ? 'dice-die rolling d2' : 'dice-die';
   setDiePips(die1, d1); setDiePips(die2, d2);
   row.append(die1, die2);
   // 合計表示スロットを先に確保（確定時に中央がガタつかない）
   const sum = document.createElement('div'); sum.className = 'dice-sum';
   overlay.append(row, sum);
   host.appendChild(overlay);
+
+  let stopped = false;
+  const settle = (): void => {
+    if (stopped) return;
+    stopped = true;
+    setDiePips(die1, d1); setDiePips(die2, d2);
+    die1.classList.remove('rolling'); die2.classList.remove('rolling', 'd2');
+    die1.classList.add('settled');    die2.classList.add('settled');
+    sum.textContent = `${d1} + ${d2} = ${d1 + d2}`;
+    sum.classList.add('show');
+    // モーション抑制時はタンブルが無い分、結果を少し長めに見せてから進む。
+    setTimeout(() => { overlay.remove(); onDone(); }, reduced ? 900 : 480);
+  };
+
+  // モーション抑制: 回転は出さず、確定した出目を静的に表示してから進む。
+  if (dur <= 0) { settle(); return; }
+
   // 減速して回転が止まるトランブル演出（CSSアニメーション）
   die1.style.animationDuration = `${dur}ms`;
   die2.style.animationDuration = `${dur}ms`;
-
   // 出目を切り替える間隔を徐々に伸ばして「減速して止まりそう」な溜めを作る
   const start = Date.now();
-  let stopped = false;
   const cycle = (): void => {
     if (stopped) return;
     const elapsed = Date.now() - start;
@@ -1962,16 +1981,6 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
     const p = elapsed / dur;
     const interval = 55 + p * p * 300; // 55ms → ~355ms（後半ほどゆっくり）
     setTimeout(cycle, interval);
-  };
-  const settle = (): void => {
-    if (stopped) return;
-    stopped = true;
-    setDiePips(die1, d1); setDiePips(die2, d2);
-    die1.classList.remove('rolling'); die2.classList.remove('rolling', 'd2');
-    die1.classList.add('settled');    die2.classList.add('settled');
-    sum.textContent = `${d1} + ${d2} = ${d1 + d2}`;
-    sum.classList.add('show');
-    setTimeout(() => { overlay.remove(); onDone(); }, 480);
   };
   cycle();
 }

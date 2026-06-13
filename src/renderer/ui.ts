@@ -257,7 +257,9 @@ function buildRobberTargetUI(
     const opponent = state.players[opponentPid];
     if (!opponent) continue;
     const color = PLAYER_COLORS[opponentPid] ?? '#aaa';
-    const totalCards = RESOURCE_TYPES.reduce((s, r) => s + opponent.hand[r], 0);
+    // 他プレイヤーの手札はLANではマスクで中身が全0になり、枚数は handCount に入る。
+    // hand 合計だと0枚と誤表示されるため、公開情報の handCount を優先する。
+    const totalCards = opponent.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + opponent.hand[r], 0);
     const btn = makeBtn(
       `${opponent.name}（手札${totalCards}枚）`,
       'btn-build',
@@ -268,10 +270,6 @@ function buildRobberTargetUI(
     row.appendChild(btn);
   }
   div.appendChild(row);
-
-  div.appendChild(makeBtn('盗まない', 'btn-end', false,
-    () => dispatch({ type: 'MOVE_ROBBER', tileId: uiPhase.tileId, stealFromPlayerId: null }),
-  ));
 
   return div;
 }
