@@ -14,7 +14,7 @@ import type { AxialCoord, Tile, TileId, TileType, Harbor } from '../types';
 import { getAllTileCoords, tileId, type BoardGeometry } from './board';
 import { createRandomBoard } from './setup';
 
-export type ScenarioId = 'classic' | 'seafarers_newshores';
+export type ScenarioId = 'classic' | 'seafarers_newshores' | 'seafarers_archipelago';
 
 export interface ScenarioBoard {
   tiles: Record<TileId, Tile>;
@@ -60,27 +60,63 @@ const NEW_SHORES_LAND: Record<string, { type: TileType; number: number | null; r
   '2,0':   { type: 'hill',     number: 2 },
 };
 
-const seafarersNewShores: Scenario = {
-  id: 'seafarers_newshores',
-  name: '航海者：新たな海岸を求めて',
-  coords: () => getAllTileCoords(),
-  build: () => {
+// 陸タイル定義表（タイルID→種別/数字/盗賊）から固定盤面を作る共通ビルダ。
+// 表に無いタイルは海(sea)。19タイル footprint 内で陸塊を海で分離する航海者マップ用。
+type LandMap = Record<string, { type: TileType; number: number | null; robber?: boolean }>;
+function buildFromLandMap(landMap: LandMap): (geo: BoardGeometry, rng: () => number) => ScenarioBoard {
+  return () => {
     const tiles: Record<TileId, Tile> = {};
     for (const coord of getAllTileCoords()) {
       const id = tileId(coord);
-      const land = NEW_SHORES_LAND[id];
+      const land = landMap[id];
       tiles[id] = land
         ? { id, coord, type: land.type, number: land.number, hasRobber: !!land.robber }
         : { id, coord, type: 'sea', number: null, hasRobber: false }; // 外周＝海
     }
-    // 港・船・島勝利は後フェーズ。Phase 0 は盤面の土台のみ。
     return { tiles, harbors: [] };
-  },
+  };
+}
+
+const seafarersNewShores: Scenario = {
+  id: 'seafarers_newshores',
+  name: '航海者：新たな海岸を求めて',
+  coords: () => getAllTileCoords(),
+  build: buildFromLandMap(NEW_SHORES_LAND),
+};
+
+// ---- 航海者「群島」（Phase: 2つ目の盤面） ----
+// 本島(左7)＋海峡(q=0列)で隔てた右側を、さらに2つの新島(A=右上3 / B=右下2)に分割する。
+// 新島が2つあるため、島ボーナス(+2VP)と金タイルを巡る航海の競争が core になる。
+//   A(右上): (1,-2)(1,-1)(2,-2)=3 / B(右下): (2,0)(1,1)=2 / 間の(1,0)(2,-1)は海で A↔B も分離。
+const ARCHIPELAGO_LAND: LandMap = {
+  // 本島（左7）。全5資源が揃う自給島。砂漠=盗賊初期位置。
+  '-2,0':  { type: 'pasture',  number: 9 },
+  '-2,1':  { type: 'forest',   number: 5 },
+  '-2,2':  { type: 'field',    number: 11 },
+  '-1,-1': { type: 'hill',     number: 4 },
+  '-1,0':  { type: 'desert',   number: null, robber: true },
+  '-1,1':  { type: 'mountain', number: 6 },
+  '-1,2':  { type: 'forest',   number: 8 },
+  // 新島A（右上3）。玄関口に金タイル。
+  '1,-2':  { type: 'gold',     number: 10 }, // 金（任意資源・出目10）
+  '1,-1':  { type: 'field',    number: 3 },
+  '2,-2':  { type: 'mountain', number: 5 },
+  // 新島B（右下2）。羊+レンガの小島。
+  '2,0':   { type: 'pasture',  number: 9 },
+  '1,1':   { type: 'hill',     number: 11 },
+};
+
+const seafarersArchipelago: Scenario = {
+  id: 'seafarers_archipelago',
+  name: '航海者：群島',
+  coords: () => getAllTileCoords(),
+  build: buildFromLandMap(ARCHIPELAGO_LAND),
 };
 
 const SCENARIOS: Record<ScenarioId, Scenario> = {
   classic,
   seafarers_newshores: seafarersNewShores,
+  seafarers_archipelago: seafarersArchipelago,
 };
 
 /** シナリオIDからシナリオ定義を取得（未知IDは基本にフォールバック）。 */

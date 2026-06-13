@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createInitialGameState } from '../src/engine/createState';
 import type { PlayerSpec } from '../src/engine/createState';
 import { getScenario, listScenarios } from '../src/engine/scenarios';
+import { computeIslandReps } from '../src/engine/islands';
 import { getAllTileCoords } from '../src/engine/board';
 import { createRng } from '../src/engine/setup';
 import type { Tile } from '../src/types';
@@ -19,6 +20,7 @@ describe('scenarios: registry', () => {
     const ids = listScenarios().map(s => s.id);
     expect(ids).toContain('classic');
     expect(ids).toContain('seafarers_newshores');
+    expect(ids).toContain('seafarers_archipelago');
   });
   it('unknown id falls back to classic', () => {
     // @ts-expect-error 故意に未知ID
@@ -95,5 +97,36 @@ describe('scenarios: 航海者「新たな海岸を求めて」(Phase 0)', () =>
   it('盤面幾何（頂点/辺）は基本盤と同一構造（座標が同じため）', () => {
     expect(Object.keys(s.vertices)).toHaveLength(54);
     expect(Object.keys(s.edges)).toHaveLength(72);
+  });
+});
+
+describe('scenarios: 航海者「群島」(2つ目の盤面)', () => {
+  const s = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_archipelago');
+
+  it('19タイル footprint / 陸12・海7・砂漠1・金1', () => {
+    expect(Object.keys(s.tiles)).toHaveLength(19);
+    expect(count(s.tiles, 'sea')).toBe(7);
+    expect(count(s.tiles, 'gold')).toBe(1);
+    expect(count(s.tiles, 'desert')).toBe(1);
+    const land = 19 - 7;
+    expect(land).toBe(12);
+  });
+
+  it('3つの島に分かれる（本島7＋新島A3＋新島B2）', () => {
+    const repOf = computeIslandReps(s.tiles);
+    const reps = [...new Set(Object.values(repOf))];
+    expect(reps).toHaveLength(3);
+    const sizes = reps.map(r => Object.values(repOf).filter(x => x === r).length).sort((a, b) => b - a);
+    expect(sizes).toEqual([7, 3, 2]);
+  });
+
+  it('新島A・Bは本島と隣接しない（航海でのみ到達）', () => {
+    // 本島(左 q=-2,-1)と新島(右 q=1,2)の間 q=0 列は全て海
+    for (const r of [-2, -1, 0, 1, 2]) expect(s.tiles[`0,${r}`]?.type).toBe('sea');
+    // A↔B を分ける (1,0)(2,-1) も海
+    expect(s.tiles['1,0']?.type).toBe('sea');
+    expect(s.tiles['2,-1']?.type).toBe('sea');
+    // 金は新島Aの玄関口(1,-2)
+    expect(s.tiles['1,-2']?.type).toBe('gold');
   });
 });

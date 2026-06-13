@@ -174,8 +174,9 @@ function renderHome(
   scenarioLabel.textContent = '盤面（ルール）';
   const scenarioGroup = document.createElement('div');
   scenarioGroup.className = 'home-radio-group';
-  const scenarioDefault = (lastConfig?.scenario ?? 'classic') === 'seafarers_newshores' ? '航海者' : '基本';
-  scenarioGroup.appendChild(createRadioGroup('scenario', ['基本', '航海者'], scenarioDefault));
+  const scenarioDefault = lastConfig?.scenario === 'seafarers_newshores' ? '航海者'
+    : lastConfig?.scenario === 'seafarers_archipelago' ? '群島' : '基本';
+  scenarioGroup.appendChild(createRadioGroup('scenario', ['基本', '航海者', '群島'], scenarioDefault));
   scenarioField.appendChild(scenarioLabel);
   scenarioField.appendChild(scenarioGroup);
   cpuForm.appendChild(scenarioField);
@@ -331,9 +332,10 @@ function renderHome(
     const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast' };
     const cpuSpeed: CpuSpeed = speedMap[speedVal] ?? 'normal';
 
-    // 盤面シナリオ（基本 or 航海者拡張）を読み取る
+    // 盤面シナリオ（基本 / 航海者 / 群島）を読み取る
     const scenVal = (scenarioGroup.querySelector('input[name="scenario"]:checked') as HTMLInputElement | null)?.value ?? '基本';
-    const scenario: ScenarioId = scenVal === '航海者' ? 'seafarers_newshores' : 'classic';
+    const scenario: ScenarioId = scenVal === '航海者' ? 'seafarers_newshores'
+      : scenVal === '群島' ? 'seafarers_archipelago' : 'classic';
 
     // プレイヤー順設定を読み取る
     const orderMode = readOrderMode();
