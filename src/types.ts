@@ -224,6 +224,8 @@ export interface GameState {
   diceRolledThisTurn: boolean;
   // 街道建設カードで残り無料配置できる道路数（0=通常モード、1 or 2=無料配置中）
   roadBuildingRoadsRemaining: number;
+  // 航海者: このターンに船を移動したか（航海は1ターン1回）。END_TURN でリセット。
+  shipMovedThisTurn?: boolean;
   // このターンに騎士・進歩カードを使ったか（1ターン1枚制限）
   devCardPlayedThisTurn: boolean;
 
@@ -270,6 +272,7 @@ export type Action =
   | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand> }
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
   | { type: 'BUILD_SHIP';          edgeId: EdgeId }
+  | { type: 'MOVE_SHIP';           fromEdgeId: EdgeId; toEdgeId: EdgeId }
   | { type: 'CHOOSE_GOLD';         playerId: PlayerId; resources: Partial<ResourceHand> }
   | { type: 'BUILD_SETTLEMENT';    vertexId: VertexId }
   | { type: 'BUILD_CITY';          vertexId: VertexId }

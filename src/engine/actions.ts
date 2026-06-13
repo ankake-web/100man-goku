@@ -124,6 +124,75 @@ export function buildShip(state: GameState, playerId: PlayerId, edgeId: EdgeId):
   };
 }
 
+// ============================================================
+// 船の移動（航海者・上級ルール / Phase 4）
+// ============================================================
+
+/**
+ * 頂点 v が「自分の交易路の開放端」か（船を持ち上げてよい端）。
+ * = その頂点に建物が無く、fromEdge 以外に自分の道/船が接続していない（行き止まり）。
+ */
+function isOpenShipEnd(
+  state: GameState, playerId: PlayerId, vertexId: VertexId, fromEdgeId: EdgeId,
+): boolean {
+  const v = state.vertices[vertexId];
+  if (!v) return false;
+  if (v.building != null) return false; // 建物がある端は開放端ではない
+  return !v.adjacentEdgeIds.some(eid => {
+    if (eid === fromEdgeId) return false;
+    const e = state.edges[eid];
+    return e?.road?.playerId === playerId || e?.ship?.playerId === playerId;
+  });
+}
+
+/**
+ * 自分の船を別の海辺へ1ターン1回だけ移動できるか検証する（航海）。
+ *   - MAIN/TRADE_BUILD・このターンまだ船を動かしていない。
+ *   - from は自分の船。to は空きの海辺で from と異なる。
+ *   - from は「開放端を持つ」船（行き止まりの船）だけ動かせる。
+ *   - 移動先は from の船を取り除いた状態で自分のネットワークに接続する。
+ */
+export function canMoveShip(
+  state: GameState, playerId: PlayerId, fromEdgeId: EdgeId, toEdgeId: EdgeId,
+): boolean {
+  if (state.shipMovedThisTurn) return false;
+  if (fromEdgeId === toEdgeId) return false;
+
+  const from = state.edges[fromEdgeId];
+  const to = state.edges[toEdgeId];
+  if (!from || !to) return false;
+  if (from.ship?.playerId !== playerId) return false;
+  if (to.road != null || to.ship != null) return false;
+  if (!isSeaEdge(to, state.vertices, state.tiles)) return false;
+
+  // 行き止まり（開放端）の船だけ動かせる。
+  if (!from.vertexIds.some(v => isOpenShipEnd(state, playerId, v, fromEdgeId))) return false;
+
+  // from の船を取り除いた状態で、移動先が自分のネットワークに接続するか。
+  const without: GameState = {
+    ...state,
+    edges: { ...state.edges, [fromEdgeId]: { ...from, ship: null } },
+  };
+  return isEdgeConnectedForPiece(to, playerId, without.vertices, without.edges, 'ship');
+}
+
+/** 船を移動して新しい GameState を返す（バリデーション済み前提）。コマ数は不変・1ターン1回。 */
+export function moveShip(
+  state: GameState, playerId: PlayerId, fromEdgeId: EdgeId, toEdgeId: EdgeId,
+): GameState {
+  const from = state.edges[fromEdgeId]!;
+  const to = state.edges[toEdgeId]!;
+  return {
+    ...state,
+    shipMovedThisTurn: true,
+    edges: {
+      ...state.edges,
+      [fromEdgeId]: { ...from, ship: null },
+      [toEdgeId]:   { ...to, ship: { playerId } },
+    },
+  };
+}
+
 /** 道を建設して新しい GameState を返す（バリデーション済み前提）。 */
 export function buildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeId): GameState {
   const player = state.players[playerId]!;

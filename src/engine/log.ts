@@ -75,6 +75,7 @@ export function buildActionLog(
       break;
     }
     case 'BUILD_ROAD':       push(actor, 'BUILD', `🛤 ${nm(actor)} が道を建設`); break;
+    case 'MOVE_SHIP':        push(actor, 'BUILD', `⛵ ${nm(actor)} が船を移動`); break;
     case 'BUILD_SETTLEMENT': push(actor, 'BUILD', `🏠 ${nm(actor)} が開拓地を建設`); break;
     case 'BUILD_CITY':       push(actor, 'BUILD', `🏙 ${nm(actor)} が都市を建設`); break;
     case 'BUY_DEV_CARD':     push(actor, 'DEV_CARD', `🃏 ${nm(actor)} が発展カードを購入`); break;

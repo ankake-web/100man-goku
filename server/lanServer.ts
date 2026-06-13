@@ -41,8 +41,8 @@ const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
   // 基本操作（MVP3）
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
-  // 航海者: 金タイル産出の任意資源選択
-  'CHOOSE_GOLD',
+  // 航海者: 船の移動（航海）/ 金タイル産出の任意資源選択
+  'MOVE_SHIP', 'CHOOSE_GOLD',
   // 7 / 捨て札 / 盗賊（MVP4）
   'MOVE_ROBBER', 'DISCARD_RESOURCES',
   // 交易（MVP4）

@@ -10,6 +10,7 @@ import { rollDice, distributeResources, computeGoldPicks } from './dice';
 import {
   canBuildRoad, buildRoad,
   canBuildShip, buildShip,
+  canMoveShip, moveShip,
   canBuildSettlement, buildSettlement,
   canBuildCity, buildCity,
   hasEnoughResources,
@@ -288,6 +289,21 @@ export function applyAction(
         next = advanceSetup({ ...next, setupRoadAnchor: null });
       }
 
+      return next;
+    }
+
+    // ----------------------------------------------------------
+    // MOVE_SHIP（航海者・上級ルール）。1ターン1回、開放端の船を別の海辺へ。
+    // ----------------------------------------------------------
+    case 'MOVE_SHIP': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
+        throw new Error('MOVE_SHIP: must be in MAIN TRADE_BUILD phase');
+      const { fromEdgeId, toEdgeId } = action;
+      if (!canMoveShip(state, pid, fromEdgeId, toEdgeId)) throw new Error('MOVE_SHIP: invalid');
+
+      let next = moveShip(state, pid, fromEdgeId, toEdgeId);
+      next = updateLongestRoad(next);
+      next = checkVictory(next, pid);
       return next;
     }
 
@@ -646,6 +662,7 @@ export function applyAction(
         diceRolledThisTurn: false,
         roadBuildingRoadsRemaining: 0,
         devCardPlayedThisTurn: false,
+        shipMovedThisTurn: false,
         pendingTrade: null,
       };
     }
