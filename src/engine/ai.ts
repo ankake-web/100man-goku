@@ -6,6 +6,7 @@ import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceH
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
+import { isUnclaimedNewIslandVertex } from './islands';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
 import { calcVP } from './scoring';
 
@@ -120,13 +121,17 @@ const RESOURCE_WEIGHT: Record<ResourceType, number> = {
 };
 
 // 頂点の重み付き生産価値 = Σ pip(隣接タイル) × 資源重み。都市化先・開拓地先の良し悪し。
+// 金タイル(gold)はどの資源にもなれる万能産出なので、ore/grain と同等の高めの重みで評価する。
+const GOLD_WEIGHT = 1.3;
 export function weightedProduction(state: GameState, vertexId: string): number {
   let v = 0;
   for (const tid of state.vertices[vertexId]?.adjacentTileIds ?? []) {
     const t = state.tiles[tid];
-    const r = t ? TILE_RESOURCE_MAP[t.type] : null;
+    if (!t) continue;
+    if (t.type === 'gold') { v += (t.number ? (NUMBER_PROB[t.number] ?? 0) : 0) * GOLD_WEIGHT; continue; }
+    const r = TILE_RESOURCE_MAP[t.type];
     if (!r) continue;
-    v += (t!.number ? (NUMBER_PROB[t!.number] ?? 0) : 0) * RESOURCE_WEIGHT[r];
+    v += (t.number ? (NUMBER_PROB[t.number] ?? 0) : 0) * RESOURCE_WEIGHT[r];
   }
   return v;
 }
@@ -144,11 +149,15 @@ function playerResourceCoverage(state: GameState, pid: PlayerId): Set<ResourceTy
 // MAIN フェーズの開拓地先評価 = 重み付き生産 + 未保有資源の補完 + 港小加点。
 const EXPANSION_NEW_RESOURCE = 2.0;
 const EXPANSION_HARBOR = 1.0;
+// 航海者: 新しい島へ最初に入植すると +2VP（島ボーナス）＋金タイルへの足場。
+// AI が新島開拓へ向かう動機づけ（基本ゲームでは isUnclaimedNewIslandVertex が常に false）。
+const EXPANSION_ISLAND_PIONEER = 4.0;
 export function evaluateExpansionVertex(state: GameState, pid: PlayerId, vertexId: string): number {
   let score = weightedProduction(state, vertexId);
   const cov = playerResourceCoverage(state, pid);
   for (const r of new Set(adjacentResources(state, vertexId))) if (!cov.has(r)) score += EXPANSION_NEW_RESOURCE;
   if (state.vertices[vertexId]?.harborType) score += EXPANSION_HARBOR;
+  if (isUnclaimedNewIslandVertex(state, vertexId)) score += EXPANSION_ISLAND_PIONEER;
   return score;
 }
 
@@ -455,6 +464,11 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
     return chooseDiscard(state, pid, rng);
   }
 
+  // 金タイル産出の選択（DISCARD 同様、手番に関わらず owed なプレイヤーが解決する）。
+  if (state.turnPhase === 'GOLD') {
+    return chooseGold(state, pid);
+  }
+
   if (state.playerOrder[state.currentPlayerIndex] !== pid) return null;
 
   const player = state.players[pid];
@@ -576,6 +590,50 @@ export function chooseDiscards(
     discards[pick] = (discards[pick] ?? 0) + 1;
   }
   return discards;
+}
+
+// ============================================================
+// GOLD フェーズ（航海者・金タイル産出の任意資源選択）
+// ============================================================
+
+/**
+ * 金タイル産出で得る任意資源を選ぶ純粋関数。次の建設目標(goalCosts)に不足する資源を
+ * 優先し、残りは戦略重み(ore/grain 重視)の高い資源で埋める。バンク在庫の範囲内で選ぶ。
+ * 相手の手札は覗かない（自分の手札と目標のみ参照）。
+ */
+export function chooseGoldResources(
+  state: GameState, pid: PlayerId, owed: number,
+): Partial<Record<ResourceType, number>> {
+  const player = state.players[pid];
+  if (!player) return {};
+  const goals = goalCosts(state, pid);
+  const needed = {} as Record<ResourceType, number>;
+  for (const r of RESOURCE_TYPES) needed[r] = goals.reduce((m, g) => Math.max(m, g[r] ?? 0), 0);
+
+  const out: Partial<Record<ResourceType, number>> = {};
+  const bankLeft = { ...state.bank };
+  const handAfter = { ...player.hand };
+  for (let i = 0; i < owed; i++) {
+    const avail = RESOURCE_TYPES.filter(r => bankLeft[r] > 0);
+    if (avail.length === 0) break; // バンク在庫切れ（owed は在庫で頭打ち済みのため通常起きない）
+    // 不足(needed-hand)が大きい資源を優先。同点は戦略重みでタイブレーク（決定的）。
+    const pick = avail.reduce((best, r) => {
+      const deficit = (needed[r] - handAfter[r]);
+      const bd = (needed[best] - handAfter[best]);
+      if (deficit !== bd) return deficit > bd ? r : best;
+      return RESOURCE_WEIGHT[r] > RESOURCE_WEIGHT[best] ? r : best;
+    }, avail[0]!);
+    out[pick] = (out[pick] ?? 0) + 1;
+    bankLeft[pick] -= 1;
+    handAfter[pick] += 1;
+  }
+  return out;
+}
+
+function chooseGold(state: GameState, pid: PlayerId): Action | null {
+  const owed = (state.pendingGoldChoice ?? {})[pid] ?? 0;
+  if (owed <= 0) return null;
+  return { type: 'CHOOSE_GOLD', playerId: pid, resources: chooseGoldResources(state, pid, owed) };
 }
 
 // ============================================================

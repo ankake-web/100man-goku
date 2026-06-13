@@ -10,6 +10,7 @@ import {
   isDistanceRuleOk, isEdgeConnectedForPiece,
   isSeaEdge, isLandEdge, isLandVertex,
 } from './board';
+import { isHomeIslandVertex } from './islands';
 
 // ============================================================
 // リソース操作ユーティリティ
@@ -170,6 +171,8 @@ export function canBuildSettlement(
   if (!isDistanceRuleOk(vertex, state.vertices)) return false;
 
   const setup = isSetupPhase(state);
+  // 航海者: 初期配置は本島のみ（新島へは航海で渡る）。基本ゲームは無制限。
+  if (setup && !isHomeIslandVertex(state, vertexId)) return false;
   if (!setup && !hasEnoughResources(player.hand, BUILD_COSTS.settlement)) return false;
 
   // MAIN フェーズ: 自分の道 or 船への接続が必要（航海者: 船でも開拓地を建てられる）。

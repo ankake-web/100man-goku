@@ -57,6 +57,54 @@ function vertexRep(v: Vertex, repOf: Record<TileId, string>): string | null {
   return null;
 }
 
+/** 「本島」= 最大の陸の連結成分の代表ID（同数なら文字列順で安定タイブレーク）。陸が無ければ null。 */
+function homeIslandRep(repOf: Record<TileId, string>): string | null {
+  const counts: Record<string, number> = {};
+  for (const rep of Object.values(repOf)) counts[rep] = (counts[rep] ?? 0) + 1;
+  let best: string | null = null;
+  let bestN = -1;
+  for (const [rep, n] of Object.entries(counts)) {
+    if (n > bestN || (n === bestN && (best === null || rep < best))) { bestN = n; best = rep; }
+  }
+  return best;
+}
+
+/**
+ * 航海者: 初期配置で開拓地を置ける「本島」上の頂点か。
+ * 新しい島へは航海（船）でのみ渡れる（New Shores ルール）。本島=最大の陸の島。
+ * 基本ゲーム（海タイル無し）は制限しない（常に true）。
+ */
+export function isHomeIslandVertex(state: GameState, vertexId: VertexId): boolean {
+  if (!Object.values(state.tiles).some(t => t.type === 'sea')) return true; // 基本ゲームは無制限
+  const v = state.vertices[vertexId];
+  if (!v) return false;
+  const repOf = computeIslandReps(state.tiles);
+  const home = homeIslandRep(repOf);
+  if (home == null) return true; // 陸が無い異常時は制限しない
+  const rep = vertexRep(v, repOf);
+  return rep === home; // 純海上頂点(null)は本島外
+}
+
+/**
+ * 航海者: その空き頂点に開拓地を建てると「新島への最初の入植」=+2VP の対象になるか。
+ * = 海タイルのある盤で、本島でない島に属し、その島にまだ建物が無い頂点。
+ * AI が新島開拓（島ボーナス・金タイル）へ向かう動機づけに使う（基本ゲームでは常に false）。
+ */
+export function isUnclaimedNewIslandVertex(state: GameState, vertexId: VertexId): boolean {
+  if (!Object.values(state.tiles).some(t => t.type === 'sea')) return false;
+  const v = state.vertices[vertexId];
+  if (!v) return false;
+  const repOf = computeIslandReps(state.tiles);
+  const home = homeIslandRep(repOf);
+  const rep = vertexRep(v, repOf);
+  if (rep == null || rep === home) return false; // 純海上 or 本島は対象外
+  // その島に既に建物があれば「最初」ではない。
+  for (const other of Object.values(state.vertices)) {
+    if (other.building && vertexRep(other, repOf) === rep) return false;
+  }
+  return true;
+}
+
 /**
  * MAIN フェーズで開拓地を建てた“直後の state”を受け取り、その頂点が
  * 「その島で最初の建物」（=新しい島への最初の入植）なら島代表IDを返す。

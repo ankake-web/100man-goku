@@ -74,6 +74,16 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     return null; // 人間の捨て札待ち
   }
 
+  // ---- 金タイル産出の選択（手番に関わらず owed な CPU を1人ずつ処理）----
+  if (state.phase === 'MAIN' && state.turnPhase === 'GOLD') {
+    const gpid = state.playerOrder.find(p => isCpu(state, p) && ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
+    if (gpid) {
+      const action = chooseAction(state, gpid, { rng });
+      if (action) return { pid: gpid, action };
+    }
+    return null; // 人間の選択待ち
+  }
+
   // ---- 手番が CPU なら通常の一手（初期配置 / ダイス / 盗賊 / 建設等）----
   const cur = state.playerOrder[state.currentPlayerIndex];
   if (cur && isCpu(state, cur)) {
@@ -111,6 +121,10 @@ export function cpuFallbackAction(state: GameState, pid: PlayerId): Action {
   }
   if (state.turnPhase === 'DISCARD') {
     return chooseAction(state, pid) ?? { type: 'END_TURN' };
+  }
+  if (state.turnPhase === 'GOLD') {
+    // owed な対象本人の選択を生成（chooseAction が GOLD を処理）。最終手段として銀1枚。
+    return chooseAction(state, pid) ?? { type: 'CHOOSE_GOLD', playerId: pid, resources: { wool: 1 } };
   }
   return { type: 'END_TURN' };
 }

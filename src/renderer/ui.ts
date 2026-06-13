@@ -20,6 +20,7 @@ export type UIPhase =
   | { type: 'discard'; playerId: PlayerId; selected: ResourceHand }
   | { type: 'bankTrade'; give: ResourceType | null; receive: ResourceType | null }
   | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
+  | { type: 'goldChoice'; playerId: PlayerId; slots: (ResourceType | null)[] }
   | { type: 'monopoly'; resource: ResourceType | null }
   | { type: 'robberTarget'; tileId: string; opponents: PlayerId[] }
   | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road' | 'ship'; targetId: string }
@@ -345,6 +346,70 @@ function buildBankTradeUI(
   }
 
   div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  return div;
+}
+
+// ============================================================
+// 金タイル産出の任意資源選択（航海者）
+// ============================================================
+// owed 枚をバンクから選ぶ。ルール上「選ばない」は不可（必須）なのでキャンセルは無し。
+function buildGoldChoiceUI(
+  state: GameState,
+  gpid: PlayerId,
+  uiPhase: UIPhase,
+  setUIPhase: (p: UIPhase) => void,
+  dispatch: (a: Action) => void,
+): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+  const owed = (state.pendingGoldChoice ?? {})[gpid] ?? 0;
+  const slots: (ResourceType | null)[] =
+    uiPhase.type === 'goldChoice' && uiPhase.playerId === gpid && uiPhase.slots.length === owed
+      ? uiPhase.slots
+      : Array.from({ length: owed }, () => null);
+
+  const header = el('div', 'modal-header');
+  header.textContent = `✨ 金タイル：資源${owed}枚を選んで受け取る`;
+  div.appendChild(header);
+
+  const status = el('div', 'modal-section-label');
+  status.textContent = `選択中：${slots.map(s => (s ? RESOURCE_EMOJI[s] : '？')).join(' ・ ')}`;
+  div.appendChild(status);
+
+  const resRow = el('div', 'modal-res-row');
+  for (const r of RESOURCE_TYPES) {
+    const chosen = slots.filter(s => s === r).length;
+    // バンク在庫を超えて同一資源は選べない（金もバンクからの受け取り）。
+    const canAdd = chosen < state.bank[r] && slots.some(s => s === null);
+    const btn = makeBtn(
+      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}${chosen > 0 ? ` ×${chosen}` : ''}`,
+      chosen > 0 ? 'btn-active' : canAdd ? 'btn-build' : 'btn-disabled',
+      !canAdd,
+      () => {
+        const next = [...slots] as (ResourceType | null)[];
+        const empty = next.findIndex(s => s === null);
+        if (empty !== -1) next[empty] = r;
+        setUIPhase({ type: 'goldChoice', playerId: gpid, slots: next });
+      },
+    );
+    resRow.appendChild(btn);
+  }
+  div.appendChild(resRow);
+
+  // 選び直し（全クリア）。誤タップのリカバリ用。「選ばない」はルール上不可。
+  div.appendChild(makeBtn('↺ 選び直す', 'btn-end', owed === 0, () =>
+    setUIPhase({ type: 'goldChoice', playerId: gpid, slots: Array.from({ length: owed }, () => null) })));
+
+  const allFilled = slots.length > 0 && slots.every(s => s !== null);
+  div.appendChild(makeBtn(
+    '✓ 受け取る',
+    allFilled ? 'btn-primary' : 'btn-disabled',
+    !allFilled,
+    () => {
+      const resources: Partial<ResourceHand> = {};
+      for (const s of slots) if (s) resources[s] = (resources[s] ?? 0) + 1;
+      dispatch({ type: 'CHOOSE_GOLD', playerId: gpid, resources });
+    },
+  ));
   return div;
 }
 
@@ -964,6 +1029,17 @@ function buildActionButtons(
     const discardPid = findPendingDiscarder(state);
     if (!discardPid || state.players[discardPid]?.type !== 'human') return null;
     div.appendChild(buildDiscardUI(state, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+
+  // ---- 航海者: 金タイル産出の任意資源選択 ----
+  // 対象が人間のときだけ表示。CPU分は scheduleAiTurn が自動解決し、解決後に
+  // 次の owed（人間含む）へ進む（DISCARD と同じ多人数解決）。
+  if (state.turnPhase === 'GOLD') {
+    const gpid = state.playerOrder.find(p => ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
+    if (!gpid || state.players[gpid]?.type !== 'human') return null;
+    if (lanMode && viewerId != null && viewerId !== gpid) return null; // LANは自分の分のみ
+    div.appendChild(buildGoldChoiceUI(state, gpid, uiPhase, setUIPhase, dispatch));
     return div;
   }
 

@@ -6,7 +6,7 @@ import type {
   GameState, Action, PlayerId, ResourceType, DevCard, VertexId, ResourceHand,
 } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, VP_TABLE } from '../constants';
-import { rollDice, distributeResources } from './dice';
+import { rollDice, distributeResources, computeGoldPicks } from './dice';
 import {
   canBuildRoad, buildRoad,
   canBuildShip, buildShip,
@@ -118,9 +118,61 @@ export function applyAction(
         next = { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : 'ROBBER' };
       } else {
         next = distributeResources({ ...next, turnPhase: 'TRADE_BUILD' }, total);
-        next = { ...next, turnPhase: 'TRADE_BUILD' };
+        // 航海者: 金タイル産出があれば、任意資源の選択待ち(GOLD)へ。無ければ通常どおり TRADE_BUILD。
+        // 各プレイヤーの選択枚数はバンク総在庫で頭打ちにする（在庫切れでの手詰まり回避）。
+        const rawPicks = computeGoldPicks(next, total);
+        const bankTotal = RESOURCE_TYPES.reduce((s, r) => s + next.bank[r], 0);
+        const goldPicks: Record<string, number> = {};
+        for (const pid of next.playerOrder) {
+          const capped = Math.min(rawPicks[pid] ?? 0, bankTotal);
+          if (capped > 0) goldPicks[pid] = capped;
+        }
+        next = Object.keys(goldPicks).length > 0
+          ? { ...next, turnPhase: 'GOLD', pendingGoldChoice: goldPicks }
+          : { ...next, turnPhase: 'TRADE_BUILD' };
       }
 
+      return next;
+    }
+
+    // ----------------------------------------------------------
+    // CHOOSE_GOLD（航海者・金タイル産出の任意資源選択）
+    // ----------------------------------------------------------
+    case 'CHOOSE_GOLD': {
+      if (state.turnPhase !== 'GOLD') throw new Error('CHOOSE_GOLD: not in GOLD phase');
+      const { playerId, resources } = action;
+      const chooser = state.players[playerId];
+      if (!chooser) throw new Error('CHOOSE_GOLD: unknown player');
+      const owed = (state.pendingGoldChoice ?? {})[playerId] ?? 0;
+      if (owed <= 0) throw new Error('CHOOSE_GOLD: no gold pick owed for this player');
+
+      // 「ちょうど owed 枚・各資源はバンク在庫の範囲内」をエンジンが一元検証する。
+      const res = resources as Partial<Record<ResourceType, number>>;
+      const sum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+      const withinBank = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= state.bank[r]);
+      if (sum !== owed || !withinBank)
+        throw new Error('CHOOSE_GOLD: must choose exactly the owed number of resources from the bank');
+
+      const newHand = { ...chooser.hand };
+      const newBank = { ...state.bank };
+      for (const r of RESOURCE_TYPES) {
+        const a = res[r] ?? 0;
+        newHand[r] += a;
+        newBank[r] -= a;
+      }
+      const nextPending = { ...(state.pendingGoldChoice ?? {}) };
+      delete nextPending[playerId];
+
+      let next: GameState = {
+        ...state,
+        bank: newBank,
+        players: { ...state.players, [playerId]: { ...chooser, hand: newHand } },
+        pendingGoldChoice: nextPending,
+      };
+      // 全員の選択が済んだら、手番プレイヤーの交易・建設フェーズへ進む。
+      if (Object.keys(nextPending).length === 0) {
+        next = { ...next, turnPhase: 'TRADE_BUILD', pendingGoldChoice: {} };
+      }
       return next;
     }
 

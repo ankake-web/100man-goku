@@ -87,6 +87,36 @@ export function computeDiceProduction(
 }
 
 /**
+ * 航海者: 金タイル(gold)の出目一致による「任意資源を選ぶ枚数」をプレイヤー別に計算する純粋関数。
+ * 開拓地=1・都市=2。強盗のあるタイルは産出しない。7 は対象外。
+ *
+ * 金は固定の対応資源を持たないため computeDiceProduction では配布されず、ここで「選択権の枚数」
+ * だけを公開情報（タイル/数字/強盗/盤面の建物）から導出する（手札は一切参照しない＝LAN安全）。
+ * 返り値は picks>0 のプレイヤーのみを含む（基本ゲームは金タイルが無く常に空）。
+ */
+export function computeGoldPicks(
+  state: GameState,
+  diceTotal: number,
+): Record<string, number> {
+  const picks: Record<string, number> = {};
+  if (diceTotal === 7) return picks;
+
+  for (const tile of Object.values(state.tiles)) {
+    if (tile.type !== 'gold') continue;
+    if (tile.number !== diceTotal) continue;
+    if (tile.hasRobber) continue;
+
+    for (const vid of state.tileToVertices[tile.id] ?? []) {
+      const building = state.vertices[vid]?.building;
+      if (!building) continue;
+      const amount = building.type === 'city' ? 2 : 1;
+      picks[building.playerId] = (picks[building.playerId] ?? 0) + amount;
+    }
+  }
+  return picks;
+}
+
+/**
  * ダイス合計値に基づいて資源を配布し、新しい GameState を返す。
  * 実配布量は computeDiceProduction に委譲し、ここではその分を手札とバンクへ反映する。
  */

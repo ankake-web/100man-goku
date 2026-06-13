@@ -99,6 +99,12 @@ export function buildActionLog(
       if (count > 0) push(action.playerId, 'DISCARD', `🗑 ${nm(action.playerId)} が ${count}枚 捨てた`);
       break;
     }
+    case 'CHOOSE_GOLD': {
+      // 金タイルで選んだ枚数のみ（種類は秘匿・捨て札/盗みと同方針）
+      const count = RESOURCE_TYPES.reduce((s, r) => s + (action.resources[r] ?? 0), 0);
+      if (count > 0) push(action.playerId, 'RESOURCE_GAIN', `✨ ${nm(action.playerId)} が金タイルから ${count}枚 獲得`);
+      break;
+    }
     case 'OFFER_TRADE': {
       push(actor, 'TRADE_PLAYER', isMe(actor) ? `🤝 あなたが交易を提案` : `🤝 ${nm(actor)} が交易を提案`);
       break;

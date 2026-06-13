@@ -149,6 +149,7 @@ export type TurnPhase =
   | 'PRE_ROLL'    // ダイスロール前（発展カード使用可）
   | 'ROBBER'      // 強盗処理中
   | 'DISCARD'     // 手札8枚以上の捨て処理
+  | 'GOLD'        // 航海者: 金タイル産出の資源選択待ち（DISCARD と同様の多人数解決）
   | 'TRADE_BUILD' // 交易・建設
   | 'END';
 
@@ -233,6 +234,11 @@ export interface GameState {
   // 各エントリ +2VP（calcVP で加算）。基本ゲームでは常に空（海タイルが無く発生しない）。
   islandBonus?: Record<string, PlayerId>;
 
+  // 航海者拡張: 金タイル産出で「任意資源を選ぶ権利」の残数。PlayerId → 選ぶ枚数。
+  // turnPhase==='GOLD' の間だけ非空。各プレイヤーが CHOOSE_GOLD で解決し、全員空になると
+  // TRADE_BUILD へ進む（DISCARD と同様の多人数解決）。基本ゲームでは常に未使用。
+  pendingGoldChoice?: Record<string, number>;
+
   pendingTrade: PendingTrade | null;
   winner: PlayerId | null;
 
@@ -264,6 +270,7 @@ export type Action =
   | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand> }
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
   | { type: 'BUILD_SHIP';          edgeId: EdgeId }
+  | { type: 'CHOOSE_GOLD';         playerId: PlayerId; resources: Partial<ResourceHand> }
   | { type: 'BUILD_SETTLEMENT';    vertexId: VertexId }
   | { type: 'BUILD_CITY';          vertexId: VertexId }
   | { type: 'BUY_DEV_CARD' }

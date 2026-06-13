@@ -42,7 +42,8 @@ const classic: Scenario = {
 // 既存の盤面viewBoxに収めるため19タイル footprint のまま、二つの陸塊を海峡(q=0列)で分離する:
 //   左(q=-2,-1)=本島7タイル / 中央(q=0)=海峡 / 右(q=1,2)=新しい島4タイル。
 //   左右の陸は隣接しない（間が海）ため、新しい島へは船で渡る必要がある。
-//   金タイル・海賊・島ボーナスVP・最長交易路への船算入は後続フェーズ（docs/seafarers_plan.md）。
+//   新島には金タイル(gold)を1枚配置（Phase 2・出目一致時に任意資源を選べる＝渡る誘因）。
+//   海賊・最長交易路への船算入は後続フェーズ（docs/seafarers_plan.md）。
 const NEW_SHORES_LAND: Record<string, { type: TileType; number: number | null; robber?: boolean }> = {
   // 本島（左）
   '-2,0':  { type: 'field',    number: 5 },
@@ -52,10 +53,10 @@ const NEW_SHORES_LAND: Record<string, { type: TileType; number: number | null; r
   '-1,0':  { type: 'desert',   number: null, robber: true }, // 砂漠（盗賊初期位置）
   '-1,1':  { type: 'mountain', number: 8 },
   '-1,2':  { type: 'forest',   number: 4 },
-  // 新しい島（右）
+  // 新しい島（右）。海峡に最も近い上陸地点(1,0)を金タイルにして「渡る価値」を持たせる。
   '1,-1':  { type: 'field',    number: 3 },
-  '1,0':   { type: 'pasture',  number: 11 },
-  '2,-1':  { type: 'forest',   number: 12 },
+  '1,0':   { type: 'gold',     number: 10 }, // 金（任意資源・出目10）。新島の玄関口。
+  '2,-1':  { type: 'pasture',  number: 11 },
   '2,0':   { type: 'hill',     number: 2 },
 };
 

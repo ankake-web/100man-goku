@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { createInitialGameState } from '../src/engine/createState';
 import type { PlayerSpec } from '../src/engine/createState';
 import { createRng } from '../src/engine/setup';
-import { computeIslandReps, newIslandBonusRep } from '../src/engine/islands';
+import { computeIslandReps, newIslandBonusRep, isHomeIslandVertex } from '../src/engine/islands';
 import { calcVP, calcPublicVP } from '../src/engine/scoring';
+import { canBuildSettlement } from '../src/engine/actions';
 import { applyAction } from '../src/engine/game';
 import type { GameState, VertexId } from '../src/types';
 
@@ -57,6 +58,24 @@ describe('islands: 連結成分（航海者「新たな海岸を求めて」）'
   it('基本ゲーム(classic)は全タイルが1島（海タイル無し）', () => {
     const repOf = computeIslandReps(classic().tiles);
     expect(new Set(Object.values(repOf)).size).toBe(1);
+  });
+});
+
+describe('初期配置は本島のみ（航海者・新島へは航海で渡る）', () => {
+  it('SETUP では本島の頂点は置けるが、新島の頂点は置けない', () => {
+    const s = seafarers(); // 既定で SETUP_FORWARD・currentPlayerIndex 0（player1）
+    const home = vertexOnIsland(s, HOME_REP);
+    const isle = vertexOnIsland(s, NEW_REP);
+    expect(isHomeIslandVertex(s, home)).toBe(true);
+    expect(isHomeIslandVertex(s, isle)).toBe(false);
+    expect(canBuildSettlement(s, 'player1', home)).toBe(true);
+    expect(canBuildSettlement(s, 'player1', isle)).toBe(false);
+  });
+
+  it('基本ゲームは初期配置の島制限なし（全頂点が本島扱い）', () => {
+    const c = classic();
+    const v = Object.keys(c.vertices)[0]!;
+    expect(isHomeIslandVertex(c, v)).toBe(true);
   });
 });
 

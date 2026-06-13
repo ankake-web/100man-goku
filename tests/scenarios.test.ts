@@ -54,12 +54,15 @@ describe('scenarios: 航海者「新たな海岸を求めて」(Phase 0)', () =>
     for (const c of getAllTileCoords()) expect(ids.has(`${c.q},${c.r}`)).toBe(true);
   });
 
-  it('二島（本島7+新島4=陸11）/ 海8。金タイルは無し（後フェーズ）', () => {
+  it('二島（本島7+新島4=陸11）/ 海8。新島に金タイル1枚（Phase 2）', () => {
     expect(count(s.tiles, 'sea')).toBe(8);
-    expect(count(s.tiles, 'gold')).toBe(0);
+    expect(count(s.tiles, 'gold')).toBe(1);
     expect(count(s.tiles, 'desert')).toBe(1);
-    const land = 19 - 8; // 海以外
+    const land = 19 - 8; // 海以外（金タイルも陸に含む）
     expect(land).toBe(11);
+    // 金タイルは新島(右)の玄関口(1,0)に置かれ、出目を持つ
+    expect(s.tiles['1,0']?.type).toBe('gold');
+    expect(s.tiles['1,0']?.number).toBe(10);
   });
 
   it('左右の陸塊が海峡(q=0列)で分離されている（隣接しない＝船が必要）', () => {

@@ -41,6 +41,8 @@ const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
   // 基本操作（MVP3）
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
+  // 航海者: 金タイル産出の任意資源選択
+  'CHOOSE_GOLD',
   // 7 / 捨て札 / 盗賊（MVP4）
   'MOVE_ROBBER', 'DISCARD_RESOURCES',
   // 交易（MVP4）
@@ -54,6 +56,7 @@ const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
 export function requiredActor(state: GameState, action: Action): PlayerId | null {
   switch (action.type) {
     case 'DISCARD_RESOURCES': return action.playerId;
+    case 'CHOOSE_GOLD':       return action.playerId;
     case 'RESPOND_TRADE':     return action.response.playerId;
     default:                  return state.playerOrder[state.currentPlayerIndex] ?? null;
   }
@@ -348,8 +351,8 @@ function applyCpuStep(room: Room, pid: PlayerId, action: Action): Action['type']
     try {
       const prev = room.state;
       const cur = prev.playerOrder[prev.currentPlayerIndex];
-      // フォールバックの actor: 捨て札/交易応答は対象本人、それ以外は手番者。
-      const fbActor = (action.type === 'DISCARD_RESOURCES' || action.type === 'RESPOND_TRADE') ? pid : (cur ?? pid);
+      // フォールバックの actor: 捨て札/金選択/交易応答は対象本人、それ以外は手番者。
+      const fbActor = (action.type === 'DISCARD_RESOURCES' || action.type === 'CHOOSE_GOLD' || action.type === 'RESPOND_TRADE') ? pid : (cur ?? pid);
       const fb = cpuFallbackAction(prev, fbActor as PlayerId);
       const next = applyAction(prev, fb, Math.random);
       room.state = next;
@@ -562,6 +565,17 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
               const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
               if (required === 0 || discardSum !== required || !withinHand) {
                 send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
+                return;
+              }
+            }
+            // 金タイル選択は「ちょうど owed 枚・各資源はバンク在庫の範囲内」のみ許可。
+            if (action.type === 'CHOOSE_GOLD') {
+              const owed = (room.state.pendingGoldChoice ?? {})[action.playerId] ?? 0;
+              const res = action.resources as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
+              const sum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+              const withinBank = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= room.state.bank[r]);
+              if (owed === 0 || sum !== owed || !withinBank) {
+                send(ws, { t: 'error', message: '金タイルの選択枚数が正しくありません' });
                 return;
               }
             }

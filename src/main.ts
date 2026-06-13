@@ -647,6 +647,18 @@ function redraw(skipBoard = false): void {
     uiPhase = { type: 'idle' };
   }
 
+  // 航海者: 金タイル産出の選択待ち(GOLD)の uiPhase 自動同期（DISCARD と同様）。
+  // owed なプレイヤーが切り替わったらスロットを引き直す。GOLD を抜けたら破棄。
+  if (state.phase === 'MAIN' && state.turnPhase === 'GOLD') {
+    const goldPid = state.playerOrder.find(p => ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
+    if (goldPid && (uiPhase.type !== 'goldChoice' || uiPhase.playerId !== goldPid)) {
+      const owed = (state.pendingGoldChoice ?? {})[goldPid] ?? 0;
+      uiPhase = { type: 'goldChoice', playerId: goldPid, slots: Array.from({ length: owed }, () => null) };
+    }
+  } else if (uiPhase.type === 'goldChoice') {
+    uiPhase = { type: 'idle' };
+  }
+
   if (state.turnPhase !== 'ROBBER' && uiPhase.type === 'robberTarget') {
     uiPhase = { type: 'idle' };
   }
@@ -733,6 +745,11 @@ function computeSheetStatus(): { text: string; alert: boolean } {
     if (total >= 8 && !(state.discardedThisRound ?? []).includes(viewer)) {
       return { text: '🗑 捨て札！', alert: true };
     }
+  }
+  // 航海者: 自分が金タイル産出の選択待ちなら案内（手番でなくても出す）。
+  if (viewer && state.phase === 'MAIN' && state.turnPhase === 'GOLD'
+      && ((state.pendingGoldChoice ?? {})[viewer] ?? 0) > 0) {
+    return { text: '✨ 金を選択！', alert: true };
   }
   if (viewer && cur === viewer) {
     if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
@@ -1092,6 +1109,19 @@ function scheduleAiTurn(): void {
     return;
   }
 
+  // 航海者: 金タイル産出の選択待ち。owed な CPU を1人ずつ自動解決する（DISCARD と同様）。
+  if (state.phase === 'MAIN' && state.turnPhase === 'GOLD') {
+    const goldPid = state.playerOrder.find(p =>
+      state.players[p]?.type === 'ai' && ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
+    if (goldPid) {
+      setTimeout(() => {
+        if (gen !== gameGeneration) return;
+        runCpuStep(goldPid, {});
+      }, aiDelayMs());
+    }
+    return;
+  }
+
   const pid = state.playerOrder[state.currentPlayerIndex]!;
   if (state.players[pid]?.type === 'ai') {
     const aiOpts: AiOpts = { skipPlayerTrade: cpuPlayerTradeOfferedThisTurn };
@@ -1210,6 +1240,13 @@ function safeFallbackAction(): Action | null {
       }
       return { type: 'DISCARD_RESOURCES', playerId: dpid, resources };
     }
+    return null;
+  }
+  // 航海者: 金タイル産出の選択待ち（owed な CPU の選択を chooseAction で生成）。
+  if (state.phase === 'MAIN' && state.turnPhase === 'GOLD') {
+    const gpid = state.playerOrder.find(p => state.players[p]?.type === 'ai'
+      && ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
+    if (gpid) return chooseAction(state, gpid);
     return null;
   }
   const cur = state.playerOrder[state.currentPlayerIndex];
@@ -2103,6 +2140,7 @@ function dispatch(action: Action): void {
     // 触覚は自分の操作のみ（CPUの連続操作で鳴り続けないようにアクターを判定）。
     {
       const actorPid = action.type === 'DISCARD_RESOURCES' ? action.playerId
+        : action.type === 'CHOOSE_GOLD' ? action.playerId
         : action.type === 'RESPOND_TRADE' ? action.response.playerId
         : prevState.playerOrder[prevState.currentPlayerIndex];
       if (actorPid === selfPlayerId()) vibrateForAction(action);
@@ -2335,7 +2373,7 @@ function boardCanAct(): boolean {
 const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
-  'MOVE_ROBBER', 'DISCARD_RESOURCES',
+  'MOVE_ROBBER', 'DISCARD_RESOURCES', 'CHOOSE_GOLD',
   'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
   'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
   'FINISH_ROAD_BUILDING',
@@ -2548,6 +2586,7 @@ function playActionSE(action: Action): void {
     case 'END_TURN':          playSE('turnStart'); break;
     case 'DECLARE_VICTORY':   playSE('victory'); break;
     case 'DISCARD_RESOURCES': playSE('discardLose'); break;
+    case 'CHOOSE_GOLD':       playSE('build'); break;
   }
 }
 
@@ -2621,6 +2660,7 @@ function netDispatch(action: Action): void {
   // actor（操作者）が自分か。捨て札・交易応答は対象本人、それ以外は手番プレイヤー。
   const actor =
     action.type === 'DISCARD_RESOURCES' ? action.playerId :
+    action.type === 'CHOOSE_GOLD'       ? action.playerId :
     action.type === 'RESPOND_TRADE'     ? action.response.playerId :
     currentPid(state);
   if (actor !== viewerPlayerId) return; // 自分の操作できる場面のみ送信
