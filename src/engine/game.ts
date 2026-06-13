@@ -17,6 +17,7 @@ import {
 import { moveRobber, discardResources, stealResource, getRobbablePlayerIds, discardCount } from './robber';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP } from './scoring';
+import { newIslandBonusRep } from './islands';
 
 // ============================================================
 // 内部ユーティリティ
@@ -265,6 +266,16 @@ export function applyAction(
               },
             },
           };
+        }
+      }
+
+      // 航海者: MAIN で「新しい島」へ最初に入植したら +2VP（島ボーナス）。
+      // 海タイルの無い基本ゲームでは newIslandBonusRep が常に null を返し no-op。
+      // checkVictory より前に付与し、島ボーナスで 10VP に到達したら勝てるようにする。
+      if (state.phase === 'MAIN') {
+        const rep = newIslandBonusRep(next, vertexId);
+        if (rep && !(next.islandBonus ?? {})[rep]) {
+          next = { ...next, islandBonus: { ...(next.islandBonus ?? {}), [rep]: pid } };
         }
       }
 

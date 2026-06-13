@@ -98,6 +98,7 @@ export function createInitialGameState(
     devCardPlayedThisTurn: false,
     longestRoadHolder: null,
     largestArmyHolder: null,
+    islandBonus: {},
     pendingTrade: null,
     winner: null,
     discardedThisRound: [],

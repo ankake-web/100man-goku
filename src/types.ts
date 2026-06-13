@@ -229,6 +229,10 @@ export interface GameState {
   longestRoadHolder: PlayerId | null;
   largestArmyHolder: PlayerId | null;
 
+  // 航海者拡張: 「新しい島への最初の入植」ボーナス。島の代表タイルID → 最初に入植したプレイヤー。
+  // 各エントリ +2VP（calcVP で加算）。基本ゲームでは常に空（海タイルが無く発生しない）。
+  islandBonus?: Record<string, PlayerId>;
+
   pendingTrade: PendingTrade | null;
   winner: PlayerId | null;
 

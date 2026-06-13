@@ -1,0 +1,89 @@
+// ============================================================
+// src/engine/islands.ts — 島（陸の連結成分）判定（航海者拡張）
+// ============================================================
+//
+// 海タイルで分断された盤（航海者）で「島」を求める純粋関数群。
+// 島 = 海(sea)以外のタイルの連結成分（axial 6方向の隣接で連結）。
+// 用途: シナリオ「新たな海岸を求めて」の“新しい島への最初の入植 +2VP”判定。
+//
+// 基本ゲーム（海タイル無し）は全タイルが 1 つの島になるため、これらの関数は
+// 「新島ボーナス」を一切発生させない（呼び出し側で海タイルの有無を gate）。
+
+import type { GameState, Tile, TileId, Vertex, VertexId } from '../types';
+import { HEX_DIRECTIONS } from '../constants';
+import { tileId } from './board';
+
+/**
+ * 各陸タイルを所属する島の「代表ID」（連結成分内で最小の TileId・文字列順）へ写す表を返す。
+ * 海タイルは含まれない。連結は axial 6方向の隣接で判定する。
+ */
+export function computeIslandReps(tiles: Record<TileId, Tile>): Record<TileId, string> {
+  const landIds = Object.keys(tiles).filter(id => tiles[id]!.type !== 'sea');
+  const landSet = new Set(landIds);
+  const visited = new Set<string>();
+  const repOf: Record<TileId, string> = {};
+
+  for (const start of landIds) {
+    if (visited.has(start)) continue;
+    // BFS/DFS で連結成分を収集
+    const comp: string[] = [];
+    const stack = [start];
+    visited.add(start);
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      comp.push(cur);
+      const c = tiles[cur]!.coord;
+      for (const d of HEX_DIRECTIONS) {
+        const nid = tileId({ q: c.q + d.q, r: c.r + d.r });
+        if (landSet.has(nid) && !visited.has(nid)) {
+          visited.add(nid);
+          stack.push(nid);
+        }
+      }
+    }
+    // 代表 = 成分内で文字列順最小の TileId（決定的・安定）
+    const rep = comp.reduce((m, x) => (x < m ? x : m), comp[0]!);
+    for (const t of comp) repOf[t] = rep;
+  }
+  return repOf;
+}
+
+/** 頂点が属する島の代表ID（隣接する最初の陸タイルの島）。陸に面さない頂点は null。 */
+function vertexRep(v: Vertex, repOf: Record<TileId, string>): string | null {
+  for (const tid of v.adjacentTileIds) {
+    const r = repOf[tid];
+    if (r) return r;
+  }
+  return null;
+}
+
+/**
+ * MAIN フェーズで開拓地を建てた“直後の state”を受け取り、その頂点が
+ * 「その島で最初の建物」（=新しい島への最初の入植）なら島代表IDを返す。
+ * 対象外（海タイルの無い基本ゲーム / 既に他の建物がある島 / 陸に面さない）の場合は null。
+ *
+ * 判定は「島内の建物がちょうど1個（＝今置いた開拓地のみ）」で行う。建物は撤去されないため、
+ * これは島ごとに一度だけ true になり、初入植者を一意に特定できる。
+ */
+export function newIslandBonusRep(state: GameState, builtVertexId: VertexId): string | null {
+  // 基本ゲーム（海タイル無し）は新島ボーナス対象外。
+  if (!Object.values(state.tiles).some(t => t.type === 'sea')) return null;
+
+  const builtV = state.vertices[builtVertexId];
+  if (!builtV) return null;
+
+  const repOf = computeIslandReps(state.tiles);
+  const rep = vertexRep(builtV, repOf);
+  if (!rep) return null;
+
+  // この島の建物数を数える（2個以上見つかった時点で「最初ではない」と確定）。
+  let count = 0;
+  for (const v of Object.values(state.vertices)) {
+    if (!v.building) continue;
+    if (vertexRep(v, repOf) === rep) {
+      count++;
+      if (count > 1) return null;
+    }
+  }
+  return count === 1 ? rep : null;
+}

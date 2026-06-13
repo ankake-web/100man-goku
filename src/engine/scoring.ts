@@ -27,8 +27,18 @@ export function calcVP(state: GameState, playerId: PlayerId): number {
   if (player.hasLongestRoad) vp += VP_TABLE.longestRoad;
   if (player.hasLargestArmy) vp += VP_TABLE.largestArmy;
   vp += player.devCards.filter(c => c.type === 'victory_point').length * VP_TABLE.victoryPoint;
+  vp += islandBonusVP(state, playerId);
 
   return vp;
+}
+
+/** 航海者: このプレイヤーが獲得した新島入植ボーナスの合計VP（公開情報）。基本ゲームは常に0。 */
+function islandBonusVP(state: GameState, playerId: PlayerId): number {
+  let n = 0;
+  for (const owner of Object.values(state.islandBonus ?? {})) {
+    if (owner === playerId) n += VP_TABLE.island;
+  }
+  return n;
 }
 
 /**
@@ -46,6 +56,8 @@ export function calcPublicVP(state: GameState, playerId: PlayerId): number {
   }
   if (player.hasLongestRoad) vp += VP_TABLE.longestRoad;
   if (player.hasLargestArmy) vp += VP_TABLE.largestArmy;
+  // 新島入植ボーナスは盤面で見える公開情報なので公開VPにも算入する。
+  vp += islandBonusVP(state, playerId);
 
   return vp;
 }

@@ -72,6 +72,7 @@ export const VP_TABLE = {
   longestRoad:  2,
   largestArmy:  2,
   victoryPoint: 1,
+  island:       2, // 航海者: 新しい島への最初の入植ボーナス
   target:       10,
 } as const;
 

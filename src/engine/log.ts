@@ -127,6 +127,16 @@ export function buildActionLog(
   if (prev.largestArmyHolder !== next.largestArmyHolder && next.largestArmyHolder) {
     push(next.largestArmyHolder, 'BONUS_CHANGE', `⚔ ${nm(next.largestArmyHolder)} が最大騎士力を獲得`);
   }
+  // 航海者: 新しい島への最初の入植（公開情報・+2VP）
+  {
+    const prevBonus = prev.islandBonus ?? {};
+    const nextBonus = next.islandBonus ?? {};
+    for (const [rep, owner] of Object.entries(nextBonus)) {
+      if (!prevBonus[rep]) {
+        push(owner, 'BONUS_CHANGE', `🚢 ${nm(owner)} が新しい島に到達（+2勝利点）`);
+      }
+    }
+  }
   // 勝利
   if (next.phase === 'GAME_OVER' && prev.phase !== 'GAME_OVER' && next.winner) {
     push(next.winner, 'VICTORY', `🏆 ${nm(next.winner)} の勝利！`);
