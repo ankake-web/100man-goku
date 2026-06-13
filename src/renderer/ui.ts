@@ -353,7 +353,7 @@ function buildBankTradeUI(
 // 金タイル産出の任意資源選択（航海者）
 // ============================================================
 // owed 枚をバンクから選ぶ。ルール上「選ばない」は不可（必須）なのでキャンセルは無し。
-function buildGoldChoiceUI(
+export function buildGoldChoiceUI(
   state: GameState,
   gpid: PlayerId,
   uiPhase: UIPhase,
