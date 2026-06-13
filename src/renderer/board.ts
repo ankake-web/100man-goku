@@ -274,6 +274,8 @@ function renderEdges(
   opts?: BoardRenderOptions,
 ): SVGGElement {
   const g = svgEl('g');
+  // 道のプレビュー中は、選択した道だけが目立つよう他候補を暗くする目印クラス。
+  if (opts?.previewEdgeId) g.classList.add('edges-previewing');
   const roadColor: Record<string, string> = {
     player1: '#e03030', player2: '#3060e0',
     player3: '#a855f7', player4: '#f0a020',
@@ -308,10 +310,17 @@ function renderEdges(
       line.setAttribute('data-edge-id', edge.id);
       setAttrs(line, { x1, y1, x2, y2 });
       g.appendChild(line);
-      // 仮置きプレビュー（確定待ち）のゴースト道。
+      // 仮置きプレビュー（確定待ち）のゴースト道。候補(緑)と見分けやすいよう、
+      // 白いケーシング＋手番プレイヤーの道色の芯で「ここに建つ道」を明示する。
       if (opts?.previewEdgeId === edge.id) {
+        const curPid = state.playerOrder[state.currentPlayerIndex];
+        const casing = svgEl('line');
+        casing.classList.add('edge-preview-casing');
+        setAttrs(casing, { x1, y1, x2, y2 });
+        g.appendChild(casing);
         const ghost = svgEl('line');
         ghost.classList.add('edge-preview');
+        ghost.setAttribute('stroke', (curPid && roadColor[curPid]) || '#ffffff');
         setAttrs(ghost, { x1, y1, x2, y2 });
         g.appendChild(ghost);
       }
@@ -339,6 +348,8 @@ function renderVertices(
   opts?: BoardRenderOptions,
 ): SVGGElement {
   const g = svgEl('g');
+  // 頂点プレビュー中は、選択した頂点だけが目立つよう他候補(緑ドット)を暗くする。
+  if (opts?.previewVertexId) g.classList.add('vertices-previewing');
   const buildingColor: Record<string, string> = {
     player1: '#e03030', player2: '#3060e0',
     player3: '#a855f7', player4: '#f0a020',

@@ -155,9 +155,10 @@ function renderHome(
   speedLabel.textContent = 'CPU の速度';
   const speedGroup = document.createElement('div');
   speedGroup.className = 'home-radio-group';
-  const speedLabelMap: Record<CpuSpeed, string> = { slow: 'ゆっくり', normal: '普通', fast: '速い', instant: '最速' };
+  // 速度は3段階（ゆっくり/普通/速い）。旧「最速」(instant)保存値は「速い」へフォールバック。
+  const speedLabelMap: Record<CpuSpeed, string> = { slow: 'ゆっくり', normal: '普通', fast: '速い', instant: '速い' };
   const defaultSpeed = speedLabelMap[lastConfig?.cpuSpeed ?? 'normal'];
-  speedGroup.appendChild(createRadioGroup('cpuSpeed', ['ゆっくり', '普通', '速い', '最速'], defaultSpeed));
+  speedGroup.appendChild(createRadioGroup('cpuSpeed', ['ゆっくり', '普通', '速い'], defaultSpeed));
   speedField.appendChild(speedLabel);
   speedField.appendChild(speedGroup);
   cpuForm.appendChild(speedField);
@@ -310,7 +311,7 @@ function renderHome(
     const cpuDifficulty: AiDifficulty = diffMap[diffVal] ?? 'normal';
 
     const speedVal = (speedGroup.querySelector('input[name="cpuSpeed"]:checked') as HTMLInputElement | null)?.value ?? '普通';
-    const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast', '最速': 'instant' };
+    const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast' };
     const cpuSpeed: CpuSpeed = speedMap[speedVal] ?? 'normal';
 
     // プレイヤー順設定を読み取る
@@ -797,10 +798,12 @@ function updateGameNav(): void {
     lbl.textContent = 'CPU速度';
     const sel = document.createElement('select');
     sel.className = 'game-menu-select';
-    (['slow', 'normal', 'fast', 'instant'] as CpuSpeed[]).forEach(sp => {
+    // 速度は3段階。旧「最速」(instant)保存値は「速い」を選択状態として表示する。
+    const curSpeed: CpuSpeed = lastConfig!.cpuSpeed === 'instant' ? 'fast' : lastConfig!.cpuSpeed;
+    (['slow', 'normal', 'fast'] as CpuSpeed[]).forEach(sp => {
       const opt = document.createElement('option');
       opt.value = sp; opt.textContent = CPU_SPEED_LABELS[sp];
-      if (lastConfig!.cpuSpeed === sp) opt.selected = true;
+      if (curSpeed === sp) opt.selected = true;
       sel.appendChild(opt);
     });
     sel.addEventListener('change', () => {
@@ -2201,8 +2204,25 @@ function updatePlaceConfirmBar(): void {
   cancel.textContent = '✕ やめる';
   cancel.addEventListener('click', () => { uiPhase = { type: 'idle' }; redraw(); });
 
-  bar.append(text, ok, cancel);
+  // [確定][やめる] は専用の横並びコンテナに入れ、幅が狭くても縦積み/折返ししない。
+  const actions = document.createElement('div');
+  actions.className = 'place-confirm-actions';
+  actions.append(ok, cancel);
+  bar.append(text, actions);
   document.body.appendChild(bar);
+
+  // 盤面の直下（中央）に出して、選択した道/頂点の近くで確認できるようにする。
+  // 画面下に固定すると、スマホ縦持ちでは盤面から遠く離れて見にくいため。
+  // 盤面を実測し、はみ出す場合（横持ちで盤面が画面いっぱい等）は画面下端へクランプ。
+  const boardEl = document.getElementById('board');
+  if (boardEl) {
+    const r = boardEl.getBoundingClientRect();
+    const margin = 8;
+    const maxTop = window.innerHeight - bar.offsetHeight - margin;
+    const top = Math.min(r.bottom + margin, Math.max(margin, maxTop));
+    bar.style.top = `${Math.round(top)}px`;
+    bar.style.left = `${Math.round(r.left + r.width / 2)}px`;
+  }
 }
 
 function setUIPhase(phase: UIPhase): void {

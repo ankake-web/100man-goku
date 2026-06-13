@@ -481,41 +481,69 @@ h1 {
   [data-vertex-id].just-built, .road-line-built.road-draw { animation: none; }
 }
 
-/* ---- 仮置きプレビュー（確定待ち）のゴースト ---- */
-.vertex-preview {
-  fill: rgba(0,255,136,0.35);
-  stroke: #00ff88; stroke-width: 2.5;
+/* ---- 仮置きプレビュー（確定待ち）のゴースト ----
+   候補(緑のパルス)に紛れて「どこを選んだか」分かりにくかったので、
+   選択中だけ白いケーシング＋グロー＋（道は）プレイヤー色の芯で強く際立たせ、
+   他の候補は暗くして選択箇所を一目で分かるようにする。 */
+
+/* 選択中以外の候補を減光（パルスも止める）。選択箇所のゴーストは別要素で上に出る。 */
+.edges-previewing .edge-line.valid { opacity: 0.2; animation: none; }
+.vertices-previewing .vertex-dot.valid { opacity: 0.25; animation: none; }
+
+/* 道：白いケーシング（外周）＋プレイヤー色の芯（stroke は JS でインライン指定）。 */
+.edge-preview-casing {
+  stroke: #ffffff; stroke-width: 16; stroke-linecap: round;
   pointer-events: none;
-  animation: previewPulse 1s ease-in-out infinite;
+  animation: previewGlow 1s ease-in-out infinite;
 }
 .edge-preview {
-  stroke: rgba(0,255,136,0.9); stroke-width: 9; stroke-linecap: round;
+  stroke-width: 8; stroke-linecap: round;   /* stroke 色は手番プレイヤー色（インライン） */
   pointer-events: none;
-  animation: previewPulse 1s ease-in-out infinite;
 }
-@keyframes previewPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .vertex-preview, .edge-preview { animation: none; } }
 
-/* ---- 配置確認バー（盤面に被らない固定位置・親指で届く下部中央） ---- */
+/* 頂点：白縁＋金色の太いリングで強調。 */
+.vertex-preview {
+  fill: rgba(255,255,255,0.25);
+  stroke: #ffd24a; stroke-width: 4;
+  pointer-events: none;
+  animation: previewGlow 1s ease-in-out infinite;
+}
+
+/* 常に不透明のまま、グロー（外側ぼかし）の強さだけ脈動させて視認性を保つ。 */
+@keyframes previewGlow {
+  0%,100% { filter: drop-shadow(0 0 3px rgba(255,255,150,0.7)); }
+  50%     { filter: drop-shadow(0 0 9px rgba(255,255,150,1)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vertex-preview, .edge-preview-casing { animation: none; filter: drop-shadow(0 0 5px rgba(255,255,150,0.9)); }
+}
+
+/* ---- 配置確認バー（盤面の直下に出す。top/left は JS が盤面実測で設定） ----
+   質問テキストを上段・[確定][やめる]を下段に並べ、ボタンが改行/折返しせず
+   常に横並びになるようにする。狭幅でも崩れない。 */
 #place-confirm {
   position: fixed;
-  left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
+  /* left/top は updatePlaceConfirmBar が盤面位置に合わせて設定。transform で中央寄せ。 */
   transform: translateX(-50%);
   z-index: 70;
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px;
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 9px;
+  padding: 10px 14px;
   border-radius: 12px;
   background: rgba(12,14,20,0.95);
   border: 1px solid rgba(255,255,255,0.22);
   box-shadow: 0 6px 24px rgba(0,0,0,0.55);
   color: #fff; font-size: 0.9rem;
-  max-width: 94vw;
+  max-width: 92vw;
 }
-.place-confirm-text { white-space: nowrap; font-weight: bold; }
+.place-confirm-text { text-align: center; white-space: nowrap; font-weight: bold; }
+/* 確定/やめるは必ず横並び（nowrap）。狭幅でも縦積みにしない。 */
+.place-confirm-actions { display: flex; flex-wrap: nowrap; gap: 10px; justify-content: center; }
 .place-confirm-ok, .place-confirm-cancel {
-  min-width: 66px; min-height: 42px;
+  flex: 1 1 0; min-width: 88px; max-width: 150px; min-height: 44px;
   padding: 8px 14px; border-radius: 9px;
-  font-size: 0.92rem; font-weight: bold; cursor: pointer;
+  font-size: 0.95rem; font-weight: bold; cursor: pointer;
+  white-space: nowrap;            /* ラベル「✓ 確定」等が内部で折り返さない */
   border: 1px solid transparent;
 }
 .place-confirm-ok { background: #2a8a3a; color: #fff; }
@@ -1206,6 +1234,12 @@ h1 {
    ホーム画面
    ============================================================ */
 
+/* body は align-items:center で子を伸ばさないため、#home は中身基準(shrink-to-fit)の
+   幅になり、カード幅が中身の最大幅に左右されて不安定だった（中身が狭いと細く、
+   広いとビューポート一杯）。#home を明示的に全幅にして、カードは常に
+   「利用可能幅いっぱい(最大480px)で中央寄せ」に固定する。 */
+#home { width: 100%; }
+
 .home-screen {
   display: flex;
   flex-direction: column;
@@ -1379,6 +1413,10 @@ h1 {
 
 .home-radio-option {
   position: relative;
+  /* タブ(.home-tab)と同様、各チップをトラック幅へ均等に伸ばす。
+     左詰めで右側に空白が残る/4択(速度)が折り返す問題を防ぐ。 */
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .home-radio-option input[type="radio"] {
@@ -1390,13 +1428,15 @@ h1 {
 
 .home-radio-option label {
   display: block;
-  padding: 7px 18px;
+  /* 横paddingは最小限に。チップ幅は flex で確保し、テキストは中央寄せ。 */
+  padding: 7px 6px;
   border: 1px solid transparent;
   border-radius: 8px;
   font-size: 0.88rem;
   color: var(--text-dim);
   font-weight: 700;
   cursor: pointer;
+  text-align: center;
   transition: background 0.14s, border-color 0.14s, color 0.14s, box-shadow 0.14s;
   white-space: nowrap;
 }
@@ -1476,6 +1516,12 @@ h1 {
 @media (max-width: 480px) {
   .lan-join-row { flex-direction: column; }
   .lan-join-row .home-online-btn { width: 100%; padding: 12px 0; font-size: 0.95rem; }
+  /* 横余白を詰めてセグメントバー(特に4択の速度)が1行に収まるようにする。 */
+  .home-card { padding: 24px 18px; }
+}
+/* 極狭幅: 速度の4択チップが溢れないようフォントとpaddingをさらに圧縮。 */
+@media (max-width: 360px) {
+  .home-radio-option label { font-size: 0.8rem; padding: 7px 3px; }
 }
 .lan-wait-note {
   margin-top: 4px;
@@ -1584,16 +1630,24 @@ h1 {
 .lan-cpu-val { min-width: 1.4em; text-align: center; font-size: 1.2rem; font-weight: bold; }
 .lan-cpu-hint { font-size: 0.76rem; color: rgba(255,255,255,0.5); }
 
-/* LAN: CPU強さ・手番順（セグメント選択。ホストのみ操作可、参加者は表示のみ） */
-.lan-cfg-ctrl { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.lan-cfg-label { font-size: 0.85rem; color: rgba(255,255,255,0.78); min-width: 4.8em; }
-.lan-cfg-seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+/* LAN: CPU強さ・手番順（セグメント選択。ホストのみ操作可、参加者は表示のみ）。
+   ホームのバーと統一: ラベルの右に「全幅トラック＋均等割りボタン」を置き、
+   ボタンが左寄りで右に余白ができるのをなくす。 */
+.lan-cfg-ctrl { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.lan-cfg-label { flex: 0 0 auto; font-size: 0.85rem; color: rgba(255,255,255,0.78); min-width: 4.8em; }
+.lan-cfg-seg {
+  display: flex; flex: 1 1 auto; gap: 4px;
+  background: rgba(10,18,20,0.5);
+  border: 1px solid rgba(208,168,108,0.16);
+  border-radius: 10px; padding: 3px;
+}
 .lan-cfg-opt {
-  padding: 6px 12px; border-radius: 7px;
-  border: 1px solid rgba(208,168,108,0.22);
-  background: rgba(208,168,108,0.08); color: var(--text);
-  font-size: 0.82rem; cursor: pointer;
-  transition: background 0.13s, border-color 0.13s;
+  flex: 1 1 0; min-width: 0; text-align: center;
+  padding: 6px 8px; border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent; color: var(--text-dim);
+  font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
 }
 .lan-cfg-opt:hover:not(.active):not(:disabled) { background: rgba(208,168,108,0.16); border-color: rgba(208,168,108,0.4); }
 .lan-cfg-opt.active { background: var(--accent-gradient); border-color: rgba(255,224,168,0.5); color: var(--accent-ink); font-weight: 800; }
