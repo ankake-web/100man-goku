@@ -1,0 +1,109 @@
+import { describe, it, expect } from 'vitest';
+import { createInitialGameState } from '../src/engine/createState';
+import type { PlayerSpec } from '../src/engine/createState';
+import { createRng } from '../src/engine/setup';
+import { chooseAction } from '../src/engine/ai';
+import { applyAction } from '../src/engine/game';
+import { computeIslandReps } from '../src/engine/islands';
+import { isSeaEdge, isLandVertex } from '../src/engine/board';
+import { RESOURCE_TYPES, makeHand } from '../src/constants';
+import type { GameState, VertexId } from '../src/types';
+
+const AI_SPECS: PlayerSpec[] = [
+  { id: 'player1', name: 'A', color: 'red',  type: 'ai', aiDifficulty: 'strong' },
+  { id: 'player2', name: 'B', color: 'blue', type: 'ai', aiDifficulty: 'strong' },
+];
+
+const HOME_REP = '-1,-1';
+const NEW_REP = '1,-1';
+
+const seafarers = (seed = 1): GameState =>
+  createInitialGameState(AI_SPECS, 'fixed', ['player1', 'player2'], createRng(seed), 'seafarers_newshores');
+
+const handTotal = (s: GameState, pid: string): number =>
+  RESOURCE_TYPES.reduce((sum, r) => sum + s.players[pid]!.hand[r], 0);
+
+describe('AI 航海者: 海峡を渡る船の建設（Phase 5・基本AI）', () => {
+  it('海峡に面した本島の沿岸開拓地から、CPU は新島へ向け船を建てる', () => {
+    const g = seafarers();
+    const repOf = computeIslandReps(g.tiles);
+    // 海峡(q=0 列の海)に面した本島の頂点を探す（=新島へ向かう launch 点）。
+    const straitVid = Object.values(g.vertices).find(v => {
+      const onHome = v.adjacentTileIds.some(t => repOf[t] === HOME_REP);
+      const facesStrait = v.adjacentTileIds.some(t => g.tiles[t]?.type === 'sea' && t.startsWith('0,'));
+      return onHome && facesStrait;
+    })!.id as VertexId;
+
+    const s: GameState = {
+      ...g,
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', setupSubPhase: null,
+      currentPlayerIndex: 0, diceRolledThisTurn: true,
+      vertices: { ...g.vertices, [straitVid]: { ...g.vertices[straitVid]!, building: { type: 'settlement', playerId: 'player1' } } },
+      // 船コスト(木+羊)だけ持たせる。都市(鉱+麦)・接続のある開拓地は作れない状況。
+      players: { ...g.players, player1: { ...g.players.player1!, hand: makeHand({ wood: 2, wool: 2 }) } },
+    };
+
+    const action = chooseAction(s, 'player1', { rng: createRng(3) });
+    expect(action?.type).toBe('BUILD_SHIP');
+    if (action?.type === 'BUILD_SHIP') {
+      expect(isSeaEdge(s.edges[action.edgeId]!, s.vertices, s.tiles)).toBe(true);
+    }
+  });
+
+  it('新島の沿岸頂点に船が届いていれば、CPU はそこへ入植し +2VP を得る', () => {
+    const g = seafarers();
+    const repOf = computeIslandReps(g.tiles);
+    // 新島の沿岸（海に面した陸）頂点と、その隣接の海辺を選ぶ。
+    const newCoastVid = Object.values(g.vertices).find(v =>
+      v.adjacentTileIds.some(t => repOf[t] === NEW_REP)
+      && isLandVertex(v, g.tiles)
+      && v.adjacentEdgeIds.some(eid => isSeaEdge(g.edges[eid]!, g.vertices, g.tiles)),
+    )!.id as VertexId;
+    const shipEdge = g.vertices[newCoastVid]!.adjacentEdgeIds
+      .find(eid => isSeaEdge(g.edges[eid]!, g.vertices, g.tiles))!;
+
+    const s: GameState = {
+      ...g,
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', setupSubPhase: null,
+      currentPlayerIndex: 0, diceRolledThisTurn: true,
+      edges: { ...g.edges, [shipEdge]: { ...g.edges[shipEdge]!, ship: { playerId: 'player1' } } },
+      players: { ...g.players, player1: { ...g.players.player1!, hand: makeHand({ wood: 1, brick: 1, wool: 1, grain: 1 }) } },
+    };
+
+    const action = chooseAction(s, 'player1', { rng: createRng(3) });
+    expect(action?.type).toBe('BUILD_SETTLEMENT');
+    if (action?.type === 'BUILD_SETTLEMENT') {
+      // 建設先は新島の頂点であること。
+      const v = s.vertices[action.vertexId]!;
+      expect(v.adjacentTileIds.some(t => repOf[t] === NEW_REP)).toBe(true);
+      const next = applyAction(s, action);
+      expect(next.islandBonus?.[NEW_REP]).toBe('player1');
+    }
+  });
+});
+
+describe('AI 航海者: フルCPU対戦が船を使い完走する（決定論スモーク）', () => {
+  it('強CPU同士の対戦が GAME_OVER まで進み、少なくとも1隻の船が建設される', () => {
+    const rng = createRng(12345);
+    let s = createInitialGameState(AI_SPECS, 'fixed', ['player1', 'player2'], rng, 'seafarers_newshores');
+    let ships = 0;
+    let settlements = 0;
+
+    for (let i = 0; i < 40_000 && s.phase !== 'GAME_OVER'; i++) {
+      let pid = s.playerOrder[s.currentPlayerIndex]!;
+      if (s.phase === 'MAIN' && s.turnPhase === 'DISCARD') {
+        pid = s.playerOrder.find(p => handTotal(s, p) >= 8) ?? pid;
+      }
+      const action = chooseAction(s, pid, { rng });
+      if (!action) break;
+      if (action.type === 'BUILD_SHIP') ships++;
+      if (action.type === 'BUILD_SETTLEMENT') settlements++;
+      s = applyAction(s, action, rng);
+    }
+
+    expect(s.phase).toBe('GAME_OVER');
+    expect(s.winner).not.toBeNull();
+    expect(ships).toBeGreaterThanOrEqual(1);
+    expect(settlements).toBeGreaterThanOrEqual(1);
+  });
+});

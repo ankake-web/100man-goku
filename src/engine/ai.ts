@@ -4,7 +4,8 @@
 
 import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
-import { canBuildRoad, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
+import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
+import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
 import { calcVP } from './scoring';
 
@@ -180,6 +181,103 @@ function roadEdgeValue(state: GameState, pid: PlayerId, edgeId: string): number 
 function bestRoadEdge(state: GameState, pid: PlayerId, rng: () => number): string | null {
   const edges = Object.keys(state.edges).filter(eid => canBuildRoad(state, pid, eid));
   return edges.length > 0 ? pickByScore(edges, eid => roadEdgeValue(state, pid, eid), rng) : null;
+}
+
+// ============================================================
+// 航海者: 船による島拡張（Phase 5・基本AI）
+// ============================================================
+
+// 海タイルを含む盤か（航海者シナリオの判定）。基本ゲームでは常に false なので、
+// 以下の船ロジックは classic では一切起動しない（非破壊）。
+function hasSeaTiles(state: GameState): boolean {
+  return Object.values(state.tiles).some(t => t.type === 'sea');
+}
+
+// 接続要件を除き、距離ルール上その空き陸頂点に開拓地を置けるか（船で到達後の建設先候補）。
+function isOpenLandSpot(state: GameState, vid: string): boolean {
+  const v = state.vertices[vid];
+  if (!v || v.building) return false;
+  if (!isLandVertex(v, state.tiles)) return false;
+  return isDistanceRuleOk(v, state.vertices);
+}
+
+// 1隻あたりのコスト換算（遠い島ほど割引）と、渡るに値する目的地の最低価値。
+const SHIP_STEP_PENALTY = 2.0;
+const SHIP_MIN_TARGET = 4.0;
+
+/**
+ * 海を渡って良い新規開拓地へ向かう「次に置く1隻」を返す（基本AIの船活用）。
+ *
+ * 自分のネットワーク（建物の頂点・既存の船の端点）を始点に、海辺(sea-edge)を
+ * Dijkstra で辿り（自分の既存船=コスト0／空きの海辺=コスト1＝新規に1隻）、
+ * 新規に船を要して到達できる空き陸頂点のうち
+ *   価値 evaluateExpansionVertex - SHIP_STEP_PENALTY×必要隻数
+ * が最大の経路の「最初の新規船」を返す。良い目的地が無い/launch不能/資源不足なら null。
+ *
+ * 1ターンに複数回呼ばれると、既設の船はコスト0で辿られるため同じ目的地へ船を継ぎ足し、
+ * 資源が尽きると null（→ END_TURN へ）。新島の沿岸頂点に船が届けば、次以降の手番で
+ * bestSettlementVertex が canBuildSettlement(船接続) によりそこへ開拓地を建てる。
+ */
+function bestExpansionShip(state: GameState, pid: PlayerId): string | null {
+  if (!hasSeaTiles(state)) return null;
+  const player = state.players[pid];
+  if (!player || (player.remainingShips ?? 0) <= 0) return null;
+  if (!hasEnoughResources(player.hand, BUILD_COSTS.ship)) return null;
+
+  // 始点: 自分の建物がある頂点 + 自分の船の端点。
+  const dist: Record<string, number> = {};
+  const firstShip: Record<string, string | null> = {};
+  const addStart = (v: string): void => { if (!(v in dist)) { dist[v] = 0; firstShip[v] = null; } };
+  for (const v of Object.values(state.vertices)) if (v.building?.playerId === pid) addStart(v.id);
+  for (const e of Object.values(state.edges)) {
+    if (e.ship?.playerId === pid) { addStart(e.vertexIds[0]); addStart(e.vertexIds[1]); }
+  }
+  if (Object.keys(dist).length === 0) return null;
+
+  // Dijkstra（コスト = 新規に置く船の数）。海辺のみ辿る。
+  const settled = new Set<string>();
+  for (;;) {
+    let cur: string | null = null;
+    let bestD = Infinity;
+    for (const v of Object.keys(dist)) {
+      if (settled.has(v)) continue;
+      if (dist[v]! < bestD) { bestD = dist[v]!; cur = v; }
+    }
+    if (cur == null) break;
+    settled.add(cur);
+    const vtx = state.vertices[cur];
+    if (!vtx) continue;
+    for (const eid of vtx.adjacentEdgeIds) {
+      const e = state.edges[eid];
+      if (!e || !isSeaEdge(e, state.vertices, state.tiles)) continue; // 船は海辺のみ
+      let stepCost: number;
+      if (e.ship?.playerId === pid) stepCost = 0;            // 自分の既存船は無料で辿る
+      else if (e.ship == null && e.road == null) stepCost = 1; // 空きの海辺＝新規1隻
+      else continue;                                          // 他人の船 or 道で塞がっている
+      const other = e.vertexIds[0] === cur ? e.vertexIds[1] : e.vertexIds[0];
+      const nd = bestD + stepCost;
+      if (nd < (dist[other] ?? Infinity)) {
+        dist[other] = nd;
+        // 経路上で最初に新規に置く船を引き継ぐ。
+        firstShip[other] = firstShip[cur] ?? (stepCost === 1 ? eid : null);
+      }
+    }
+  }
+
+  // 目的地評価: 新規船>=1 で到達する空き陸頂点のうち価値最大の経路の最初の船を選ぶ。
+  let bestScore = 0;
+  let chosen: string | null = null;
+  for (const [vid, c] of Object.entries(dist)) {
+    if (c < 1) continue;                 // 新規船が不要（既存船で到達 or 始点）
+    const fs = firstShip[vid];
+    if (!fs || !isOpenLandSpot(state, vid)) continue;
+    const val = evaluateExpansionVertex(state, pid, vid);
+    if (val < SHIP_MIN_TARGET) continue;
+    const score = val - SHIP_STEP_PENALTY * c;
+    if (score > bestScore) { bestScore = score; chosen = fs; }
+  }
+  // 最初の1隻が今すぐ合法であることを最終確認（防御）。
+  return chosen && canBuildShip(state, pid, chosen) ? chosen : null;
 }
 
 function playerHandTotal(state: GameState, pid: PlayerId): number {
@@ -760,6 +858,10 @@ function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade
   const settl = bestSettlementVertex(state, pid, rng);
   if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
 
+  // 3.5 航海者: 海を渡って良い新島の開拓地候補へ向け船を継ぐ（基本ゲームでは null で no-op）。
+  const ship = bestExpansionShip(state, pid);
+  if (ship) return { type: 'BUILD_SHIP', edgeId: ship };
+
   // 4. 発展カード購入（ore+wheat+sheep が揃うとき）
   if (state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card)) {
     return { type: 'BUY_DEV_CARD' };
@@ -807,6 +909,10 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   // 2. 開拓地（生産＋資源補完）
   const settl = bestSettlementVertex(state, pid, rng);
   if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
+
+  // 2.5 航海者: 海を渡って新島の良い開拓地候補へ向け船を継ぐ（基本ゲームでは no-op）。
+  const ship = bestExpansionShip(state, pid);
+  if (ship) return { type: 'BUILD_SHIP', edgeId: ship };
 
   // 3. 人間への交易提案（バンク交易より優先・テンポ重視で控えめ）
   if (!skipPlayerTrade && rng() < CPU_TRADE_OFFER_CHANCE.strong) {
