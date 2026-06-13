@@ -22,7 +22,7 @@ export type UIPhase =
   | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
   | { type: 'monopoly'; resource: ResourceType | null }
   | { type: 'robberTarget'; tileId: string; opponents: PlayerId[] }
-  | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road'; targetId: string }
+  | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road' | 'ship'; targetId: string }
   | { type: 'playerTradeOffer'; give: ResourceHand; receive: ResourceHand; targetPids: PlayerId[] };
 
 // ============================================================
@@ -1030,11 +1030,15 @@ function buildActionButtons(
   const canSettl = player.remainingSettlements > 0 && hasEnoughResources(player.hand, BUILD_COSTS.settlement);
   const canCity  = player.remainingCities > 0 && hasEnoughResources(player.hand, BUILD_COSTS.city);
   const canDev   = state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card);
+  // 航海者: 盤面に海タイルがあるときだけ船ボタンを出す（基本盤では非表示）。
+  const hasSea   = Object.values(state.tiles).some(t => t.type === 'sea');
+  const canShip  = (player.remainingShips ?? 0) > 0 && hasEnoughResources(player.hand, BUILD_COSTS.ship);
 
   // 建設モード選択中のヒント文（「選択中：光っている場所をタップ」）は操作パネルの
   // レイアウトを崩すため表示しない。配置可能な頂点/辺は盤面側のハイライトで示す。
 
   div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
+  if (hasSea) div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
   div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,

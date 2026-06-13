@@ -102,7 +102,8 @@ describe('assignTileTypes', () => {
       counts[t.type] = (counts[t.type] ?? 0) + 1;
     });
     for (const [type, expected] of Object.entries(TILE_COUNTS)) {
-      expect(counts[type]).toBe(expected);
+      // 0件の種別（航海者用の sea/gold は基本盤に出現しない）は undefined になる。
+      expect(counts[type] ?? 0).toBe(expected);
     }
   });
 

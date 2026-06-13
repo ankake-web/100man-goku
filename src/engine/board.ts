@@ -123,7 +123,10 @@ export type BoardGeometry = {
  *   4. 隣接するcorner pair → Edge → 72辺
  *   5. 頂点↔頂点・頂点↔辺・辺↔辺 の隣接グラフを構築
  */
-export function buildBoardGeometry(size = HEX_SIZE): BoardGeometry {
+export function buildBoardGeometry(
+  coords: readonly AxialCoord[] = getAllTileCoords(),
+  size = HEX_SIZE,
+): BoardGeometry {
   const pixelToVid = new Map<string, VertexId>();
   const vertices: Record<VertexId, Vertex> = {};
   const edges:    Record<EdgeId, Edge>     = {};
@@ -133,7 +136,9 @@ export function buildBoardGeometry(size = HEX_SIZE): BoardGeometry {
   let vCounter = 0;
 
   // ---- Step 1-3: 頂点の重複排除と登録 ----
-  for (const coord of getAllTileCoords()) {
+  // coords は任意のタイル座標集合（既定＝基本19タイル）。航海者の可変盤では
+  // 海タイルを含むより大きい座標集合を渡す。
+  for (const coord of coords) {
     const tid = tileId(coord);
     const center = axialToPixel(coord, size);
     const corners = hexCornerPixels(center, size);
@@ -222,10 +227,12 @@ export function buildBoardGeometry(size = HEX_SIZE): BoardGeometry {
 // 空タイルセットの生成（L-03 のランダム配置前ベース）
 // ============================================================
 
-/** 全19座標の空タイル（type/number 未設定）マップを返す */
-export function createEmptyTiles(): Record<TileId, Tile> {
+/** 指定座標集合（既定＝全19座標）の空タイル（type/number 未設定）マップを返す */
+export function createEmptyTiles(
+  coords: readonly AxialCoord[] = getAllTileCoords(),
+): Record<TileId, Tile> {
   const tiles: Record<TileId, Tile> = {};
-  for (const coord of getAllTileCoords()) {
+  for (const coord of coords) {
     const id = tileId(coord);
     tiles[id] = {
       id,
@@ -277,6 +284,66 @@ export function isEdgeConnected(
     return v.adjacentEdgeIds.some(eid => {
       const e = edges[eid];
       return e != null && e.id !== edge.id && e.road?.playerId === playerId;
+    });
+  });
+}
+
+// ============================================================
+// 航海者拡張: 海/陸の判定とコマ種別を考慮した接続
+// ============================================================
+
+/** 辺が接するタイルID（1〜2個）。両端頂点の adjacentTileIds の積集合。 */
+export function edgeTileIds(edge: Edge, vertices: Record<VertexId, Vertex>): TileId[] {
+  const [a, b] = edge.vertexIds;
+  const va = vertices[a];
+  const vb = vertices[b];
+  if (!va || !vb) return [];
+  const setB = new Set(vb.adjacentTileIds);
+  return va.adjacentTileIds.filter(t => setB.has(t));
+}
+
+/** 辺が海に面するか（船を置ける辺）。基本ゲームは海タイルが無いので常に false。 */
+export function isSeaEdge(
+  edge: Edge, vertices: Record<VertexId, Vertex>, tiles: Record<TileId, Tile>,
+): boolean {
+  return edgeTileIds(edge, vertices).some(t => tiles[t]?.type === 'sea');
+}
+
+/** 辺が陸に面するか（道を置ける辺）。基本ゲームは常に true。 */
+export function isLandEdge(
+  edge: Edge, vertices: Record<VertexId, Vertex>, tiles: Record<TileId, Tile>,
+): boolean {
+  return edgeTileIds(edge, vertices).some(t => { const ty = tiles[t]?.type; return ty != null && ty !== 'sea'; });
+}
+
+/** 頂点が陸に面するか（開拓地を置ける）。基本ゲームは常に true。 */
+export function isLandVertex(vertex: Vertex, tiles: Record<TileId, Tile>): boolean {
+  return vertex.adjacentTileIds.some(t => { const ty = tiles[t]?.type; return ty != null && ty !== 'sea'; });
+}
+
+/**
+ * コマ種別（道/船）を考慮した接続判定。
+ *   - 自分の建物（開拓地/都市）がある頂点ではどの種別とも接続できる（道↔船の切替点）。
+ *   - 建物が無い頂点では、同種のコマ（道は道、船は船）のみ接続できる。
+ */
+export function isEdgeConnectedForPiece(
+  edge: Edge,
+  playerId: string,
+  vertices: Record<VertexId, Vertex>,
+  edges:    Record<EdgeId, Edge>,
+  piece: 'road' | 'ship',
+): boolean {
+  return edge.vertexIds.some(vid => {
+    const v = vertices[vid];
+    if (!v) return false;
+    if (v.building?.playerId === playerId) return true; // 建物は両種を接続
+    return v.adjacentEdgeIds.some(eid => {
+      if (eid === edge.id) return false;
+      const e = edges[eid];
+      if (!e) return false;
+      return piece === 'road'
+        ? e.road?.playerId === playerId
+        : e.ship?.playerId === playerId;
     });
   });
 }

@@ -15,10 +15,14 @@ export const TILE_RESOURCE_MAP: Record<TileType, ResourceType | null> = {
   hill:     'brick',
   mountain: 'ore',
   desert:   null,
+  sea:      null, // 海は産出なし
+  gold:     null, // 金は任意資源（産出時に選択。固定の対応資源は持たない）
 };
 
 export const TILE_COUNTS: Record<TileType, number> = {
   forest: 4, field: 4, pasture: 4, hill: 3, mountain: 3, desert: 1,
+  // 基本盤には存在しない（航海者シナリオ側で個別に配置する）
+  sea: 0, gold: 0,
 };
 
 // ---- 建設コスト ----
@@ -29,8 +33,9 @@ export function makeHand(partial: Partial<ResourceHand> = {}): ResourceHand {
 }
 
 // Partial<ResourceHand> ではなく ResourceHand を使用（undefined − n = NaN を防ぐ）
-export const BUILD_COSTS: Record<'road' | 'settlement' | 'city' | 'dev_card', ResourceHand> = {
+export const BUILD_COSTS: Record<'road' | 'ship' | 'settlement' | 'city' | 'dev_card', ResourceHand> = {
   road:       makeHand({ wood: 1, brick: 1 }),
+  ship:       makeHand({ wood: 1, wool: 1 }), // 航海者: 船＝木＋羊
   settlement: makeHand({ wood: 1, brick: 1, wool: 1, grain: 1 }),
   city:       makeHand({ grain: 2, ore: 3 }),
   dev_card:   makeHand({ wool: 1, grain: 1, ore: 1 }),
@@ -38,6 +43,7 @@ export const BUILD_COSTS: Record<'road' | 'settlement' | 'city' | 'dev_card', Re
 
 export const PIECE_LIMITS = {
   roads: 15,
+  ships: 15,
   settlements: 5,
   cities: 4,
 } as const;

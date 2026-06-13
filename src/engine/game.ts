@@ -9,6 +9,7 @@ import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, VP_TAB
 import { rollDice, distributeResources } from './dice';
 import {
   canBuildRoad, buildRoad,
+  canBuildShip, buildShip,
   canBuildSettlement, buildSettlement,
   canBuildCity, buildCity,
   hasEnoughResources,
@@ -208,6 +209,28 @@ export function applyAction(
       }
 
       // SETUP フェーズのサブフェーズ進行（道を置いたので anchor は解除）
+      if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
+        next = advanceSetup({ ...next, setupRoadAnchor: null });
+      }
+
+      return next;
+    }
+
+    // ----------------------------------------------------------
+    // BUILD_SHIP（航海者拡張）。道と同じ進行・最長交易路再計算に乗せる。
+    // ----------------------------------------------------------
+    case 'BUILD_SHIP': {
+      const { edgeId } = action;
+      const _isSetupSh = state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD';
+      if (!_isSetupSh && state.turnPhase !== 'TRADE_BUILD')
+        throw new Error('BUILD_SHIP: must be in TRADE_BUILD or setup phase');
+      if (!canBuildShip(state, pid, edgeId)) throw new Error('BUILD_SHIP: invalid');
+
+      let next = buildShip(state, pid, edgeId);
+      next = updateLongestRoad(next);
+      next = checkVictory(next, pid);
+
+      // セットアップでは2個目のコマ（道 or 船）として進行。anchor 解除。
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
         next = advanceSetup({ ...next, setupRoadAnchor: null });
       }

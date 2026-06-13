@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId } from '../types';
-import { canBuildRoad, canBuildSettlement, canBuildCity } from '../engine/actions';
+import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity } from '../engine/actions';
 import type { UIPhase } from './ui';
 import type { BoardViewport } from './board';
 
@@ -11,7 +11,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'settlement' | 'city';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -36,6 +36,10 @@ function wantsRoad(state: GameState, mode: BuildMode): boolean {
   if (isSetup) return state.setupSubPhase === 'PLACE_ROAD';
   return state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD'
     && (mode === 'road' || state.roadBuildingRoadsRemaining > 0);
+}
+// 航海者: 船の配置を受け付けるか（MAIN の船モードのみ。セットアップは陸辺の道で足りる）。
+function wantsShip(state: GameState, mode: BuildMode): boolean {
+  return state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'ship';
 }
 
 // ============================================================
@@ -79,6 +83,24 @@ export function nearestValidEdgeId(
   let bestD = maxDist * maxDist;
   for (const e of Object.values(state.edges)) {
     if (!canBuildRoad(state, pid, e.id)) continue;
+    const a = state.vertices[e.vertexIds[0]];
+    const b = state.vertices[e.vertexIds[1]];
+    if (!a || !b) continue;
+    const d = distToSegmentSq(x, y, a.pixel.x, a.pixel.y, b.pixel.x, b.pixel.y);
+    if (d <= bestD) { bestD = d; best = e.id; }
+  }
+  return best;
+}
+
+/** 点(x,y)に最も近い合法な船の辺IDを maxDist 内で返す（航海者）。なければ null。 */
+export function nearestValidShipEdgeId(
+  state: GameState, pid: PlayerId, mode: BuildMode, x: number, y: number, maxDist = EDGE_TAP_RADIUS,
+): string | null {
+  if (!wantsShip(state, mode)) return null;
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const e of Object.values(state.edges)) {
+    if (!canBuildShip(state, pid, e.id)) continue;
     const a = state.vertices[e.vertexIds[0]];
     const b = state.vertices[e.vertexIds[1]];
     if (!a || !b) continue;
@@ -141,6 +163,8 @@ export function attachBoardEvents(
       if (vid) { placeVertex(vid, state, pid, mode, setUIPhase, dispatch); return; }
       const eid = nearestValidEdgeId(state, pid, mode, pt.x, pt.y);
       if (eid) { placeEdge(eid, state, pid, mode, setUIPhase, dispatch); return; }
+      const sid = nearestValidShipEdgeId(state, pid, mode, pt.x, pt.y);
+      if (sid) { placeShipEdge(sid, state, pid, setUIPhase, dispatch); return; }
     }
 
     // ---- フォールバック: 直接ヒットした要素（マウスの精密クリック等）----
@@ -148,6 +172,12 @@ export function attachBoardEvents(
     if (vertexEl) {
       const vertexId = vertexEl.getAttribute('data-vertex-id');
       if (vertexId) placeVertex(vertexId, state, pid, mode, setUIPhase, dispatch);
+      return;
+    }
+    const shipEl = target.closest('[data-ship-edge-id]');
+    if (shipEl) {
+      const sid = shipEl.getAttribute('data-ship-edge-id');
+      if (sid) placeShipEdge(sid, state, pid, setUIPhase, dispatch);
       return;
     }
     const edgeEl = target.closest('[data-edge-id]');
@@ -193,11 +223,25 @@ function placeEdge(
   }
 }
 
+// 船への配置: タッチなら仮置きプレビュー、マウスなら即配置。
+function placeShipEdge(
+  eid: string, state: GameState, pid: PlayerId,
+  setUIPhase: (p: UIPhase) => void, dispatch: (a: Action) => void,
+): void {
+  if (!canBuildShip(state, pid, eid)) return;
+  if (requireConfirm()) {
+    setUIPhase({ type: 'placePreview', kind: 'ship', targetId: eid });
+  } else {
+    dispatch({ type: 'BUILD_SHIP', edgeId: eid });
+  }
+}
+
 // 仮置きプレビューを確定して実アクションへ変換する（main.ts の確認バーから呼ぶ）。
 export function resolvePlacePreviewAction(
-  state: GameState, pid: PlayerId, kind: 'settlement' | 'city' | 'road', targetId: string,
+  state: GameState, pid: PlayerId, kind: 'settlement' | 'city' | 'road' | 'ship', targetId: string,
 ): Action | null {
   if (kind === 'road') return resolveEdgeAction(state, pid, 'road', targetId);
+  if (kind === 'ship') return canBuildShip(state, pid, targetId) ? { type: 'BUILD_SHIP', edgeId: targetId } : null;
   return resolveVertexAction(state, pid, kind, targetId);
 }
 

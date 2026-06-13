@@ -6,7 +6,10 @@ import type {
   GameState, PlayerId, EdgeId, VertexId, ResourceHand,
 } from '../types';
 import { BUILD_COSTS, RESOURCE_TYPES } from '../constants';
-import { isDistanceRuleOk, isEdgeConnected } from './board';
+import {
+  isDistanceRuleOk, isEdgeConnectedForPiece,
+  isSeaEdge, isLandEdge, isLandVertex,
+} from './board';
 
 // ============================================================
 // リソース操作ユーティリティ
@@ -50,6 +53,9 @@ export function canBuildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeI
   const edge = state.edges[edgeId];
   if (!edge) return false;
   if (edge.road != null) return false;
+  if (edge.ship != null) return false; // 既に船がある辺には道を置けない
+  // 道は陸に面した辺のみ（航海者: 純粋な海上の辺には置けない）。基本ゲームは常に true。
+  if (!isLandEdge(edge, state.vertices, state.tiles)) return false;
 
   // セットアップ or 街道建設カード使用中は資源コスト不要
   const freeRoad = isSetupPhase(state) || state.roadBuildingRoadsRemaining > 0;
@@ -61,7 +67,60 @@ export function canBuildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeI
     return edge.vertexIds.includes(state.setupRoadAnchor);
   }
 
-  return isEdgeConnected(edge, playerId, state.vertices, state.edges);
+  return isEdgeConnectedForPiece(edge, playerId, state.vertices, state.edges, 'road');
+}
+
+// ============================================================
+// 船（Ship・航海者拡張）
+// ============================================================
+
+/**
+ * 指定辺に船を建設できるか検証する。
+ *   - 海に面した辺（sea-edge）のみ。
+ *   - 道/船が未設置。残コマあり。
+ *   - 接続: 自分の船 or 建物に連結（道とは建物経由でのみ切替）。
+ *   - MAIN は資源コスト（木+羊）。セットアップは無料＋直前の開拓地に接続。
+ */
+export function canBuildShip(state: GameState, playerId: PlayerId, edgeId: EdgeId): boolean {
+  const player = state.players[playerId];
+  if (!player) return false;
+  if ((player.remainingShips ?? 0) <= 0) return false;
+
+  const edge = state.edges[edgeId];
+  if (!edge) return false;
+  if (edge.road != null || edge.ship != null) return false;
+  // 船は海に面した辺のみ。
+  if (!isSeaEdge(edge, state.vertices, state.tiles)) return false;
+
+  const free = isSetupPhase(state);
+  if (!free && !hasEnoughResources(player.hand, BUILD_COSTS.ship)) return false;
+
+  if (isSetupPhase(state) && state.setupRoadAnchor) {
+    return edge.vertexIds.includes(state.setupRoadAnchor);
+  }
+
+  return isEdgeConnectedForPiece(edge, playerId, state.vertices, state.edges, 'ship');
+}
+
+/** 船を建設して新しい GameState を返す（バリデーション済み前提）。 */
+export function buildShip(state: GameState, playerId: PlayerId, edgeId: EdgeId): GameState {
+  const player = state.players[playerId]!;
+  const free = isSetupPhase(state);
+  const newHand = free ? player.hand : deductCost(player.hand, BUILD_COSTS.ship);
+  const newBank = free ? state.bank : returnToBank(state.bank, BUILD_COSTS.ship);
+
+  return {
+    ...state,
+    bank: newBank,
+    edges: {
+      ...state.edges,
+      [edgeId]: { ...state.edges[edgeId]!, ship: { playerId } },
+    },
+    players: {
+      ...state.players,
+      [playerId]: { ...player, hand: newHand, remainingShips: (player.remainingShips ?? 0) - 1 },
+    },
+  };
 }
 
 /** 道を建設して新しい GameState を返す（バリデーション済み前提）。 */
@@ -105,17 +164,19 @@ export function canBuildSettlement(
   const vertex = state.vertices[vertexId];
   if (!vertex) return false;
   if (vertex.building != null) return false;
+  // 開拓地は陸に面した頂点のみ（航海者: 外洋だけに接する頂点には置けない）。基本ゲームは常に true。
+  if (!isLandVertex(vertex, state.tiles)) return false;
 
   if (!isDistanceRuleOk(vertex, state.vertices)) return false;
 
   const setup = isSetupPhase(state);
   if (!setup && !hasEnoughResources(player.hand, BUILD_COSTS.settlement)) return false;
 
-  // MAIN フェーズ: 自分の道への接続が必要
+  // MAIN フェーズ: 自分の道 or 船への接続が必要（航海者: 船でも開拓地を建てられる）。
   if (!setup) {
     const connected = vertex.adjacentEdgeIds.some(eid => {
       const e = state.edges[eid];
-      return e?.road?.playerId === playerId;
+      return e?.road?.playerId === playerId || e?.ship?.playerId === playerId;
     });
     if (!connected) return false;
   }

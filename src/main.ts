@@ -7,6 +7,7 @@ import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffe
 import type { PlayerOrderMode } from './engine/setup';
 import { makeHand, RESOURCE_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constants';
 import { createInitialGameState } from './engine/createState';
+import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
 import { applyAction, setupGainFor } from './engine/game';
 import { findPendingDiscarder } from './engine/robber';
@@ -21,7 +22,7 @@ import { generateRandomPlayerName, pickCpuNames } from './net/names';
 import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
-import { canBuildRoad, canBuildSettlement, canBuildCity } from './engine/actions';
+import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity } from './engine/actions';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
@@ -51,6 +52,8 @@ interface HomeConfig {
   // orderMode==='fixed' のときの手番順（参加プレイヤーIDの順列）。
   // 'random' のときは未使用（開始時に毎回シャッフル）。
   playerOrderSpec?: PlayerId[];
+  // 盤面シナリオ（未指定＝'classic'）。航海者拡張の段階導入用。
+  scenario?: ScenarioId;
 }
 
 const PLAYER_IDS: PlayerId[]   = ['player1', 'player2', 'player3', 'player4'];
@@ -162,6 +165,20 @@ function renderHome(
   speedField.appendChild(speedLabel);
   speedField.appendChild(speedGroup);
   cpuForm.appendChild(speedField);
+
+  // ---- 盤面（ルール）: 基本 or 航海者拡張 ----
+  const scenarioField = document.createElement('div');
+  scenarioField.className = 'home-field';
+  const scenarioLabel = document.createElement('label');
+  scenarioLabel.className = 'home-label';
+  scenarioLabel.textContent = '盤面（ルール）';
+  const scenarioGroup = document.createElement('div');
+  scenarioGroup.className = 'home-radio-group';
+  const scenarioDefault = (lastConfig?.scenario ?? 'classic') === 'seafarers_newshores' ? '航海者' : '基本';
+  scenarioGroup.appendChild(createRadioGroup('scenario', ['基本', '航海者'], scenarioDefault));
+  scenarioField.appendChild(scenarioLabel);
+  scenarioField.appendChild(scenarioGroup);
+  cpuForm.appendChild(scenarioField);
 
   // ---- プレイヤー順 ----
   const orderField = document.createElement('div');
@@ -314,9 +331,13 @@ function renderHome(
     const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast' };
     const cpuSpeed: CpuSpeed = speedMap[speedVal] ?? 'normal';
 
+    // 盤面シナリオ（基本 or 航海者拡張）を読み取る
+    const scenVal = (scenarioGroup.querySelector('input[name="scenario"]:checked') as HTMLInputElement | null)?.value ?? '基本';
+    const scenario: ScenarioId = scenVal === '航海者' ? 'seafarers_newshores' : 'classic';
+
     // プレイヤー順設定を読み取る
     const orderMode = readOrderMode();
-    const cfg: HomeConfig = { mode: 'cpu', playerName: name, cpuCount, cpuDifficulty, cpuSpeed, orderMode };
+    const cfg: HomeConfig = { mode: 'cpu', playerName: name, cpuCount, cpuDifficulty, cpuSpeed, orderMode, scenario };
     // 指定順は現在の人数（cpuCount+1）に一致する specState のみ採用。
     // 食い違う場合は spec を渡さず initGameState 側で元順にフォールバック。
     if (orderMode === 'fixed' && specState.length === cpuCount + 1) {
@@ -462,8 +483,12 @@ function initGameState(cfg: HomeConfig): GameState {
       ...(isHuman ? {} : { aiDifficulty: cfg.cpuDifficulty }),
     });
   }
+  // 盤面シナリオ: cfg 優先。未指定なら URL の ?scenario=（開発/動作確認用フック）。
+  // 既定 'classic' は従来と同一。未知IDは createInitialGameState 側で classic にフォールバック。
+  const urlScenario = new URLSearchParams(window.location.search).get('scenario') as ScenarioId | null;
+  const scenario = cfg.scenario ?? urlScenario ?? undefined;
   // 手番順: ランダム=毎回シャッフル / 指定=spec を検証して採用（不整合なら元順）。
-  return createInitialGameState(specs, cfg.orderMode, cfg.playerOrderSpec);
+  return createInitialGameState(specs, cfg.orderMode, cfg.playerOrderSpec, undefined, scenario ?? undefined);
 }
 
 // ============================================================
@@ -500,6 +525,10 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       if (mode === 'road') {
         opts.validEdgeIds = new Set(
           Object.keys(state.edges).filter(eid => canBuildRoad(state, pid, eid)),
+        );
+      } else if (mode === 'ship') {
+        opts.validShipEdgeIds = new Set(
+          Object.keys(state.edges).filter(eid => canBuildShip(state, pid, eid)),
         );
       } else if (mode === 'settlement') {
         opts.validVertexIds = new Set(
@@ -631,6 +660,7 @@ function redraw(skipBoard = false): void {
   const withPreview = (opts: BoardRenderOptions): BoardRenderOptions => {
     if (uiPhase.type === 'placePreview') {
       if (uiPhase.kind === 'road') opts.previewEdgeId = uiPhase.targetId;
+      else if (uiPhase.kind === 'ship') opts.previewShipEdgeId = uiPhase.targetId;
       else opts.previewVertexId = uiPhase.targetId;
     }
     return opts;
@@ -2189,7 +2219,7 @@ function isPlaceablePhase(s: GameState): boolean {
 function updatePlaceConfirmBar(): void {
   document.getElementById('place-confirm')?.remove();
   if (!state || uiPhase.type !== 'placePreview') return;
-  const label = uiPhase.kind === 'road' ? '道' : uiPhase.kind === 'city' ? '都市' : '開拓地';
+  const label = uiPhase.kind === 'road' ? '道' : uiPhase.kind === 'ship' ? '船' : uiPhase.kind === 'city' ? '都市' : '開拓地';
 
   const bar = document.createElement('div');
   bar.id = 'place-confirm';
@@ -2303,7 +2333,7 @@ function boardCanAct(): boolean {
 
 // LAN で送信を許可する Action（クライアント側ガード。サーバでも二重に検証）。
 const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
-  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
+  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
   'MOVE_ROBBER', 'DISCARD_RESOURCES',
   'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',

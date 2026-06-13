@@ -14,9 +14,13 @@ export interface BoardRenderOptions {
   validVertexIds?: Set<string>;
   validEdgeIds?: Set<string>;
   validTileIds?: Set<string>;
+  // 航海者: 船の配置候補（海に面した辺）。
+  validShipEdgeIds?: Set<string>;
   // 仮置きプレビュー（確定待ち）のターゲット。ゴースト表示する。
   previewVertexId?: string;
   previewEdgeId?: string;
+  // 船の仮置きプレビュー（確定待ち）。
+  previewShipEdgeId?: string;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
 }
@@ -275,7 +279,7 @@ function renderEdges(
 ): SVGGElement {
   const g = svgEl('g');
   // 道のプレビュー中は、選択した道だけが目立つよう他候補を暗くする目印クラス。
-  if (opts?.previewEdgeId) g.classList.add('edges-previewing');
+  if (opts?.previewEdgeId || opts?.previewShipEdgeId) g.classList.add('edges-previewing');
   const roadColor: Record<string, string> = {
     player1: '#e03030', player2: '#3060e0',
     player3: '#a855f7', player4: '#f0a020',
@@ -287,31 +291,53 @@ function renderEdges(
     const vB = state.vertices[vb];
     if (!vA || !vB) continue;
 
+    const x1 = vA.pixel.x + ox, y1 = vA.pixel.y + oy;
+    const x2 = vB.pixel.x + ox, y2 = vB.pixel.y + oy;
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+
+    const drawBoat = (): void => {
+      const boat = svgEl('text');
+      boat.classList.add('ship-glyph');
+      setAttrs(boat, { x: mx, y: my });
+      boat.textContent = '⛵';
+      g.appendChild(boat);
+    };
+
     if (edge.road) {
       const line = svgEl('line');
       line.classList.add('road-line-built');
       // 設置アニメ(C-4)で対象を引けるよう id を付ける（敷設済みは配置対象にならないので無害）。
       line.setAttribute('data-road-edge-id', edge.id);
       setAttrs(line, {
-        x1: vA.pixel.x + ox, y1: vA.pixel.y + oy,
-        x2: vB.pixel.x + ox, y2: vB.pixel.y + oy,
+        x1, y1, x2, y2,
         stroke: roadColor[edge.road.playerId] ?? '#aaa',
         'stroke-width': 7,
         'stroke-linecap': 'round',
       });
       g.appendChild(line);
+    } else if (edge.ship) {
+      // 船: 破線＋ボート。道と視覚的に区別する。
+      const line = svgEl('line');
+      line.classList.add('ship-line-built');
+      line.setAttribute('data-ship-built-id', edge.id);
+      setAttrs(line, {
+        x1, y1, x2, y2,
+        stroke: roadColor[edge.ship.playerId] ?? '#aaa',
+        'stroke-width': 6, 'stroke-linecap': 'round', 'stroke-dasharray': '9 6',
+      });
+      g.appendChild(line);
+      drawBoat();
     } else {
       const isValid = opts?.validEdgeIds?.has(edge.id) ?? false;
-      const x1 = vA.pixel.x + ox, y1 = vA.pixel.y + oy;
-      const x2 = vB.pixel.x + ox, y2 = vB.pixel.y + oy;
+      const isValidShip = opts?.validShipEdgeIds?.has(edge.id) ?? false;
       const line = svgEl('line');
       line.classList.add('edge-line');
       if (isValid) line.classList.add('valid');
+      if (isValidShip) line.classList.add('ship-valid');
       line.setAttribute('data-edge-id', edge.id);
       setAttrs(line, { x1, y1, x2, y2 });
       g.appendChild(line);
-      // 仮置きプレビュー（確定待ち）のゴースト道。候補(緑)と見分けやすいよう、
-      // 白いケーシング＋手番プレイヤーの道色の芯で「ここに建つ道」を明示する。
+      // 道の仮置きプレビュー（白ケーシング＋手番色の芯）。
       if (opts?.previewEdgeId === edge.id) {
         const curPid = state.playerOrder[state.currentPlayerIndex];
         const casing = svgEl('line');
@@ -324,11 +350,32 @@ function renderEdges(
         setAttrs(ghost, { x1, y1, x2, y2 });
         g.appendChild(ghost);
       }
+      // 船の仮置きプレビュー（破線ゴースト＋ボート）。
+      if (opts?.previewShipEdgeId === edge.id) {
+        const curPid = state.playerOrder[state.currentPlayerIndex];
+        const casing = svgEl('line');
+        casing.classList.add('edge-preview-casing');
+        setAttrs(casing, { x1, y1, x2, y2 });
+        g.appendChild(casing);
+        const ghost = svgEl('line');
+        ghost.classList.add('ship-preview');
+        ghost.setAttribute('stroke', (curPid && roadColor[curPid]) || '#ffffff');
+        setAttrs(ghost, { x1, y1, x2, y2 });
+        g.appendChild(ghost);
+        drawBoat();
+      }
       // タッチ用の透明な太い当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。
       if (isValid) {
         const hit = svgEl('line');
         hit.classList.add('edge-hit');
         hit.setAttribute('data-edge-id', edge.id);
+        setAttrs(hit, { x1, y1, x2, y2 });
+        g.appendChild(hit);
+      }
+      if (isValidShip) {
+        const hit = svgEl('line');
+        hit.classList.add('edge-hit');
+        hit.setAttribute('data-ship-edge-id', edge.id);
         setAttrs(hit, { x1, y1, x2, y2 });
         g.appendChild(hit);
       }

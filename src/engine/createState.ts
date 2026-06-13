@@ -10,8 +10,10 @@ import type {
   GameState, Player, PlayerId, PlayerColor, PlayerType, AiDifficulty,
 } from '../types';
 import { buildBoardGeometry } from './board';
-import { createRandomBoard, resolvePlayerOrder } from './setup';
+import { resolvePlayerOrder } from './setup';
 import type { PlayerOrderMode } from './setup';
+import { getScenario } from './scenarios';
+import type { ScenarioId } from './scenarios';
 import { buildDevDeck } from './game';
 import { makeHand, BANK_INITIAL } from '../constants';
 
@@ -30,15 +32,19 @@ export interface PlayerSpec {
  * @param orderMode 手番順の決め方（'random' は毎回シャッフル / 'fixed' は orderSpec 採用）。
  * @param orderSpec orderMode==='fixed' のときの手番順。参加者と不整合なら元順にフォールバック。
  * @param rng       乱数生成器。省略時 Math.random（テスト/サーバで注入可能）。
+ * @param scenarioId 盤面シナリオ。既定 'classic'（基本カタン・従来と同一）。
  */
 export function createInitialGameState(
   specs: readonly PlayerSpec[],
   orderMode: PlayerOrderMode,
   orderSpec: PlayerId[] | undefined,
   rng: () => number = Math.random,
+  scenarioId: ScenarioId = 'classic',
 ): GameState {
-  const geo = buildBoardGeometry();
-  const { tiles, harbors } = createRandomBoard(geo, rng);
+  // シナリオ駆動の盤面生成。既定 'classic' は従来と同一（非破壊）。
+  const scenario = getScenario(scenarioId);
+  const geo = buildBoardGeometry(scenario.coords());
+  const { tiles, harbors } = scenario.build(geo, rng);
 
   const players: GameState['players'] = {};
   const allIds: PlayerId[] = [];
@@ -52,6 +58,7 @@ export function createInitialGameState(
       hand: makeHand(),
       devCards: [],
       remainingRoads: 15,
+      remainingShips: 15,
       remainingSettlements: 5,
       remainingCities: 4,
       knightsPlayed: 0,

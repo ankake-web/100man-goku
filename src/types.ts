@@ -14,7 +14,9 @@ export type ResourceHand = Record<ResourceType, number>;
 
 // ---- タイル ----
 
-export type TileType = 'forest' | 'field' | 'pasture' | 'hill' | 'mountain' | 'desert';
+// 基本タイル: forest/field/pasture/hill/mountain/desert
+// 航海者拡張: sea（海・数字なし・産出なし）, gold（金・任意資源を産出）
+export type TileType = 'forest' | 'field' | 'pasture' | 'hill' | 'mountain' | 'desert' | 'sea' | 'gold';
 export type TileId = string; // 例: "1,0"（axial q,r）
 
 export interface Tile {
@@ -51,6 +53,9 @@ export interface Edge {
   readonly vertexIds: readonly [VertexId, VertexId];
   readonly adjacentEdgeIds: EdgeId[];    // 最長道路DFS用
   road: Road | null;
+  // 航海者拡張: 海に面した辺に置く船。1つの辺は road か ship のどちらか一方のみ。
+  // 基本ゲームでは常に null（海タイルが無いため）。
+  ship?: Ship | null;
 }
 
 // ---- 建物・道 ----
@@ -63,6 +68,11 @@ export interface Building {
 }
 
 export interface Road {
+  readonly playerId: PlayerId;
+}
+
+// 航海者拡張: 船（海上の道）。
+export interface Ship {
   readonly playerId: PlayerId;
 }
 
@@ -112,6 +122,7 @@ export interface Player {
   remainingRoads: number;        // 初期 15
   remainingSettlements: number;  // 初期 5
   remainingCities: number;       // 初期 4
+  remainingShips?: number;       // 航海者拡張の船コマ（初期 15）。基本ゲームでは未使用。
 
   knightsPlayed: number;        // 使用済み騎士カード枚数
   longestRoadLength: number;    // 現在の最長道路長
@@ -248,6 +259,7 @@ export type Action =
   | { type: 'MOVE_ROBBER';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand> }
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
+  | { type: 'BUILD_SHIP';          edgeId: EdgeId }
   | { type: 'BUILD_SETTLEMENT';    vertexId: VertexId }
   | { type: 'BUILD_CITY';          vertexId: VertexId }
   | { type: 'BUY_DEV_CARD' }

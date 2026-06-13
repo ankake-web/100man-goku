@@ -39,7 +39,7 @@ import type { PlayerOrderMode } from '../src/engine/setup';
 // MVP4 で交易・捨て札・盗賊・発展カード使用・勝利まで全主要操作を許可する。
 const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
   // 基本操作（MVP3）
-  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY',
+  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
   // 7 / 捨て札 / 盗賊（MVP4）
   'MOVE_ROBBER', 'DISCARD_RESOURCES',

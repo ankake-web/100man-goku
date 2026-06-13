@@ -316,6 +316,9 @@ h1 {
 .hex-tile.hill     { fill: #b85c2a; }
 .hex-tile.mountain { fill: #888888; }
 .hex-tile.desert   { fill: #d4b870; }
+/* 航海者拡張のタイル */
+.hex-tile.sea  { fill: #1f6f8b; stroke: #6fcfe8; stroke-width: 1.5; }   /* 海（数字なし） */
+.hex-tile.gold { fill: #e6b73e; stroke: #8a6410; }                      /* 金（任意資源） */
 
 /* ---- 数字トークン ---- */
 .token-circle {
@@ -430,6 +433,20 @@ h1 {
   50%       { opacity: 0.55; }
 }
 
+/* ---- 航海者: 船（破線＋ボート） ---- */
+.ship-line-built { pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
+.ship-glyph { font-size: 17px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+/* 船の配置候補（海に面した辺）。道候補(緑)と区別して水色の破線で示す。 */
+.edge-line.ship-valid {
+  stroke: rgba(110, 200, 240, 0.85);
+  stroke-width: 8;
+  stroke-dasharray: 8 6;
+  cursor: pointer;
+  animation: pulse-edge 1.2s ease-in-out infinite;
+}
+.edge-line.ship-valid:hover { stroke: rgba(150, 220, 255, 1); }
+.ship-preview { stroke-width: 8; stroke-dasharray: 9 6; stroke-linecap: round; pointer-events: none; }
+
 .hex-tile.valid-robber {
   cursor: pointer;
   filter: brightness(1.35);
@@ -457,6 +474,7 @@ h1 {
   /* タッチ時は候補（valid）をより大きく・はっきり光らせて押しやすくする。 */
   .vertex-dot.valid { r: 9; stroke-width: 2.5; }
   .edge-line.valid  { stroke-width: 11; }
+  .edge-line.ship-valid { stroke-width: 11; }
   /* 盗賊候補タイルもタッチ時はより強調 */
   .hex-tile.valid-robber { stroke-width: 4; filter: brightness(1.45); }
 }
@@ -488,6 +506,7 @@ h1 {
 
 /* 選択中以外の候補を減光（パルスも止める）。選択箇所のゴーストは別要素で上に出る。 */
 .edges-previewing .edge-line.valid { opacity: 0.2; animation: none; }
+.edges-previewing .edge-line.ship-valid { opacity: 0.2; animation: none; }
 .vertices-previewing .vertex-dot.valid { opacity: 0.25; animation: none; }
 
 /* 道：白いケーシング（外周）＋プレイヤー色の芯（stroke は JS でインライン指定）。 */
