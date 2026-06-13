@@ -35,7 +35,7 @@ function vertexOnIsland(s: GameState, rep: string, exclude: Set<string> = new Se
 }
 
 describe('islands: 連結成分（航海者「新たな海岸を求めて」）', () => {
-  it('海で分断され、本島(7)と新島(4)の2島に分かれる', () => {
+  it('海で分断され、本島(12)と新島(9)の2島に分かれる', () => {
     const repOf = computeIslandReps(seafarers().tiles);
     const reps = new Set(Object.values(repOf));
     expect(reps.size).toBe(2);
@@ -43,8 +43,8 @@ describe('islands: 連結成分（航海者「新たな海岸を求めて」）'
     expect(reps.has(NEW_REP)).toBe(true);
     const homeCount = Object.values(repOf).filter(r => r === HOME_REP).length;
     const newCount = Object.values(repOf).filter(r => r === NEW_REP).length;
-    expect(homeCount).toBe(7); // 砂漠含む本島7タイル
-    expect(newCount).toBe(4);  // 新島4タイル
+    expect(homeCount).toBe(12); // 砂漠含む本島12タイル
+    expect(newCount).toBe(9);   // 新島9タイル
   });
 
   it('海タイルは島に含まれない', () => {

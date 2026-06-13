@@ -17,7 +17,7 @@ import {
 } from './actions';
 import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount } from './robber';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
-import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP } from './scoring';
+import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
 import { newIslandBonusRep } from './islands';
 
 // ============================================================
@@ -700,7 +700,7 @@ export function applyAction(
     case 'DECLARE_VICTORY': {
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
         throw new Error('DECLARE_VICTORY: must be in MAIN TRADE_BUILD phase');
-      if (calcVP(state, pid) < VP_TABLE.target) throw new Error('DECLARE_VICTORY: insufficient VP');
+      if (calcVP(state, pid) < victoryTarget(state)) throw new Error("DECLARE_VICTORY: insufficient VP");
       return { ...state, winner: pid, phase: 'GAME_OVER' };
     }
 

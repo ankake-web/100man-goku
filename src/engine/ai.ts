@@ -8,7 +8,7 @@ import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnough
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
-import { calcVP } from './scoring';
+import { calcVP, victoryTarget } from './scoring';
 
 // ============================================================
 // 確率テーブル（数字トークンの出目確率 /36）
@@ -430,7 +430,7 @@ export function evaluateTradeOffer(
   // 利敵回避: 起案者が単独首位かつ勝利間近なら見送る
   const leader = soleVpLeader(state);
   if (leader === initiatorId && initiatorId !== responderId
-      && calcVP(state, initiatorId) >= VP_TABLE.target - 3) {
+      && calcVP(state, initiatorId) >= victoryTarget(state) - 3) {
     return false;
   }
   return true;
@@ -800,7 +800,7 @@ function bankTradeToward(state: GameState, pid: PlayerId, cost: ResourceHand): A
 // 勝利まであと1点以上なら、勝利に直結する建設を最優先で実行する。
 // 建設できなければ、不足資源をバンク交易で1手ずつ補い、次ステップでの建設→勝利を狙う。
 function victoryPush(state: GameState, pid: PlayerId, rng: () => number = Math.random): Action | null {
-  if (calcVP(state, pid) < VP_TABLE.target - 1) return null;
+  if (calcVP(state, pid) < victoryTarget(state) - 1) return null;
   const player = state.players[pid]!;
 
   const city = bestCityVertex(state, pid, rng);

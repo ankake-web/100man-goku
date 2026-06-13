@@ -84,12 +84,18 @@ describe('AI 航海者: 海峡を渡る船の建設（Phase 5・基本AI）', ()
 
 describe('AI 航海者: フルCPU対戦が船を使い完走する（決定論スモーク）', () => {
   it('強CPU同士の対戦が GAME_OVER まで進み、少なくとも1隻の船が建設される', () => {
+    // 3人の強CPU。大きい盤面＋勝利点13により、本島だけでは勝てず新島へ航海する必要が出る。
+    const specs3: PlayerSpec[] = [
+      { id: 'player1', name: 'A', color: 'red',    type: 'ai', aiDifficulty: 'strong' },
+      { id: 'player2', name: 'B', color: 'blue',   type: 'ai', aiDifficulty: 'strong' },
+      { id: 'player3', name: 'C', color: 'purple', type: 'ai', aiDifficulty: 'strong' },
+    ];
     const rng = createRng(12345);
-    let s = createInitialGameState(AI_SPECS, 'fixed', ['player1', 'player2'], rng, 'seafarers_newshores');
+    let s = createInitialGameState(specs3, 'fixed', ['player1', 'player2', 'player3'], rng, 'seafarers_newshores');
     let ships = 0;
     let settlements = 0;
 
-    for (let i = 0; i < 40_000 && s.phase !== 'GAME_OVER'; i++) {
+    for (let i = 0; i < 80_000 && s.phase !== 'GAME_OVER'; i++) {
       let pid = s.playerOrder[s.currentPlayerIndex]!;
       if (s.phase === 'MAIN' && s.turnPhase === 'DISCARD') {
         // 捨て札済み(discardedThisRound)は除外（再選択すると二重捨てで null→停止する）。

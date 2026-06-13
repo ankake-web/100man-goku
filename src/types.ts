@@ -235,6 +235,9 @@ export interface GameState {
   longestRoadHolder: PlayerId | null;
   largestArmyHolder: PlayerId | null;
 
+  // 勝利に必要な勝利点。シナリオ別（基本=10／航海者の大きい盤=13）。未設定は VP_TABLE.target。
+  victoryTarget?: number;
+
   // 航海者拡張: 「新しい島への最初の入植」ボーナス。島の代表タイルID → 最初に入植したプレイヤー。
   // 各エントリ +2VP（calcVP で加算）。基本ゲームでは常に空（海タイルが無く発生しない）。
   islandBonus?: Record<string, PlayerId>;

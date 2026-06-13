@@ -380,10 +380,8 @@ function buildRulePanel(): HTMLDetailsElement {
 
   const body = document.createElement('div');
   body.className = 'rule-body';
-  const target = VP_TABLE.target;
-
   body.appendChild(ruleSection('🎯 目的', [
-    `先に ${target} 点を取ったプレイヤーが勝ち。`,
+    `先に ${VP_TABLE.target} 点（航海者の盤面は 13 点）を取ったプレイヤーが勝ち。`,
     '開拓地・都市・最長交易路・最大騎士力・勝利点カードで点を集める。',
   ]));
   body.appendChild(ruleSection('🔁 ターンの流れ', [

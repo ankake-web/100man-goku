@@ -58,6 +58,20 @@ export function getAllTileCoords(): AxialCoord[] {
 }
 
 /**
+ * 六角形の領域（半径パラメータ）でタイル座標集合を生成する。航海者の大きい盤面用。
+ * |q|<=qLim かつ |r|<=rLim かつ |q+r|<=sumLim。例: getHexRegion(2,2,2) は基本盤の19タイル。
+ */
+export function getHexRegion(qLim: number, rLim: number, sumLim: number): AxialCoord[] {
+  const coords: AxialCoord[] = [];
+  for (let q = -qLim; q <= qLim; q++) {
+    for (let r = -rLim; r <= rLim; r++) {
+      if (Math.abs(q + r) <= sumLim) coords.push({ q, r });
+    }
+  }
+  return coords;
+}
+
+/**
  * 指定座標のタイルに隣接する有効なタイル座標一覧を返す。
  * ボード外（条件外）の座標は除外される。
  */

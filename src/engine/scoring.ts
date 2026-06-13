@@ -257,13 +257,18 @@ export function updateLargestArmy(state: GameState): GameState {
 // 勝利チェック
 // ============================================================
 
+/** このゲームの勝利に必要な勝利点。シナリオ別（基本=10／航海者=13）。未設定は VP_TABLE.target。 */
+export function victoryTarget(state: GameState): number {
+  return state.victoryTarget ?? VP_TABLE.target;
+}
+
 /**
- * アクティブプレイヤーが勝利条件（VP_TABLE.target=10）を満たしているか確認し、
+ * アクティブプレイヤーが勝利条件（victoryTarget）を満たしているか確認し、
  * 満たしていれば winner と phase を更新した GameState を返す。
  */
 export function checkVictory(state: GameState, playerId: PlayerId): GameState {
   const vp = calcVP(state, playerId);
-  if (vp < VP_TABLE.target) return state;
+  if (vp < victoryTarget(state)) return state;
 
   return { ...state, winner: playerId, phase: 'GAME_OVER' };
 }

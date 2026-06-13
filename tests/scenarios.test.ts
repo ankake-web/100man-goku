@@ -46,35 +46,29 @@ describe('scenarios: classic は従来どおり（非破壊）', () => {
   });
 });
 
-describe('scenarios: 航海者「新たな海岸を求めて」(Phase 0)', () => {
+describe('scenarios: 航海者「新たな海岸を求めて」', () => {
   const s = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_newshores');
 
-  it('19タイル footprint（既存viewBoxに収まる）', () => {
-    expect(Object.keys(s.tiles)).toHaveLength(19);
-    // 座標は基本盤と同一集合
-    const ids = new Set(Object.keys(s.tiles));
-    for (const c of getAllTileCoords()) expect(ids.has(`${c.q},${c.r}`)).toBe(true);
-  });
-
-  it('二島（本島7+新島4=陸11）/ 海8。新島に金タイル1枚（Phase 2）', () => {
+  it('大きめ footprint（29ヘックス）で陸21・海8・砂漠1・金1', () => {
+    expect(Object.keys(s.tiles)).toHaveLength(29);
     expect(count(s.tiles, 'sea')).toBe(8);
     expect(count(s.tiles, 'gold')).toBe(1);
     expect(count(s.tiles, 'desert')).toBe(1);
-    const land = 19 - 8; // 海以外（金タイルも陸に含む）
-    expect(land).toBe(11);
-    // 金タイルは新島(右)の玄関口(1,0)に置かれ、出目を持つ
-    expect(s.tiles['1,0']?.type).toBe('gold');
-    expect(s.tiles['1,0']?.number).toBe(10);
+    expect(29 - 8).toBe(21); // 海以外＝陸21（金タイルも陸に含む）
   });
 
-  it('左右の陸塊が海峡(q=0列)で分離されている（隣接しない＝船が必要）', () => {
-    // q=0 の列は全て海
-    for (const r of [-2, -1, 0, 1, 2]) {
-      expect(s.tiles[`0,${r}`]?.type).toBe('sea');
-    }
-    // 左(q=-1,-2)と右(q=1,2)に陸がある
-    expect(s.tiles['-1,0']?.type).toBe('desert');
-    expect(s.tiles['2,0']?.type).toBe('hill');
+  it('本島12＋新島9 の二島に分かれる', () => {
+    const repOf = computeIslandReps(s.tiles);
+    const sizes = [...new Set(Object.values(repOf))]
+      .map(r => Object.values(repOf).filter(x => x === r).length).sort((a, b) => b - a);
+    expect(sizes).toEqual([12, 9]);
+  });
+
+  it('海峡(q=0列)が全て海で左右の陸塊を分離（船が必要）', () => {
+    for (const r of [-2, -1, 0, 1, 2]) expect(s.tiles[`0,${r}`]?.type).toBe('sea');
+    // 左(q=-3..-1)と右(q=1..3)に陸がある
+    expect(s.tiles['-1,-1']?.type).toBe('desert'); // 本島の砂漠
+    expect(s.tiles['1,-1']?.type).toBe('gold');    // 新島の玄関口＝金
   });
 
   it('海タイルは数字なし・盗賊なし。陸タイルは砂漠以外に数字あり', () => {
@@ -88,36 +82,35 @@ describe('scenarios: 航海者「新たな海岸を求めて」(Phase 0)', () =>
     }
   });
 
-  it('盗賊は本島の砂漠(-1,0)から開始', () => {
+  it('盗賊は本島の砂漠(-1,-1)から開始', () => {
     const robber = Object.values(s.tiles).find(t => t.hasRobber)!;
-    expect(robber.id).toBe('-1,0');
+    expect(robber.id).toBe('-1,-1');
     expect(robber.type).toBe('desert');
   });
 
-  it('盤面幾何（頂点/辺）は基本盤と同一構造（座標が同じため）', () => {
-    expect(Object.keys(s.vertices)).toHaveLength(54);
-    expect(Object.keys(s.edges)).toHaveLength(72);
+  it('盤面が viewBox に収まるよう、基本盤より頂点/辺が多い（大きい盤）', () => {
+    expect(Object.keys(s.vertices).length).toBeGreaterThan(54);
+    expect(Object.keys(s.edges).length).toBeGreaterThan(72);
   });
 });
 
-describe('scenarios: 航海者「群島」(2つ目の盤面)', () => {
+describe('scenarios: 航海者「群島」', () => {
   const s = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_archipelago');
 
-  it('19タイル footprint / 陸12・海7・砂漠1・金1', () => {
-    expect(Object.keys(s.tiles)).toHaveLength(19);
-    expect(count(s.tiles, 'sea')).toBe(7);
+  it('29ヘックスで陸21・海8・砂漠1・金1', () => {
+    expect(Object.keys(s.tiles)).toHaveLength(29);
+    expect(count(s.tiles, 'sea')).toBe(8);
     expect(count(s.tiles, 'gold')).toBe(1);
     expect(count(s.tiles, 'desert')).toBe(1);
-    const land = 19 - 7;
-    expect(land).toBe(12);
+    expect(29 - 8).toBe(21);
   });
 
-  it('3つの島に分かれる（本島7＋新島A3＋新島B2）', () => {
+  it('3つの島に分かれる（本島12＋新島A6＋新島B3）', () => {
     const repOf = computeIslandReps(s.tiles);
     const reps = [...new Set(Object.values(repOf))];
     expect(reps).toHaveLength(3);
     const sizes = reps.map(r => Object.values(repOf).filter(x => x === r).length).sort((a, b) => b - a);
-    expect(sizes).toEqual([7, 3, 2]);
+    expect(sizes).toEqual([12, 6, 3]);
   });
 
   it('海岸線に港が配置され、沿岸の陸頂点に harborType が付く（両航海者マップ）', () => {
@@ -137,12 +130,13 @@ describe('scenarios: 航海者「群島」(2つ目の盤面)', () => {
   });
 
   it('新島A・Bは本島と隣接しない（航海でのみ到達）', () => {
-    // 本島(左 q=-2,-1)と新島(右 q=1,2)の間 q=0 列は全て海
+    // 本島(左 q≤-1)と右側の間 q=0 列は全て海
     for (const r of [-2, -1, 0, 1, 2]) expect(s.tiles[`0,${r}`]?.type).toBe('sea');
-    // A↔B を分ける (1,0)(2,-1) も海
+    // A(上)↔B(下) を分ける r=0 の列(1,0)(2,0)(3,0)も海
     expect(s.tiles['1,0']?.type).toBe('sea');
-    expect(s.tiles['2,-1']?.type).toBe('sea');
-    // 金は新島Aの玄関口(1,-2)
-    expect(s.tiles['1,-2']?.type).toBe('gold');
+    expect(s.tiles['2,0']?.type).toBe('sea');
+    expect(s.tiles['3,0']?.type).toBe('sea');
+    // 金は新島Aの玄関口(1,-1)
+    expect(s.tiles['1,-1']?.type).toBe('gold');
   });
 });

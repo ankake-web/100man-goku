@@ -102,18 +102,32 @@ const HARBOR_COLOR: Record<HarborType, string> = {
 // ボード中心オフセット計算
 // ============================================================
 
-// タイル群の中心を、指定した中心座標(centerX, centerY)へ合わせるオフセットを返す。
-// centerX/Y は viewBox の中心（vb.x + vb.width/2 など）を渡す。
-function boardOffset(state: GameState, centerX: number, centerY: number): { ox: number; oy: number } {
+// タイル群の中心座標の境界（ピクセル）。中央寄せと自動フィット縮小の両方に使う。
+function boardBounds(state: GameState): { minX: number; maxX: number; minY: number; maxY: number } {
   const coords = Object.values(state.tiles).map(t => axialToPixel(t.coord));
-  const minX = Math.min(...coords.map(p => p.x));
-  const maxX = Math.max(...coords.map(p => p.x));
-  const minY = Math.min(...coords.map(p => p.y));
-  const maxY = Math.max(...coords.map(p => p.y));
   return {
-    ox: centerX - (minX + maxX) / 2,
-    oy: centerY - (minY + maxY) / 2,
+    minX: Math.min(...coords.map(p => p.x)), maxX: Math.max(...coords.map(p => p.x)),
+    minY: Math.min(...coords.map(p => p.y)), maxY: Math.max(...coords.map(p => p.y)),
   };
+}
+
+// タイル群の中心を、指定した中心座標(centerX, centerY)へ合わせるオフセットを返す。
+function boardOffset(state: GameState, centerX: number, centerY: number): { ox: number; oy: number } {
+  const b = boardBounds(state);
+  return {
+    ox: centerX - (b.minX + b.maxX) / 2,
+    oy: centerY - (b.minY + b.maxY) / 2,
+  };
+}
+
+// 盤面コンテンツの実寸（ヘックスの張り出しを含む）。viewBox に収める縮小率の計算に使う。
+// 大きい航海者マップで盤面が viewBox(800×700) を超えても自動で縮小して全タイルを表示する。
+function boardContentScale(state: GameState, vbW: number, vbH: number, size: number): number {
+  const b = boardBounds(state);
+  const w = (b.maxX - b.minX) + size * 2;      // フラットトップ六角の横張り出し ±size
+  const h = (b.maxY - b.minY) + size * 1.74;   // 縦張り出し ±sqrt3/2·size
+  // 余白(0.94)を残して収まる倍率。基本盤は >1 になるので（縮小せず）1 を上限にする。
+  return Math.min((vbW * 0.94) / w, (vbH * 0.94) / h);
 }
 
 // ============================================================
@@ -596,10 +610,12 @@ export function renderBoard(
   content.setAttribute('class', 'board-content');
   content.dataset.ox = String(ox);
   content.dataset.oy = String(oy);
+  // タッチ端末は少し拡大して見やすく。ただし viewBox に収まる範囲を超えない（大きい盤面は自動縮小）。
   const boardZoom = isTouchDevice() ? 1.06 : 1.0;
-  if (boardZoom !== 1) {
+  const scale = Math.min(boardZoom, boardContentScale(state, W, H, size));
+  if (Math.abs(scale - 1) > 0.001) {
     const cx = vbx + W / 2, cy = vby + H / 2;
-    content.setAttribute('transform', `translate(${cx} ${cy}) scale(${boardZoom}) translate(${-cx} ${-cy})`);
+    content.setAttribute('transform', `translate(${cx} ${cy}) scale(${scale}) translate(${-cx} ${-cy})`);
   }
 
   // --- タイル（最下層） ---

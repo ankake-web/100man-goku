@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId, ResourceType, Player, ResourceHand } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
-import { calcVP, calcPublicVP } from '../engine/scoring';
+import { calcVP, calcPublicVP, victoryTarget } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
@@ -1085,7 +1085,7 @@ function buildActionButtons(
     div.appendChild(makeBtn('🎲 ダイスを振る', 'btn-primary', false, () => dispatch({ type: 'ROLL_DICE' })));
     // ダイス前は騎士のみ使用可（appendDevCardButtons 内で制御）。LANも対応。
     appendDevCardButtons(div, state, player, setUIPhase, dispatch);
-    if (calcVP(state, pid) >= VP_TABLE.target) {
+    if (calcVP(state, pid) >= victoryTarget(state)) {
       div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
     }
     return div;
@@ -1138,7 +1138,7 @@ function buildActionButtons(
   // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
   appendDevCardButtons(div, state, player, setUIPhase, dispatch);
 
-  if (calcVP(state, pid) >= VP_TABLE.target) {
+  if (calcVP(state, pid) >= victoryTarget(state)) {
     div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
   }
 

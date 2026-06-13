@@ -17,9 +17,22 @@ const AI_SPECS: PlayerSpec[] = [
   { id: 'player2', name: 'B', color: 'blue', type: 'ai', aiDifficulty: 'normal' },
 ];
 
-const GOLD_TILE = '1,0'; // 新島の金タイル（玄関口・出目10）
 const seafarers = (specs = SPECS): GameState =>
   createInitialGameState(specs, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_newshores');
+
+// 金タイルのID・出目はシナリオから動的に取得（マップ変更に強い）。
+const GOLD_TILE = Object.values(seafarers().tiles).find(t => t.type === 'gold')!.id;
+const GOLD_NUM = seafarers().tiles[GOLD_TILE]!.number!;     // 金タイルの出目
+const NON_GOLD_NUM = GOLD_NUM === 5 ? 9 : 5;                // 金と一致しない出目
+
+// 合計 total になる固定ダイス目を返す rng（die=floor(rng*6)+1）。
+function rngForTotal(total: number): () => number {
+  const d1 = Math.min(6, Math.max(1, total - 6 > 0 ? total - 6 : Math.floor(total / 2)));
+  const d2 = total - d1;
+  const seq = [(d1 - 1) / 6 + 0.01, (d2 - 1) / 6 + 0.01];
+  let i = 0;
+  return () => seq[(i++) % 2]!;
+}
 
 // 金タイルに隣接する頂点に pid の建物を置いた state を返す。
 function withBuildingOnGold(g: GameState, pid: 'player1' | 'player2', type: 'settlement' | 'city' = 'settlement'): { s: GameState; vid: VertexId } {
@@ -34,22 +47,22 @@ describe('computeGoldPicks: 金タイル産出の枚数', () => {
   it('出目一致・開拓地=1枚 / 都市=2枚', () => {
     const g = seafarers();
     const settle = withBuildingOnGold(g, 'player1', 'settlement').s;
-    expect(computeGoldPicks(settle, 10)).toEqual({ player1: 1 });
+    expect(computeGoldPicks(settle, GOLD_NUM)).toEqual({ player1: 1 });
     const city = withBuildingOnGold(g, 'player1', 'city').s;
-    expect(computeGoldPicks(city, 10)).toEqual({ player1: 2 });
+    expect(computeGoldPicks(city, GOLD_NUM)).toEqual({ player1: 2 });
   });
 
   it('出目不一致 / 7 / 強盗ありは産出しない', () => {
     const { s } = withBuildingOnGold(seafarers(), 'player1');
-    expect(computeGoldPicks(s, 8)).toEqual({});
+    expect(computeGoldPicks(s, NON_GOLD_NUM)).toEqual({});
     expect(computeGoldPicks(s, 7)).toEqual({});
     const robbed: GameState = { ...s, tiles: { ...s.tiles, [GOLD_TILE]: { ...s.tiles[GOLD_TILE]!, hasRobber: true } } };
-    expect(computeGoldPicks(robbed, 10)).toEqual({});
+    expect(computeGoldPicks(robbed, GOLD_NUM)).toEqual({});
   });
 
   it('基本ゲームは金タイルが無く常に空', () => {
     const classic = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'classic');
-    expect(computeGoldPicks(classic, 10)).toEqual({});
+    expect(computeGoldPicks(classic, GOLD_NUM)).toEqual({});
   });
 });
 
@@ -58,8 +71,8 @@ describe('ROLL_DICE → GOLD フェーズ遷移', () => {
     const { s: built } = withBuildingOnGold(seafarers(), 'player1');
     const s: GameState = { ...built, phase: 'MAIN', turnPhase: 'PRE_ROLL', setupSubPhase: null, currentPlayerIndex: 0 };
     // rng=()=>0.7 → 各ダイス5 → 合計10（金タイルの出目）
-    const next = applyAction(s, { type: 'ROLL_DICE' }, () => 0.7);
-    expect(next.lastDiceRoll).toEqual([5, 5]);
+    const next = applyAction(s, { type: "ROLL_DICE" }, rngForTotal(GOLD_NUM));
+    expect((next.lastDiceRoll![0] + next.lastDiceRoll![1])).toBe(GOLD_NUM);
     expect(next.turnPhase).toBe('GOLD');
     expect(next.pendingGoldChoice).toEqual({ player1: 1 });
   });
@@ -122,7 +135,7 @@ describe('GOLD 多人数×バンク枯渇でソフトロックしない（レビ
   it('owed 合計はバンク総在庫を超えない（逐次キャップ）', () => {
     // バンク総在庫1・2人 owed → 取れる人だけ owed になり、解決して TRADE_BUILD へ。
     const s = twoOwners(makeHand({ wool: 1 }));
-    const rolled = applyAction(s, { type: 'ROLL_DICE' }, () => 0.7); // 5+5=10（金タイルの出目）
+    const rolled = applyAction(s, { type: "ROLL_DICE" }, rngForTotal(GOLD_NUM)); // 5+5=10（金タイルの出目）
     expect(rolled.turnPhase).toBe('GOLD');
     const owed = rolled.pendingGoldChoice ?? {};
     const sum = Object.values(owed).reduce((a, b) => a + b, 0);
@@ -136,7 +149,7 @@ describe('GOLD 多人数×バンク枯渇でソフトロックしない（レビ
 
   it('バンク総在庫2・2人 owed → どの順で解決しても TRADE_BUILD（順序非依存）', () => {
     const s = twoOwners(makeHand({ wool: 1, grain: 1 }));
-    const rolled = applyAction(s, { type: 'ROLL_DICE' }, () => 0.7);
+    const rolled = applyAction(s, { type: "ROLL_DICE" }, rngForTotal(GOLD_NUM));
     expect(rolled.pendingGoldChoice).toEqual({ player1: 1, player2: 1 });
     // player2 を先に解決（在庫を先に引く）→ player1 が残在庫で必ず取れる
     const mid = applyAction(rolled, { type: 'CHOOSE_GOLD', playerId: 'player2', resources: { wool: 1 } });
@@ -147,7 +160,7 @@ describe('GOLD 多人数×バンク枯渇でソフトロックしない（レビ
 
   it('CPU も枯渇時に合法手を出せる（chooseAction が owed 枚ちょうど）', () => {
     const base = twoOwners(makeHand({ wool: 1 }));
-    const rolled = applyAction(base, { type: 'ROLL_DICE' }, () => 0.7);
+    const rolled = applyAction(base, { type: "ROLL_DICE" }, rngForTotal(GOLD_NUM));
     for (const pid of Object.keys(rolled.pendingGoldChoice ?? {})) {
       const a = chooseAction(rolled, pid as 'player1' | 'player2', { rng: createRng(1) });
       expect(a?.type).toBe('CHOOSE_GOLD');
