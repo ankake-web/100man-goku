@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId } from '../types';
-import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity } from '../engine/actions';
+import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
 import type { UIPhase } from './ui';
 import type { BoardViewport } from './board';
 
@@ -11,7 +11,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -92,6 +92,30 @@ export function nearestValidEdgeId(
   return best;
 }
 
+/**
+ * 船移動モードで、点(x,y)に最も近い「操作対象の辺」を返す（航海者・Phase 4）。
+ *   from 未選択: 自分の動かせる船の辺（isShipMovable）。
+ *   from 選択済: その船の合法な移動先の海辺（canMoveShip）。さらに from 自身も返す（再タップで解除）。
+ */
+export function nearestMoveShipEdgeId(
+  state: GameState, pid: PlayerId, from: string | null, x: number, y: number, maxDist = EDGE_TAP_RADIUS,
+): string | null {
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const e of Object.values(state.edges)) {
+    const ok = from == null
+      ? (e.ship?.playerId === pid && isShipMovable(state, pid, e.id))
+      : (e.id === from || canMoveShip(state, pid, from, e.id));
+    if (!ok) continue;
+    const a = state.vertices[e.vertexIds[0]];
+    const b = state.vertices[e.vertexIds[1]];
+    if (!a || !b) continue;
+    const d = distToSegmentSq(x, y, a.pixel.x, a.pixel.y, b.pixel.x, b.pixel.y);
+    if (d <= bestD) { bestD = d; best = e.id; }
+  }
+  return best;
+}
+
 /** 点(x,y)に最も近い合法な船の辺IDを maxDist 内で返す（航海者）。なければ null。 */
 export function nearestValidShipEdgeId(
   state: GameState, pid: PlayerId, mode: BuildMode, x: number, y: number, maxDist = EDGE_TAP_RADIUS,
@@ -135,6 +159,9 @@ export function attachBoardEvents(
   setUIPhase: (p: UIPhase) => void,
   dispatch: (action: Action) => void,
   canAct: () => boolean = () => true,
+  // 航海者・船移動モード: 選択中の移動元の取得/設定（未指定＝船移動UI無効）。
+  getMoveShipFrom: () => string | null = () => null,
+  setMoveShipFrom: (eid: string | null) => void = () => {},
 ): void {
   svg.addEventListener('click', (e) => {
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
@@ -153,6 +180,24 @@ export function attachBoardEvents(
       const tileEl = target.closest('[data-tile-id]');
       const tileId = tileEl?.getAttribute('data-tile-id');
       if (tileId) handleTileClick(tileId, state, pid, setUIPhase, dispatch);
+      return;
+    }
+
+    // ---- 航海者: 船の移動モード（2段階: 船を選択 → 移動先をタップ）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'moveShip') {
+      const from = getMoveShipFrom();
+      const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const eid = ptm ? nearestMoveShipEdgeId(state, pid, from, ptm.x, ptm.y) : null;
+      if (!eid) { if (from) setMoveShipFrom(null); return; } // 空タップで選択解除
+      if (!from) {
+        // 移動元の船を選択（動かせる自分の船のみ nearestMoveShipEdgeId が返す）
+        setMoveShipFrom(eid);
+      } else if (eid === from) {
+        setMoveShipFrom(null); // 同じ船を再タップ → 解除
+      } else if (canMoveShip(state, pid, from, eid)) {
+        dispatch({ type: 'MOVE_SHIP', fromEdgeId: from, toEdgeId: eid });
+        setMoveShipFrom(null);
+      }
       return;
     }
 

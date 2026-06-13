@@ -176,6 +176,21 @@ export function canMoveShip(
   return isEdgeConnectedForPiece(to, playerId, without.vertices, without.edges, 'ship');
 }
 
+/** その船（自分の船）を今ターン動かせるか（開放端があり、合法な移動先が1つ以上ある）。 */
+export function isShipMovable(state: GameState, playerId: PlayerId, fromEdgeId: EdgeId): boolean {
+  if (state.shipMovedThisTurn) return false;
+  if (state.edges[fromEdgeId]?.ship?.playerId !== playerId) return false;
+  return Object.keys(state.edges).some(to => canMoveShip(state, playerId, fromEdgeId, to));
+}
+
+/** 自分の船のうち、今ターン動かせるものが1つでもあるか（UIの「船を移動」ボタン表示判定）。 */
+export function playerHasMovableShip(state: GameState, playerId: PlayerId): boolean {
+  if (state.shipMovedThisTurn) return false;
+  return Object.keys(state.edges).some(
+    e => state.edges[e]!.ship?.playerId === playerId && isShipMovable(state, playerId, e),
+  );
+}
+
 /** 船を移動して新しい GameState を返す（バリデーション済み前提）。コマ数は不変・1ターン1回。 */
 export function moveShip(
   state: GameState, playerId: PlayerId, fromEdgeId: EdgeId, toEdgeId: EdgeId,

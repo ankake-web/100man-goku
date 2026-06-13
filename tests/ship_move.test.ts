@@ -4,6 +4,7 @@ import type { PlayerSpec } from '../src/engine/createState';
 import { createRng } from '../src/engine/setup';
 import { applyAction } from '../src/engine/game';
 import { canMoveShip } from '../src/engine/actions';
+import { nearestMoveShipEdgeId } from '../src/renderer/events';
 import { isSeaEdge, isLandVertex, isLandEdge } from '../src/engine/board';
 import { makeHand } from '../src/constants';
 import type { GameState, EdgeId, VertexId } from '../src/types';
@@ -100,5 +101,18 @@ describe('航海者: 船の移動（航海・Phase 4）', () => {
     // e1 は両端とも開放端でない（V=建物 / midV=他の自分の船 e3）→ 移動不可
     const anyTo = Object.keys(s.edges).find(to => canMoveShip(s, 'player1', e1, to));
     expect(anyTo).toBeUndefined();
+  });
+
+  it('UIの最近傍判定: from未選択は動かせる船、from選択後は移動先を返す', () => {
+    const { s, e1, e2 } = setupMovableShip();
+    const mid = (eid: EdgeId): { x: number; y: number } => {
+      const [a, b] = s.edges[eid]!.vertexIds;
+      const pa = s.vertices[a]!.pixel, pb = s.vertices[b]!.pixel;
+      return { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+    };
+    const p1 = mid(e1);
+    expect(nearestMoveShipEdgeId(s, 'player1', null, p1.x, p1.y)).toBe(e1); // 動かせる船
+    const p2 = mid(e2);
+    expect(nearestMoveShipEdgeId(s, 'player1', e1, p2.x, p2.y)).toBe(e2); // 移動先
   });
 });

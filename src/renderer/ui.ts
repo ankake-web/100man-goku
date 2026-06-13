@@ -6,7 +6,7 @@ import type { GameState, Action, PlayerId, ResourceType, Player, ResourceHand } 
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
 import { calcVP, calcPublicVP } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
-import { hasEnoughResources } from '../engine/actions';
+import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
 import { findPendingDiscarder } from '../engine/robber';
 import type { BuildMode } from './events';
@@ -1115,6 +1115,10 @@ function buildActionButtons(
 
   div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
   if (hasSea) div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
+  // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
+  if (hasSea && playerHasMovableShip(state, pid)) {
+    div.appendChild(modeBtn('⛵ 船を移動', 'moveShip', true, buildMode, setBuildMode));
+  }
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
   div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
