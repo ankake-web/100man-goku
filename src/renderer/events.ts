@@ -3,16 +3,14 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId } from '../types';
-import { RESOURCE_TYPES } from '../constants';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
 import { canMoveKnight, isKnightMovable } from '../engine/citiesKnights';
-import { getPirateRobbablePlayerIds } from '../engine/robber';
+import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
-// 公開情報での手札枚数（LANでは相手の hand はマスクされ handCount に枚数が入る）。
+// 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
+// 騎士と商人では商品も奪取対象なので合算する）。エンジンの判定と一致させる。
 function publicCardCount(state: GameState, p: PlayerId): number {
-  const pl = state.players[p];
-  if (!pl) return 0;
-  return pl.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + pl.hand[r], 0);
+  return robbableCardCount(state, p);
 }
 import type { UIPhase } from './ui';
 import type { BoardViewport } from './board';

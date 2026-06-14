@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType, CkTrack } from '../types';
 import { RESOURCE_TYPES, COMMODITY_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
-import { discardCount } from './robber';
+import { discardCount, robbableCardCount } from './robber';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
   isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight, canPlayProgress,
@@ -291,11 +291,6 @@ function bestExpansionShip(state: GameState, pid: PlayerId): string | null {
   }
   // 最初の1隻が今すぐ合法であることを最終確認（防御）。
   return chosen && canBuildShip(state, pid, chosen) ? chosen : null;
-}
-
-function playerHandTotal(state: GameState, pid: PlayerId): number {
-  const h = state.players[pid]?.hand;
-  return h ? RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) : 0;
 }
 
 function getDifficulty(state: GameState, pid: PlayerId): AiDifficulty {
@@ -714,9 +709,9 @@ export function chooseRobberHex(state: GameState, pid: PlayerId, rng: () => numb
 export function chooseStealTarget(
   state: GameState, tileId: string, pid: PlayerId, rng: () => number = Math.random,
 ): PlayerId | null {
-  const opps = opponentsOnTile(state, tileId, pid).filter(o => playerHandTotal(state, o) > 0);
+  const opps = opponentsOnTile(state, tileId, pid).filter(o => robbableCardCount(state, o) > 0);
   if (opps.length === 0) return null;
-  return pickByScore(opps, o => playerHandTotal(state, o) + calcVP(state, o) * 2, rng);
+  return pickByScore(opps, o => robbableCardCount(state, o) + calcVP(state, o) * 2, rng);
 }
 
 function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number): Action {

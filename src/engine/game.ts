@@ -16,7 +16,7 @@ import {
   canBuildCity, buildCity,
   hasEnoughResources,
 } from './actions';
-import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount, handTotal, findPendingDiscarder } from './robber';
+import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount, robbableCardCount, findPendingDiscarder } from './robber';
 import {
   isCk, applyEventDie, distributeCkProduction,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
@@ -254,7 +254,7 @@ export function applyAction(
 
       // 強奪は必須: 移動先タイルに隣接し手札を持つ相手がいるなら、必ずその中の1人から盗む
       // （『盗まない』選択は不可。標準ルール）。隣接相手が全員0枚 or 不在なら盗まずに済む。
-      const robbable = getRobbablePlayerIds(next, tileId, pid).filter(p => handTotal(next, p) > 0);
+      const robbable = getRobbablePlayerIds(next, tileId, pid).filter(p => robbableCardCount(next, p) > 0);
       if (stealFromPlayerId != null) {
         // 盗む相手は「移動先タイルに隣接する建物を持つ相手」に限る（盤面と無関係な強奪を防ぐ）。
         if (!getRobbablePlayerIds(next, tileId, pid).includes(stealFromPlayerId))
@@ -285,7 +285,7 @@ export function applyAction(
       let next = movePirate(state, tileId);
 
       // 強奪は必須（盗賊と同様）: 海賊タイルに隣接して船を持ち手札のある相手がいるなら必ず盗む。
-      const pirateRobbable = getPirateRobbablePlayerIds(next, tileId, pid).filter(p => handTotal(next, p) > 0);
+      const pirateRobbable = getPirateRobbablePlayerIds(next, tileId, pid).filter(p => robbableCardCount(next, p) > 0);
       if (stealFromPlayerId != null) {
         // 盗む相手は「海賊タイルに隣接する船を持つ相手」に限る。
         if (!getPirateRobbablePlayerIds(next, tileId, pid).includes(stealFromPlayerId))

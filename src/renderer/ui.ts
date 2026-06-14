@@ -8,7 +8,7 @@ import { calcVP, calcPublicVP, victoryTarget } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
-import { findPendingDiscarder, discardCount } from '../engine/robber';
+import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
   playerHasMovableKnight,
@@ -315,9 +315,9 @@ function buildRobberTargetUI(
     const opponent = state.players[opponentPid];
     if (!opponent) continue;
     const color = PLAYER_COLORS[opponentPid] ?? '#aaa';
-    // 他プレイヤーの手札はLANではマスクで中身が全0になり、枚数は handCount に入る。
-    // hand 合計だと0枚と誤表示されるため、公開情報の handCount を優先する。
-    const totalCards = opponent.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + opponent.hand[r], 0);
+    // 他プレイヤーの手札はLANではマスクされ枚数のみ開示される。騎士と商人では
+    // 商品も奪取対象なので合算した「奪える枚数」を表示する（エンジン判定と一致）。
+    const totalCards = robbableCardCount(state, opponentPid);
     const btn = makeBtn(
       `${opponent.name}（手札${totalCards}枚）`,
       'btn-build',

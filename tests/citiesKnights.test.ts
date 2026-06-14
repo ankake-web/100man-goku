@@ -179,6 +179,36 @@ describe('C&K メトロポリス', () => {
   });
 });
 
+describe('C&K 強盗・海賊', () => {
+  it('資源0・商品のみの相手も奪取対象で、商品が奪われる', async () => {
+    const { stealResource, robbableCardCount } = await import('../src/engine/robber');
+    const { createRng } = await import('../src/engine/setup');
+    let s = oneTile('mountain', [[0, 'city', 'player1'], [1, 'city', 'player2']]);
+    s = {
+      ...s,
+      expansion: 'cities_knights',
+      players: {
+        ...s.players,
+        player1: makePlayer('player1', { hand: makeHand(), commodities: { coin: 0, cloth: 0, paper: 0 } }),
+        player2: makePlayer('player2', { hand: makeHand(), commodities: { coin: 3, cloth: 0, paper: 0 } }),
+      },
+    } as GameState;
+    expect(robbableCardCount(s, 'player2')).toBe(3); // 商品3枚＝奪取対象
+    const r = stealResource(s, 'player1', 'player2', createRng(1));
+    expect(r.players.player1!.commodities!.coin).toBe(1);
+    expect(r.players.player2!.commodities!.coin).toBe(2);
+  });
+
+  it('基本ゲームでは商品を数えない（後方互換）', async () => {
+    const { robbableCardCount } = await import('../src/engine/robber');
+    const s = makeGameState({
+      players: { player1: makePlayer('player1', { hand: makeHand({ wood: 2 }) }), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    });
+    expect(robbableCardCount(s, 'player1')).toBe(2);
+  });
+});
+
 describe('C&K 進歩カード', () => {
   it('buildProgressDecks: 3ツリーの山札が生成される', async () => {
     const { buildProgressDecks } = await import('../src/engine/citiesKnights');

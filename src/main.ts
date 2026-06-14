@@ -5,7 +5,7 @@
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, RESOURCE_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constants';
+import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
@@ -1445,10 +1445,14 @@ function appendRobberFlyVisual(fly: HTMLElement): void {
 }
 
 // プレイヤーの手札総数（公開情報ベース。他者はマスクで handCount、自分は実手札）。
+// 騎士と商人では商品も奪取され得るので合算する（強奪アニメ判定用）。
 function totalCardsOf(s: GameState, pid: string): number {
   const p = s.players[pid];
   if (!p) return 0;
-  return p.handCount ?? RESOURCE_TYPES.reduce((a, r) => a + p.hand[r], 0);
+  const res = p.handCount ?? RESOURCE_TYPES.reduce((a, r) => a + p.hand[r], 0);
+  if (s.expansion !== 'cities_knights') return res;
+  const com = p.commodityCount ?? (p.commodities ? COMMODITY_TYPES.reduce((a, c) => a + p.commodities![c], 0) : 0);
+  return res + com;
 }
 
 // 略奪演出: 伏せカード(種類非公開)が被害者パネル→略奪者パネルへ1枚飛ぶ。
