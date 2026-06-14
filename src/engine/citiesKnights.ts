@@ -200,13 +200,26 @@ export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack
   let vertices = state.vertices;
   let metropolis = state.metropolis ?? {};
 
-  // Lv4到達 & そのツリーのメトロポリス未保持 & 平の都市あり → 都市1つをメトロポリス化(勝利点4)。
-  if (newLvl >= CK_METROPOLIS_LEVEL && !metropolis[track] && playerHasPlainCity(state, pid)) {
-    const vid = Object.keys(state.vertices).find(id =>
+  // メトロポリス: そのツリーで Lv4以上かつ「現保持者より高いレベル」になった者が保持する。
+  //   - 未保持 → Lv4到達で獲得（先着）。
+  //   - 他者がLv4保持中に自分がLv5へ → 奪取（相手の都市は平の都市に戻る）。
+  const holder = metropolis[track];
+  const holderLvl = holder ? improvements(state.players[holder.playerId]!)[track] : 0;
+  const shouldTake = newLvl >= CK_METROPOLIS_LEVEL
+    && (!holder || (holder.playerId !== pid && newLvl > holderLvl));
+  if (shouldTake) {
+    const newVid = Object.keys(state.vertices).find(id =>
       state.vertices[id]!.building?.playerId === pid && state.vertices[id]!.building?.type === 'city' && !state.vertices[id]!.building?.metropolis);
-    if (vid) {
-      vertices = { ...vertices, [vid]: { ...vertices[vid]!, building: { ...vertices[vid]!.building!, metropolis: true } } };
-      metropolis = { ...metropolis, [track]: pid };
+    if (newVid) {
+      // 奪取時は旧保持者のメトロポリスを平の都市へ戻す（勝利点4→2）。
+      if (holder && holder.playerId !== pid) {
+        const ov = vertices[holder.vertexId];
+        if (ov?.building?.metropolis) {
+          vertices = { ...vertices, [holder.vertexId]: { ...ov, building: { type: 'city', playerId: holder.playerId } } };
+        }
+      }
+      vertices = { ...vertices, [newVid]: { ...vertices[newVid]!, building: { ...vertices[newVid]!.building!, metropolis: true } } };
+      metropolis = { ...metropolis, [track]: { playerId: pid, vertexId: newVid } };
     }
   }
   return { ...state, players, vertices, metropolis };

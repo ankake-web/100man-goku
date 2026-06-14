@@ -778,7 +778,11 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
   //    次にレベルの低いツリー（安い）から進める。
   const buyable = tracks.filter(t => canBuildImprovement(state, pid, t));
   if (buyable.length > 0) {
-    const metro = buyable.find(t => imp[t] === 3 && !(state.metropolis?.[t]));
+    // メトロポリス絡みを最優先: 未保持を Lv3→4 で先取り、または他者保持を Lv4→5 で奪取。
+    const metro = buyable.find(t => {
+      const h = state.metropolis?.[t];
+      return (imp[t] === 3 && !h) || (imp[t] === 4 && !!h && h.playerId !== pid);
+    });
     const pick = metro ?? [...buyable].sort((a, b) => imp[a] - imp[b])[0]!;
     return { type: 'BUILD_IMPROVEMENT', track: pick };
   }

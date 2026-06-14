@@ -124,6 +124,61 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
   }, 30000);
 });
 
+describe('C&K メトロポリス', () => {
+  it('Lv5到達でLv4保持者からメトロポリスを奪取する', async () => {
+    const { buildImprovement } = await import('../src/engine/citiesKnights');
+    let s = oneTile('mountain', [[0, 'city', 'player1'], [1, 'city', 'player2']]);
+    const tid = Object.keys(s.tileToVertices).find(t => (s.tileToVertices[t]?.length ?? 0) >= 3)!;
+    const vids = s.tileToVertices[tid]!;
+    const vidA = vids[0]!, vidB = vids[1]!;
+    s = {
+      ...s,
+      expansion: 'cities_knights',
+      metropolis: { science: { playerId: 'player1', vertexId: vidA } },
+      vertices: {
+        ...s.vertices,
+        [vidA]: { ...s.vertices[vidA]!, building: { type: 'city', playerId: 'player1', metropolis: true } },
+      },
+      players: {
+        ...s.players,
+        player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 4 } }),
+        player2: makePlayer('player2', { improvements: { trade: 0, politics: 0, science: 4 }, commodities: { coin: 0, cloth: 0, paper: 5 } }),
+      },
+    } as GameState;
+    const r = buildImprovement(s, 'player2', 'science');
+    expect(r.metropolis!.science!.playerId).toBe('player2');
+    expect(r.vertices[vidB]!.building!.metropolis).toBe(true);
+    expect(r.vertices[vidA]!.building!.metropolis ?? false).toBe(false); // 旧保持者は平の都市へ
+    expect(r.players.player2!.improvements!.science).toBe(5);
+  });
+
+  it('同レベル(Lv4同士)では先着保持者が維持し奪取されない', async () => {
+    const { buildImprovement } = await import('../src/engine/citiesKnights');
+    let s = oneTile('mountain', [[0, 'city', 'player1'], [1, 'city', 'player2']]);
+    const tid = Object.keys(s.tileToVertices).find(t => (s.tileToVertices[t]?.length ?? 0) >= 3)!;
+    const vids = s.tileToVertices[tid]!;
+    const vidA = vids[0]!;
+    s = {
+      ...s,
+      expansion: 'cities_knights',
+      metropolis: { science: { playerId: 'player1', vertexId: vidA } },
+      vertices: {
+        ...s.vertices,
+        [vidA]: { ...s.vertices[vidA]!, building: { type: 'city', playerId: 'player1', metropolis: true } },
+      },
+      players: {
+        ...s.players,
+        player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 4 } }),
+        player2: makePlayer('player2', { improvements: { trade: 0, politics: 0, science: 3 }, commodities: { coin: 0, cloth: 0, paper: 4 } }),
+      },
+    } as GameState;
+    // player2 が Lv3→4: 既に player1 が保持しているので奪取できない。
+    const r = buildImprovement(s, 'player2', 'science');
+    expect(r.metropolis!.science!.playerId).toBe('player1');
+    expect(r.players.player2!.improvements!.science).toBe(4);
+  });
+});
+
 describe('C&K 進歩カード', () => {
   it('buildProgressDecks: 3ツリーの山札が生成される', async () => {
     const { buildProgressDecks } = await import('../src/engine/citiesKnights');

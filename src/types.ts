@@ -262,8 +262,9 @@ export interface GameState {
   barbarianAttacks?: number;
   // 騎士と商人: 直近のイベントダイスの目（'ship'=蛮族前進 / 色=進歩カード抽選）。
   lastEventDie?: 'ship' | CkTrack;
-  // 騎士と商人: 各メトロポリスの保持者（ツリーごとに最大1人・盤面で一意）。
-  metropolis?: Partial<Record<CkTrack, PlayerId>>;
+  // 騎士と商人: 各メトロポリスの保持者と所在頂点（ツリーごとに最大1人・盤面で一意）。
+  // Lv5到達者が Lv4保持者から奪取するために頂点IDを保持する。
+  metropolis?: Partial<Record<CkTrack, { playerId: PlayerId; vertexId: VertexId }>>;
   // 騎士と商人: 進歩カードの山札（ツリー別）。
   progressDecks?: Record<CkTrack, ProgressCard[]>;
 
