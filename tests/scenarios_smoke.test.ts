@@ -12,8 +12,8 @@ import { createRng } from '../src/engine/setup';
 import { chooseAction } from '../src/engine/ai';
 import { applyAction } from '../src/engine/game';
 import { computeIslandReps } from '../src/engine/islands';
+import { findPendingDiscarder } from '../src/engine/robber';
 import { listScenarios, getScenario, type ScenarioId } from '../src/engine/scenarios';
-import { RESOURCE_TYPES } from '../src/constants';
 import type { GameState } from '../src/types';
 
 const SPECS3: PlayerSpec[] = [
@@ -22,9 +22,6 @@ const SPECS3: PlayerSpec[] = [
   { id: 'player3', name: 'C', color: 'purple', type: 'ai', aiDifficulty: 'strong' },
 ];
 
-const handTotal = (s: GameState, pid: string): number =>
-  RESOURCE_TYPES.reduce((sum, r) => sum + (s.players[pid]?.hand[r] ?? 0), 0);
-
 // 1ゲームを GAME_OVER まで回す（DISCARD/GOLD は対象プレイヤーを選んで解決）。
 function playToEnd(scenario: ScenarioId, seed: number): GameState {
   const rng = createRng(seed);
@@ -32,7 +29,7 @@ function playToEnd(scenario: ScenarioId, seed: number): GameState {
   for (let i = 0; i < 120_000 && s.phase !== 'GAME_OVER'; i++) {
     let pid = s.playerOrder[s.currentPlayerIndex]!;
     if (s.phase === 'MAIN' && s.turnPhase === 'DISCARD') {
-      pid = s.playerOrder.find(p => !(s.discardedThisRound ?? []).includes(p) && handTotal(s, p) >= 8) ?? pid;
+      pid = findPendingDiscarder(s) ?? pid; // 騎士と商人は商品も計上するためエンジン判定に委譲
     } else if (s.phase === 'MAIN' && s.turnPhase === 'GOLD') {
       pid = s.playerOrder.find(p => ((s.pendingGoldChoice ?? {})[p] ?? 0) > 0) ?? pid;
     }

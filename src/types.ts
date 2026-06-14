@@ -346,7 +346,7 @@ export type Action =
   | { type: 'ROLL_DICE' }
   | { type: 'MOVE_ROBBER';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'MOVE_PIRATE';         tileId: TileId; stealFromPlayerId: PlayerId | null }
-  | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand> }
+  | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand>; commodities?: Partial<CommodityHand> }
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
   | { type: 'BUILD_SHIP';          edgeId: EdgeId }
   | { type: 'MOVE_SHIP';           fromEdgeId: EdgeId; toEdgeId: EdgeId }

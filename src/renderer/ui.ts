@@ -8,13 +8,13 @@ import { calcVP, calcPublicVP, victoryTarget } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
-import { findPendingDiscarder } from '../engine/robber';
+import { findPendingDiscarder, discardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
   playerHasMovableKnight,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC } from '../constants';
-import type { CkTrack, CommodityType } from '../types';
+import type { CkTrack, CommodityType, CommodityHand } from '../types';
 import type { BuildMode } from './events';
 
 const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
@@ -31,7 +31,7 @@ import knightImg from '../assets/knight.png';
 
 export type UIPhase =
   | { type: 'idle' }
-  | { type: 'discard'; playerId: PlayerId; selected: ResourceHand }
+  | { type: 'discard'; playerId: PlayerId; selected: ResourceHand; selectedCommodities?: Partial<CommodityHand> }
   | { type: 'bankTrade'; give: ResourceType | null; receive: ResourceType | null }
   | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
   | { type: 'goldChoice'; playerId: PlayerId; slots: (ResourceType | null)[] }
@@ -216,15 +216,19 @@ function buildDiscardUI(
   if (!discardPid) return div;
 
   const player = state.players[discardPid]!;
-  const total = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
-  const target = Math.floor(total / 2);
+  const ck = state.expansion === 'cities_knights' && !!player.commodities;
+  const target = discardCount(state, discardPid);
 
   const selected: ResourceHand =
     uiPhase.type === 'discard' && uiPhase.playerId === discardPid
       ? uiPhase.selected
       : { wood: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+  const selectedComm: Partial<CommodityHand> =
+    (uiPhase.type === 'discard' && uiPhase.playerId === discardPid && uiPhase.selectedCommodities) || {};
 
-  const chosen = RESOURCE_TYPES.reduce((s, r) => s + selected[r], 0);
+  const chosenRes = RESOURCE_TYPES.reduce((s, r) => s + selected[r], 0);
+  const chosenComm = COMMODITY_TYPES.reduce((s, c) => s + (selectedComm[c] ?? 0), 0);
+  const chosen = chosenRes + chosenComm;
 
   const color = PLAYER_COLORS[discardPid] ?? '#aaa';
   const header = el('div', 'modal-header');
@@ -241,12 +245,12 @@ function buildDiscardUI(
 
     const cell = el('div', 'modal-res-cell');
     const minus = makeBtn('−', 'btn-small', selected[r] <= 0, () => {
-      setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] - 1 } });
+      setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] - 1 }, selectedCommodities: selectedComm });
     });
     const info = el('span', 'modal-res-info');
     info.textContent = `${RESOURCE_EMOJI[r]} ${player.hand[r]}枚 → 捨:${selected[r]}`;
     const plus = makeBtn('+', 'btn-small', selected[r] >= player.hand[r] || chosen >= target, () => {
-      setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] + 1 } });
+      setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] + 1 }, selectedCommodities: selectedComm });
     });
 
     cell.appendChild(minus);
@@ -256,11 +260,35 @@ function buildDiscardUI(
   }
   div.appendChild(resRow);
 
+  // 騎士と商人: 商品も捨て対象。
+  if (ck) {
+    const comm = player.commodities!;
+    const commRow = el('div', 'modal-res-row');
+    for (const c of COMMODITY_TYPES) {
+      if (comm[c] === 0) continue;
+      const cur = selectedComm[c] ?? 0;
+      const cell = el('div', 'modal-res-cell');
+      const minus = makeBtn('−', 'btn-small', cur <= 0, () => {
+        setUIPhase({ type: 'discard', playerId: discardPid, selected, selectedCommodities: { ...selectedComm, [c]: cur - 1 } });
+      });
+      const info = el('span', 'modal-res-info');
+      info.textContent = `${COMMODITY_EMOJI[c]} ${comm[c]}枚 → 捨:${cur}`;
+      const plus = makeBtn('+', 'btn-small', cur >= comm[c] || chosen >= target, () => {
+        setUIPhase({ type: 'discard', playerId: discardPid, selected, selectedCommodities: { ...selectedComm, [c]: cur + 1 } });
+      });
+      cell.appendChild(minus);
+      cell.appendChild(info);
+      cell.appendChild(plus);
+      commRow.appendChild(cell);
+    }
+    div.appendChild(commRow);
+  }
+
   div.appendChild(makeBtn(
     `✓ 捨てる（${chosen}/${target}枚）`,
     chosen === target ? 'btn-primary' : 'btn-disabled',
     chosen !== target,
-    () => dispatch({ type: 'DISCARD_RESOURCES', playerId: discardPid, resources: selected }),
+    () => dispatch({ type: 'DISCARD_RESOURCES', playerId: discardPid, resources: selected, commodities: selectedComm }),
   ));
 
   return div;

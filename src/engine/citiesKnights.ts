@@ -515,13 +515,21 @@ export function distributeCkProduction(state: GameState, diceTotal: number): Gam
   const bank = { ...state.bank };
   for (const pid of state.playerOrder) {
     const rGain = resources[pid]; const cGain = comm[pid];
-    if (!rGain && !cGain) continue;
     const p = players[pid]!;
     const hand = { ...p.hand };
-    if (rGain) for (const r of RESOURCE_TYPES) { const n = rGain[r] ?? 0; if (n) { hand[r] += n; bank[r] -= n; } }
+    let resGained = 0;
+    if (rGain) for (const r of RESOURCE_TYPES) { const n = rGain[r] ?? 0; if (n) { hand[r] += n; bank[r] -= n; resGained += n; } }
     const newComm = { ...commodities(p) };
     if (cGain) for (const c of COMMODITY_TYPES) { const n = cGain[c] ?? 0; if (n) newComm[c] += n; }
-    players[pid] = { ...p, hand, commodities: newComm };
+    // 水道橋(科学Lv3): このロールで資源を1つも得られなかったプレイヤーは、資源を1枚もらえる
+    //   （手動選択UIを避けるため、最も少ない資源を自動選択。バンク在庫で頭打ち）。
+    if (resGained === 0 && (p.improvements?.science ?? 0) >= 3) {
+      const r = [...RESOURCE_TYPES].sort((a, b) => (hand[a] - hand[b]) || (bank[b] - bank[a]))[0]!;
+      if (bank[r] > 0) { hand[r] += 1; bank[r] -= 1; resGained = 1; }
+    }
+    if (resGained > 0 || (cGain && COMMODITY_TYPES.some(c => (cGain[c] ?? 0) > 0))) {
+      players[pid] = { ...p, hand, commodities: newComm };
+    }
   }
   return { ...state, players, bank };
 }

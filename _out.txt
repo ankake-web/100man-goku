@@ -1,0 +1,10 @@
+8:import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, VP_TABLE } from '../constants';
+20:  isCk, applyEventDie, distributeCkProduction, ckDiscardThreshold,
+137:          return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
+147:        let bankLeft = RESOURCE_TYPES.reduce((s, r) => s + next.bank[r], 0);
+174:      const sum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+175:      const withinBank = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= state.bank[r]);
+181:      for (const r of RESOURCE_TYPES) {
+218:      const resSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+220:      const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= discarder.hand[r])
+707:      const giveTotal = RESOURCE_TYPES.reduce((s, r) => s + (action.offer.give[r] ?? 0), 0);

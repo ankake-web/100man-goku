@@ -5,7 +5,8 @@
 import type {
   GameState, Action, PlayerId, ResourceType, DevCard, VertexId, ResourceHand,
 } from '../types';
-import { RESOURCE_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, VP_TABLE } from '../constants';
+import { RESOURCE_TYPES, COMMODITY_TYPES, BUILD_COSTS, DEV_CARD_COUNTS, TILE_RESOURCE_MAP, VP_TABLE } from '../constants';
+import type { CommodityType } from '../types';
 import { rollDice, distributeResources, computeGoldPicks } from './dice';
 import {
   canBuildRoad, buildRoad,
@@ -15,9 +16,9 @@ import {
   canBuildCity, buildCity,
   hasEnoughResources,
 } from './actions';
-import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount, handTotal } from './robber';
+import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount, handTotal, findPendingDiscarder } from './robber';
 import {
-  isCk, applyEventDie, distributeCkProduction, ckDiscardThreshold,
+  isCk, applyEventDie, distributeCkProduction,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
   canPlayProgress, playProgress, canMoveKnight, moveKnight,
@@ -123,10 +124,9 @@ export function applyAction(
 
       // ---- 騎士と商人: 毎ターン イベントダイス(蛮族)も振り、産出は資源＋商品。----
       if (isCk(state)) {
-        next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で商品報酬
+        next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で進歩カード抽選
         if (total === 7) {
-          const needsDiscard = state.playerOrder.some(p =>
-            RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= ckDiscardThreshold(next, p));
+          const needsDiscard = state.playerOrder.some(p => discardCount(next, p) > 0); // 資源＋商品で判定
           return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : 'ROBBER' };
         }
         return distributeCkProduction({ ...next, turnPhase: 'TRADE_BUILD' }, total);
@@ -206,34 +206,31 @@ export function applyAction(
     case 'DISCARD_RESOURCES': {
       if (state.turnPhase !== 'DISCARD') throw new Error('DISCARD_RESOURCES: not in DISCARD phase');
       const { playerId, resources } = action;
+      const commodities = action.commodities;
       const discarder = state.players[playerId];
       if (!discarder) throw new Error('DISCARD_RESOURCES: unknown player');
-      // 二重捨て防止: 既に今回の7で捨てたプレイヤーは再度捨てさせない
-      // （捨てた結果ちょうど8枚残ってもUI等から再要求されうるため、エンジンで弾く）。
+      // 二重捨て防止: 既に今回の7で捨てたプレイヤーは再度捨てさせない。
       if ((state.discardedThisRound ?? []).includes(playerId))
         throw new Error('DISCARD_RESOURCES: already discarded this round');
-      // 捨て札は「ちょうど floor(手札/2) 枚・所持範囲内」をエンジンが一元的に検証する
-      // （UI/AI/サーバの各所に散っていたルールの正本を discardCount に集約）。
+      // 捨て札は「ちょうど discardCount 枚・所持範囲内」をエンジンが一元検証（騎士と商人は資源＋商品）。
       const required = discardCount(state, playerId);
       const res = resources as Partial<Record<ResourceType, number>>;
-      const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
-      const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= discarder.hand[r]);
-      if (required === 0 || discardSum !== required || !withinHand)
+      const com = (commodities ?? {}) as Partial<Record<CommodityType, number>>;
+      const resSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
+      const comSum = COMMODITY_TYPES.reduce((s, c) => s + (com[c] ?? 0), 0);
+      const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= discarder.hand[r])
+        && COMMODITY_TYPES.every(c => (com[c] ?? 0) >= 0 && (com[c] ?? 0) <= (discarder.commodities?.[c] ?? 0));
+      if (required === 0 || resSum + comSum !== required || !withinHand)
         throw new Error('DISCARD_RESOURCES: must discard exactly floor(hand/2) cards you own');
 
-      let next = discardResources(state, playerId, res);
+      let next = discardResources(state, playerId, res, com);
 
       // 今回の7でそのプレイヤーが捨てたことを記録
       const discardedThisRound = [...(next.discardedThisRound ?? []), playerId];
       next = { ...next, discardedThisRound };
 
-      // 既に捨てたプレイヤーを除いて、まだ捨てが必要なプレイヤーがいるか確認
-      const stillNeeds = next.playerOrder.some(p => {
-        if (discardedThisRound.includes(p)) return false; // 既に捨て済み
-        const h = next.players[p]!.hand;
-        return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
-      });
-      if (!stillNeeds) next = { ...next, turnPhase: 'ROBBER', discardedThisRound: [] };
+      // まだ捨てが必要なプレイヤーがいるか（資源＋商品で判定・既に捨てた人は除外）。
+      if (!findPendingDiscarder(next)) next = { ...next, turnPhase: 'ROBBER', discardedThisRound: [] };
 
       return next;
     }

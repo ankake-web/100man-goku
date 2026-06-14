@@ -3,7 +3,8 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType, CkTrack } from '../types';
-import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
+import { RESOURCE_TYPES, COMMODITY_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
+import { discardCount } from './robber';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
   isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight, canPlayProgress,
@@ -554,15 +555,28 @@ function chooseDiscard(state: GameState, pid: PlayerId, rng: () => number = Math
   const player = state.players[pid];
   if (!player) return null;
 
-  // 既にこの7で捨て済みなら何もしない（エンジンの二重捨てガードと整合。
-  // 捨て後も8枚以上残るケースで違法な二重捨てアクションを生成しないための防御）。
+  // 既にこの7で捨て済みなら何もしない（エンジンの二重捨てガードと整合）。
   if ((state.discardedThisRound ?? []).includes(pid)) return null;
 
-  const total = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
-  if (total < 8) return null;
+  const required = discardCount(state, pid); // 騎士と商人は資源＋商品で判定
+  if (required === 0) return null;
 
-  const target = Math.floor(total / 2);
-  return { type: 'DISCARD_RESOURCES', playerId: pid, resources: chooseDiscards(state, pid, target, rng) };
+  if (isCk(state)) {
+    // まず余剰資源を捨て、不足分は商品を多い順に捨てる。
+    const resTotal = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
+    const resCount = Math.min(required, resTotal);
+    const resDiscards = chooseDiscards(state, pid, resCount, rng);
+    let need = required - resCount;
+    const rem = { ...(player.commodities ?? { coin: 0, cloth: 0, paper: 0 }) };
+    const commDiscards: Partial<Record<typeof COMMODITY_TYPES[number], number>> = {};
+    while (need > 0) {
+      const c = COMMODITY_TYPES.filter(x => rem[x] > 0).sort((a, b) => rem[b] - rem[a])[0];
+      if (!c) break;
+      rem[c] -= 1; commDiscards[c] = (commDiscards[c] ?? 0) + 1; need -= 1;
+    }
+    return { type: 'DISCARD_RESOURCES', playerId: pid, resources: resDiscards, commodities: commDiscards };
+  }
+  return { type: 'DISCARD_RESOURCES', playerId: pid, resources: chooseDiscards(state, pid, required, rng) };
 }
 
 /**

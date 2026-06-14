@@ -2,8 +2,8 @@
 // src/engine/robber.ts — L-07: 強盗ロジック
 // ============================================================
 
-import type { GameState, PlayerId, TileId, ResourceType } from '../types';
-import { RESOURCE_TYPES, ROBBER_HAND_DISCARD_MIN } from '../constants';
+import type { GameState, PlayerId, TileId, ResourceType, CommodityType } from '../types';
+import { RESOURCE_TYPES, COMMODITY_TYPES, ROBBER_HAND_DISCARD_MIN, CK_WALL_DISCARD_BONUS } from '../constants';
 
 // ============================================================
 // 手札合計
@@ -15,41 +15,55 @@ export function handTotal(state: GameState, playerId: PlayerId): number {
   return RESOURCE_TYPES.reduce((sum, r) => sum + player.hand[r], 0);
 }
 
+/** 7の捨て札判定に使う手札枚数。騎士と商人では資源＋商品の合計。 */
+export function discardHandSize(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  if (!player) return 0;
+  let total = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
+  if (state.expansion === 'cities_knights' && player.commodities) {
+    total += COMMODITY_TYPES.reduce((s, c) => s + player.commodities![c], 0);
+  }
+  return total;
+}
+
+/** 7で捨てが始まる手札枚数。騎士と商人では城壁/メトロポリス1つにつき+2。 */
+export function discardThreshold(state: GameState, playerId: PlayerId): number {
+  if (state.expansion !== 'cities_knights') return ROBBER_HAND_DISCARD_MIN;
+  const walls = Object.values(state.vertices).filter(v =>
+    v.building?.playerId === playerId && (v.building.wall || v.building.metropolis)).length;
+  return ROBBER_HAND_DISCARD_MIN + CK_WALL_DISCARD_BONUS * walls;
+}
+
 // ============================================================
-// 手札捨て（手札8枚以上のプレイヤーが半数切り捨てを捨てる）
+// 手札捨て（しきい値以上のプレイヤーが半数切り捨てを捨てる）
 // ============================================================
 
-/**
- * 手札が ROBBER_HAND_DISCARD_MIN(8) 枚以上のプレイヤーが捨てるべき枚数を返す。
- * 半数を切り捨てた枚数。
- */
+/** 捨てるべき枚数（しきい値以上なら手札枚数の半数切り捨て、未満は0）。 */
 export function discardCount(state: GameState, playerId: PlayerId): number {
-  const total = handTotal(state, playerId);
-  if (total < ROBBER_HAND_DISCARD_MIN) return 0;
+  const total = discardHandSize(state, playerId);
+  if (total < discardThreshold(state, playerId)) return 0;
   return Math.floor(total / 2);
 }
 
 /**
- * 7 の捨て札フェーズで「まだ捨てておらず、手札が最低枚数(8)以上の」次の対象プレイヤーを返す。
+ * 7 の捨て札フェーズで「まだ捨てておらず、捨て対象（しきい値以上）の」次のプレイヤーを返す。
  * 既に捨てたプレイヤー(discardedThisRound)は除外する。該当なしは undefined。
- *
- * UI・サーバ・エンジンが同じ判定を共有することで、捨て終えた人（捨てた結果ちょうど8枚
- * 残ったケース等）への再プロンプト＝二重捨てを防ぐ。
  */
 export function findPendingDiscarder(state: GameState): PlayerId | undefined {
   return state.playerOrder.find(
-    p => !(state.discardedThisRound ?? []).includes(p) && handTotal(state, p) >= ROBBER_HAND_DISCARD_MIN,
+    p => !(state.discardedThisRound ?? []).includes(p) && discardHandSize(state, p) >= discardThreshold(state, p),
   );
 }
 
 /**
- * 指定プレイヤーが指定の資源を捨て、バンクに返す。
- * resources は捨てる枚数の差分（超過分は無視しない — 呼び出し側がバリデーション済み前提）。
+ * 指定プレイヤーが資源（＋騎士と商人では商品）を捨てる。資源はバンクに返す。
+ * 各枚数は捨てる差分（呼び出し側がバリデーション済み前提）。
  */
 export function discardResources(
   state: GameState,
   playerId: PlayerId,
   resources: Partial<Record<ResourceType, number>>,
+  commodities?: Partial<Record<CommodityType, number>>,
 ): GameState {
   const player = state.players[playerId]!;
   const newHand = { ...player.hand };
@@ -61,12 +75,18 @@ export function discardResources(
     newBank[r] += amount;
   }
 
+  let newCommodities = player.commodities;
+  if (commodities && player.commodities) {
+    newCommodities = { ...player.commodities };
+    for (const c of COMMODITY_TYPES) newCommodities[c] -= commodities[c] ?? 0; // 商品は供給へ戻る（バンク管理なし）
+  }
+
   return {
     ...state,
     bank: newBank,
     players: {
       ...state.players,
-      [playerId]: { ...player, hand: newHand },
+      [playerId]: { ...player, hand: newHand, ...(newCommodities ? { commodities: newCommodities } : {}) },
     },
   };
 }

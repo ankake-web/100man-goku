@@ -93,7 +93,7 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
     const { applyAction } = await import('../src/engine/game');
     const { createRng } = await import('../src/engine/setup');
     const { calcVP } = await import('../src/engine/scoring');
-    const { RESOURCE_TYPES } = await import('../src/constants');
+    const { findPendingDiscarder } = await import('../src/engine/robber');
     const specs = [
       { id: 'player1' as const, name: 'A', color: 'red' as const,    type: 'ai' as const, aiDifficulty: 'strong' as const },
       { id: 'player2' as const, name: 'B', color: 'blue' as const,   type: 'ai' as const, aiDifficulty: 'strong' as const },
@@ -102,11 +102,10 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
     const rng = createRng(777);
     let s = createInitialGameState(specs, 'fixed', ['player1', 'player2', 'player3'], rng, 'cities_knights');
     let improvements = 0, knights = 0, progress = 0;
-    const handTot = (st: any, p: string) => RESOURCE_TYPES.reduce((a: number, r: any) => a + st.players[p].hand[r], 0);
     for (let i = 0; i < 200_000 && s.phase !== 'GAME_OVER'; i++) {
       let pid = s.playerOrder[s.currentPlayerIndex]!;
       if (s.phase === 'MAIN' && s.turnPhase === 'DISCARD') {
-        pid = s.playerOrder.find(p => !(s.discardedThisRound ?? []).includes(p) && handTot(s, p) >= 8) ?? pid;
+        pid = findPendingDiscarder(s) ?? pid; // 商品も計上するエンジン判定に委譲
       }
       const action = chooseAction(s, pid, { rng });
       if (!action) break;
