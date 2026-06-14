@@ -706,7 +706,7 @@ function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number):
   const difficulty = getDifficulty(state, pid);
 
   if (difficulty === 'weak') {
-    // 弱: 現在地以外の非砂漠・非海の陸タイルからランダム。盗む相手は選ばない。
+    // 弱: 現在地以外の非砂漠・非海の陸タイルからランダム。
     const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
     const candidates = Object.keys(state.tiles).filter(
       tid => tid !== current && state.tiles[tid]?.type !== 'desert' && state.tiles[tid]?.type !== 'sea',
@@ -714,7 +714,8 @@ function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number):
     const tileId = candidates.length > 0
       ? candidates[Math.floor(rng() * candidates.length)]!
       : fallbackTileId(state, current);
-    return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
+    // 強奪は必須ルール: 移動先に手札持ちの相手がいれば必ず1人選ぶ（いなければ null）。
+    return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: chooseStealTarget(state, tileId, pid, rng) };
   }
 
   const tileId = chooseRobberHex(state, pid, rng);

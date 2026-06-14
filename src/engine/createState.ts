@@ -96,6 +96,7 @@ export function createInitialGameState(
     diceRolledThisTurn: false,
     roadBuildingRoadsRemaining: 0,
     devCardPlayedThisTurn: false,
+    shipsBuiltThisTurn: [],
     longestRoadHolder: null,
     largestArmyHolder: null,
     ...(scenario.victoryTarget != null ? { victoryTarget: scenario.victoryTarget } : {}),

@@ -158,6 +158,8 @@ export function canMoveShip(
   state: GameState, playerId: PlayerId, fromEdgeId: EdgeId, toEdgeId: EdgeId,
 ): boolean {
   if (state.shipMovedThisTurn) return false;
+  // 建てたばかりの船（このターン建設）は移動できない（航海者の標準ルール）。
+  if (state.shipsBuiltThisTurn?.includes(fromEdgeId)) return false;
   if (fromEdgeId === toEdgeId) return false;
 
   const from = state.edges[fromEdgeId];

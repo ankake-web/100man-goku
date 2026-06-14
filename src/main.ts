@@ -30,7 +30,7 @@ import type { UIPhase } from './renderer/ui';
 import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction, centeredZoom, ZOOM_LIMITS } from './renderer/events';
 import { buildScenarioSelect, getScenarioSelectValue } from './renderer/scenarioSelect';
 import type { BuildMode } from './renderer/events';
-import { chooseAction, evaluateTradeOffer } from './engine/ai';
+import { chooseAction, evaluateTradeOffer, chooseStealTarget } from './engine/ai';
 import type { AiOpts } from './engine/ai';
 import { buildActionLog, MAX_LOG_ENTRIES } from './engine/log';
 import { calcVP, calcPublicVP, victoryTarget } from './engine/scoring';
@@ -1329,7 +1329,8 @@ function safeFallbackAction(): Action | null {
     const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
     // 強盗は陸タイルのみ（海を除外しないと MOVE_ROBBER が弾かれ進行が止まりうる）。
     const tileId = Object.keys(state.tiles).find(t => t !== robberTile && state.tiles[t]?.type !== 'sea');
-    if (tileId) return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: null };
+    // 強奪は必須: 手札持ちの相手がいれば選ぶ（chooseStealTarget が 0枚除外・不在なら null）。
+    if (tileId) return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: chooseStealTarget(state, tileId, cur) };
     return null;
   }
   if (state.turnPhase === 'PRE_ROLL') return { type: 'ROLL_DICE' };

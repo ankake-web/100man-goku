@@ -226,6 +226,8 @@ export interface GameState {
   roadBuildingRoadsRemaining: number;
   // 航海者: このターンに船を移動したか（航海は1ターン1回）。END_TURN でリセット。
   shipMovedThisTurn?: boolean;
+  // 航海者: このターンに建設した船の辺ID（建てたばかりの船は移動できない）。END_TURN でリセット。
+  shipsBuiltThisTurn?: EdgeId[];
   // 航海者: 海賊コマの現在地（海タイルID）。未配置は undefined。盗賊の海版で、隣接する
   // 自分の船建設を封じ、隣接船の所有者から1枚奪える。基本ゲームでは未使用。
   piratePosition?: TileId;

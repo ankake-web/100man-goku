@@ -15,7 +15,7 @@ import {
   canBuildCity, buildCity,
   hasEnoughResources,
 } from './actions';
-import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount } from './robber';
+import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount, handTotal } from './robber';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
 import { newIslandBonusRep } from './islands';
@@ -238,11 +238,19 @@ export function applyAction(
 
       let next = moveRobber(state, tileId);
 
+      // 強奪は必須: 移動先タイルに隣接し手札を持つ相手がいるなら、必ずその中の1人から盗む
+      // （『盗まない』選択は不可。標準ルール）。隣接相手が全員0枚 or 不在なら盗まずに済む。
+      const robbable = getRobbablePlayerIds(next, tileId, pid).filter(p => handTotal(next, p) > 0);
       if (stealFromPlayerId != null) {
         // 盗む相手は「移動先タイルに隣接する建物を持つ相手」に限る（盤面と無関係な強奪を防ぐ）。
         if (!getRobbablePlayerIds(next, tileId, pid).includes(stealFromPlayerId))
           throw new Error('MOVE_ROBBER: steal target is not adjacent to the robber tile');
+        // 手札持ちの相手がいるなら、手札0枚の相手を指定して強奪を踏み倒すことはできない。
+        if (robbable.length > 0 && !robbable.includes(stealFromPlayerId))
+          throw new Error('MOVE_ROBBER: must steal from an adjacent opponent who holds cards');
         next = stealResource(next, pid, stealFromPlayerId, rng);
+      } else if (robbable.length > 0) {
+        throw new Error('MOVE_ROBBER: must steal from an adjacent opponent who holds cards');
       }
 
       // 騎士カードをダイス前に使った場合はPRE_ROLLへ戻る（ダイスをまだ振っていない）
@@ -262,11 +270,17 @@ export function applyAction(
 
       let next = movePirate(state, tileId);
 
+      // 強奪は必須（盗賊と同様）: 海賊タイルに隣接して船を持ち手札のある相手がいるなら必ず盗む。
+      const pirateRobbable = getPirateRobbablePlayerIds(next, tileId, pid).filter(p => handTotal(next, p) > 0);
       if (stealFromPlayerId != null) {
         // 盗む相手は「海賊タイルに隣接する船を持つ相手」に限る。
         if (!getPirateRobbablePlayerIds(next, tileId, pid).includes(stealFromPlayerId))
           throw new Error('MOVE_PIRATE: steal target has no ship adjacent to the pirate tile');
+        if (pirateRobbable.length > 0 && !pirateRobbable.includes(stealFromPlayerId))
+          throw new Error('MOVE_PIRATE: must steal from an adjacent ship owner who holds cards');
         next = stealResource(next, pid, stealFromPlayerId, rng);
+      } else if (pirateRobbable.length > 0) {
+        throw new Error('MOVE_PIRATE: must steal from an adjacent ship owner who holds cards');
       }
 
       const nextPhase = state.diceRolledThisTurn ? 'TRADE_BUILD' : 'PRE_ROLL';
@@ -312,6 +326,8 @@ export function applyAction(
       if (!canBuildShip(state, pid, edgeId)) throw new Error('BUILD_SHIP: invalid');
 
       let next = buildShip(state, pid, edgeId);
+      // 建てたばかりの船は同じターンに移動できない（航海者の標準ルール）。建設した辺を記録。
+      next = { ...next, shipsBuiltThisTurn: [...(next.shipsBuiltThisTurn ?? []), edgeId] };
       next = updateLongestRoad(next);
       next = checkVictory(next, pid);
 
@@ -491,10 +507,9 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_YEAR_OF_PLENTY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: already played a dev card this turn');
-      // 騎士以外はダイス後（交易・建設フェーズ）のみ使用可
-      if (!state.diceRolledThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: must roll dice first');
-      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
-      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_YEAR_OF_PLENTY: must be in MAIN TRADE_BUILD phase');
+      // 騎士同様、自分の手番ならダイス前(PRE_ROLL)でも使える。DISCARD/ROBBER中は不可（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
+        throw new Error('PLAY_YEAR_OF_PLENTY: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
       const player = state.players[pid]!;
       const [r1, r2] = action.resources;
       const cardIdx = player.devCards.findIndex(
@@ -534,9 +549,9 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_MONOPOLY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_MONOPOLY: already played a dev card this turn');
-      if (!state.diceRolledThisTurn) throw new Error('PLAY_MONOPOLY: must roll dice first');
-      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
-      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_MONOPOLY: must be in MAIN TRADE_BUILD phase');
+      // 騎士同様、自分の手番ならダイス前(PRE_ROLL)でも使える。DISCARD/ROBBER中は不可（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
+        throw new Error('PLAY_MONOPOLY: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
       const player = state.players[pid]!;
       const { resource } = action;
       const cardIdx = player.devCards.findIndex(
@@ -578,9 +593,9 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_ROAD_BUILDING': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_ROAD_BUILDING: already played a dev card this turn');
-      if (!state.diceRolledThisTurn) throw new Error('PLAY_ROAD_BUILDING: must roll dice first');
-      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
-      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_ROAD_BUILDING: must be in MAIN TRADE_BUILD phase');
+      // 騎士同様、自分の手番ならダイス前(PRE_ROLL)でも使える。DISCARD/ROBBER中は不可（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
+        throw new Error('PLAY_ROAD_BUILDING: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
       const player = state.players[pid]!;
       const cardIdx = player.devCards.findIndex(
         c => c.type === 'road_building' && c.purchasedOnTurn < state.globalTurnNumber,
@@ -706,6 +721,7 @@ export function applyAction(
         roadBuildingRoadsRemaining: 0,
         devCardPlayedThisTurn: false,
         shipMovedThisTurn: false,
+        shipsBuiltThisTurn: [],
         pendingTrade: null,
       };
     }

@@ -3,7 +3,7 @@ import { createInitialGameState } from '../src/engine/createState';
 import type { PlayerSpec } from '../src/engine/createState';
 import { createRng } from '../src/engine/setup';
 import { applyAction } from '../src/engine/game';
-import { canMoveShip } from '../src/engine/actions';
+import { canMoveShip, isShipMovable } from '../src/engine/actions';
 import { nearestMoveShipEdgeId } from '../src/renderer/events';
 import { isSeaEdge, isLandVertex, isLandEdge } from '../src/engine/board';
 import { makeHand } from '../src/constants';
@@ -114,5 +114,25 @@ describe('航海者: 船の移動（航海・Phase 4）', () => {
     expect(nearestMoveShipEdgeId(s, 'player1', null, p1.x, p1.y)).toBe(e1); // 動かせる船
     const p2 = mid(e2);
     expect(nearestMoveShipEdgeId(s, 'player1', e1, p2.x, p2.y)).toBe(e2); // 移動先
+  });
+});
+
+describe('航海者: 同じターンに建設した船は移動できない', () => {
+  it('shipsBuiltThisTurn に入っている船は canMoveShip=false', () => {
+    const { s, e1, e2 } = setupMovableShip();
+    expect(canMoveShip(s, 'player1', e1, e2)).toBe(true);                       // 通常は移動可
+    expect(canMoveShip({ ...s, shipsBuiltThisTurn: [e1] }, 'player1', e1, e2)).toBe(false); // 今ターン建設扱い→不可
+  });
+
+  it('BUILD_SHIP した船は同じターンに移動できない（次ターンに解除）', () => {
+    const { s, e2 } = setupMovableShip();
+    const withRes: GameState = {
+      ...s,
+      players: { ...s.players, player1: { ...s.players.player1!, hand: makeHand({ wood: 1, wool: 1 }) } },
+    };
+    const afterBuild = applyAction(withRes, { type: 'BUILD_SHIP', edgeId: e2 });
+    expect(afterBuild.edges[e2]!.ship?.playerId).toBe('player1');
+    expect(afterBuild.shipsBuiltThisTurn).toContain(e2);
+    expect(isShipMovable(afterBuild, 'player1', e2)).toBe(false); // 建てたばかりは動かせない
   });
 });

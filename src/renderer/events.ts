@@ -3,8 +3,16 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId } from '../types';
+import { RESOURCE_TYPES } from '../constants';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
 import { getPirateRobbablePlayerIds } from '../engine/robber';
+
+// 公開情報での手札枚数（LANでは相手の hand はマスクされ handCount に枚数が入る）。
+function publicCardCount(state: GameState, p: PlayerId): number {
+  const pl = state.players[p];
+  if (!pl) return 0;
+  return pl.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + pl.hand[r], 0);
+}
 import type { UIPhase } from './ui';
 import type { BoardViewport } from './board';
 
@@ -488,7 +496,8 @@ function handleTileClick(
   // ---- 海タイル: 海賊を移動（隣接船の所有者から奪う）----
   if (tile.type === 'sea') {
     if (state.piratePosition === tileId) return; // 同じ場所へは動かせない
-    const opponents = getPirateRobbablePlayerIds(state, tileId, pid);
+    // 奪えるのは手札を持つ相手だけ（強奪は必須・0枚相手は対象外）。
+    const opponents = getPirateRobbablePlayerIds(state, tileId, pid).filter(p => publicCardCount(state, p) > 0);
     if (opponents.length <= 1) {
       dispatch({ type: 'MOVE_PIRATE', tileId, stealFromPlayerId: opponents[0] ?? null });
     } else {
@@ -506,7 +515,7 @@ function handleTileClick(
     vertexIds
       .map(vid => state.vertices[vid]?.building?.playerId)
       .filter((p): p is PlayerId => p != null && p !== pid),
-  )];
+  )].filter(p => publicCardCount(state, p) > 0); // 手札を持つ相手だけ（強奪は必須・0枚は対象外）
 
   if (opponents.length <= 1) {
     // 0人または1人：即座にディスパッチ
