@@ -113,34 +113,39 @@ h1 {
   position: absolute;
   left: 6px; top: 6px;
   z-index: 6;
-  display: flex; align-items: center; gap: 4px;
-  padding: 3px;
-  border-radius: 18px;
-  background: rgba(12,14,20,0.55);
+  display: flex; align-items: center; gap: 3px;
+  padding: 2px;
+  border-radius: 15px;
+  background: rgba(12,14,20,0.5);
   box-shadow: 0 1px 5px rgba(0,0,0,0.4);
   backdrop-filter: blur(3px);
   touch-action: none;        /* グリップのドラッグでスクロール/ズームに奪われない */
 }
 #board-zoom.dragging { box-shadow: 0 3px 12px rgba(0,0,0,0.6); }
+/* 折りたたみ時は −/⤢/＋ を隠し、グリップ＋⊕ だけの最小表示にする。 */
+#board-zoom.collapsed .z-out,
+#board-zoom.collapsed .z-reset,
+#board-zoom.collapsed .z-in { display: none; }
 #board-zoom .zoom-drag {
-  width: 18px; height: 30px;
+  width: 13px; height: 26px;
   display: flex; align-items: center; justify-content: center;
-  color: rgba(255,255,255,0.55); font-size: 0.9rem; line-height: 1;
+  color: rgba(255,255,255,0.5); font-size: 0.82rem; line-height: 1;
   cursor: grab;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
 #board-zoom.dragging .zoom-drag { cursor: grabbing; }
 #board-zoom .zoom-btn {
-  width: 30px; height: 30px;
+  width: 26px; height: 26px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.25);
-  background: rgba(28,32,44,0.85);
-  color: #fff; font-size: 1.0rem; line-height: 1;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(28,32,44,0.82);
+  color: #fff; font-size: 0.92rem; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+#board-zoom .z-toggle { background: rgba(40,46,62,0.9); }
 #board-zoom .zoom-btn:hover { background: rgba(48,54,72,0.95); }
 #board-zoom .zoom-btn:disabled { opacity: 0.35; cursor: default; }
 #board-zoom .zoom-btn.active { border-color: #ffcf4d; color: #ffcf4d; }

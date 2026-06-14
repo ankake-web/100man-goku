@@ -2434,8 +2434,9 @@ function resetBoardZoom(): void {
   redraw();
 }
 
-// ズーム操作クラスタの表示位置（board-area に対する割合）を記憶する。
+// ズーム操作クラスタの表示位置（board-area に対する割合）・折りたたみ状態を記憶する。
 const ZOOM_POS_KEY = 'catan.zoomCtrlPos';
+const ZOOM_COLLAPSED_KEY = 'catan.zoomCtrlCollapsed';
 function loadZoomPos(): { fx: number; fy: number } | null {
   try { const s = localStorage.getItem(ZOOM_POS_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
 }
@@ -2487,8 +2488,31 @@ function makeZoomDraggable(box: HTMLElement, handle: HTMLElement): void {
   handle.addEventListener('pointercancel', end);
 }
 
-// 盤面のズーム操作クラスタ（グリップ＋ − / 全体表示 / ＋）。既定は盤面左上、
-// グリップを掴んで好きな位置へドラッグ移動でき、位置は記憶される。
+// box を現在サイズで画面内へ再クランプして保存（展開で幅が変わった時用）。
+function reclampZoomPos(box: HTMLElement, host: HTMLElement): void {
+  const maxX = Math.max(0, host.clientWidth - box.offsetWidth);
+  const maxY = Math.max(0, host.clientHeight - box.offsetHeight);
+  const nx = Math.min(maxX, Math.max(0, box.offsetLeft));
+  const ny = Math.min(maxY, Math.max(0, box.offsetTop));
+  box.style.left = `${nx}px`; box.style.top = `${ny}px`;
+  box.style.right = 'auto'; box.style.bottom = 'auto';
+  saveZoomPos(host.clientWidth ? nx / host.clientWidth : 0, host.clientHeight ? ny / host.clientHeight : 0);
+}
+// 折りたたみ切替（折りたたみ時は −/⤢/＋ を隠して最小化）。状態を記憶。
+function setZoomCollapsed(box: HTMLElement, host: HTMLElement, collapsed: boolean): void {
+  box.classList.toggle('collapsed', collapsed);
+  const tg = box.querySelector('.z-toggle') as HTMLButtonElement | null;
+  if (tg) {
+    tg.textContent = collapsed ? '⊕' : '‹';
+    const t = collapsed ? 'ズーム操作を開く' : '折りたたむ';
+    tg.title = t; tg.setAttribute('aria-label', t);
+  }
+  try { localStorage.setItem(ZOOM_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+  requestAnimationFrame(() => reclampZoomPos(box, host)); // 幅変化に追従して画面内へ
+}
+
+// 盤面のズーム操作クラスタ。既定は盤面左上・折りたたみ（小さい）。グリップ(⠿)でドラッグ移動でき、
+// ⊕ で −/⤢/＋ を展開。位置・開閉状態は記憶される。
 function updateZoomControls(): void {
   const host = document.getElementById('board-area');
   if (!host || !inGame) { document.getElementById('board-zoom')?.remove(); return; }
@@ -2496,6 +2520,7 @@ function updateZoomControls(): void {
   if (!box) {
     box = document.createElement('div');
     box.id = 'board-zoom';
+    const boxRef = box;
     const handle = document.createElement('div');
     handle.className = 'zoom-drag';
     handle.textContent = '⠿';
@@ -2511,12 +2536,17 @@ function updateZoomControls(): void {
       b.addEventListener('click', fn);
       return b;
     };
+    box.appendChild(mk('⊕', 'z-toggle', 'ズーム操作を開く',
+      () => setZoomCollapsed(boxRef, host, !boxRef.classList.contains('collapsed'))));
     box.appendChild(mk('−', 'z-out', '縮小（全体を表示）', () => zoomBoardBy(1 / 1.25)));
     box.appendChild(mk('⤢', 'z-reset', '全体表示に戻す', () => resetBoardZoom()));
     box.appendChild(mk('＋', 'z-in', '拡大（島を大きく表示）', () => zoomBoardBy(1.25)));
     host.appendChild(box);
     applyZoomPos(box, host);
     makeZoomDraggable(box, handle);
+    let collapsed = true;
+    try { collapsed = (localStorage.getItem(ZOOM_COLLAPSED_KEY) ?? '1') === '1'; } catch { /* ignore */ }
+    setZoomCollapsed(box, host, collapsed);
   }
   const s = boardViewport.scale;
   (box.querySelector('.z-out') as HTMLButtonElement | null)?.toggleAttribute('disabled', s <= ZOOM_LIMITS.min + 0.001);
