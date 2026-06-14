@@ -158,6 +158,20 @@ function renderTile(
   if (isValidRobber) poly.classList.add('valid-robber');
   g.appendChild(poly);
 
+  // 金タイル: 麦(field)と色が紛らわしいので、コインのマーカーと小さな「任意」ラベルで明示する。
+  if (tile.type === 'gold') {
+    const coin = svgEl('text');
+    coin.classList.add('gold-marker');
+    setAttrs(coin, { x: cx, y: cy - size * 0.46, 'text-anchor': 'middle', 'font-size': String(size * 0.5) });
+    coin.textContent = '🪙';
+    g.appendChild(coin);
+    const tag = svgEl('text');
+    tag.classList.add('gold-tag');
+    setAttrs(tag, { x: cx, y: cy + size * 0.62, 'text-anchor': 'middle', 'font-size': String(size * 0.22) });
+    tag.textContent = '任意資源';
+    g.appendChild(tag);
+  }
+
   // 数字トークン（砂漠以外）。タッチ端末では少し大きく見やすくする。
   if (tile.number != null) {
     const isRed = tile.number === 6 || tile.number === 8;
@@ -582,6 +596,14 @@ export function renderBoard(
   const stopBot = svgEl('stop'); setAttrs(stopBot, { offset: '1', 'stop-color': '#0f4049' });
   grad.appendChild(stopTop); grad.appendChild(stopBot);
   defs.appendChild(grad);
+  // 金タイル用の光沢ゴールド（麦の落ち着いた黄土色と差別化）。
+  const gold = svgEl('linearGradient');
+  setAttrs(gold, { id: 'gold-grad', x1: '0', y1: '0', x2: '0.3', y2: '1' });
+  const g1 = svgEl('stop'); setAttrs(g1, { offset: '0', 'stop-color': '#fff6c2' });
+  const g2 = svgEl('stop'); setAttrs(g2, { offset: '0.45', 'stop-color': '#ffd11a' });
+  const g3 = svgEl('stop'); setAttrs(g3, { offset: '1', 'stop-color': '#d99000' });
+  gold.appendChild(g1); gold.appendChild(g2); gold.appendChild(g3);
+  defs.appendChild(gold);
   svgEl_.appendChild(defs);
 
   const sea = svgEl('rect');

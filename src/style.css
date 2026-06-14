@@ -318,7 +318,18 @@ h1 {
 .hex-tile.desert   { fill: #d4b870; }
 /* 航海者拡張のタイル */
 .hex-tile.sea  { fill: #1f6f8b; stroke: #6fcfe8; stroke-width: 1.5; }   /* 海（数字なし） */
-.hex-tile.gold { fill: #e6b73e; stroke: #8a6410; }                      /* 金（任意資源） */
+/* 金（任意資源）: 麦(field=黄土色)と紛らわしいので光沢ゴールド＋太い濃縁＋発光で明確に差別化 */
+.hex-tile.gold {
+  fill: url(#gold-grad);
+  stroke: #7a5200;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 5px rgba(255,210,40,0.85));
+}
+.gold-marker { pointer-events: none; }
+.gold-tag {
+  fill: #5a3d00; font-weight: bold; pointer-events: none;
+  paint-order: stroke; stroke: rgba(255,245,200,0.9); stroke-width: 2.2px; stroke-linejoin: round;
+}
 
 /* ---- 数字トークン ---- */
 .token-circle {
@@ -1343,6 +1354,22 @@ h1 {
   color: rgba(255,255,255,0.8);
   margin-bottom: 2px;
 }
+
+/* タイル色見本（ルール説明）。盤面の色とそろえて麦と金などを見分けやすくする。 */
+.rule-legend {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 10px;
+  padding: 8px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+}
+.rule-legend-cell { display: flex; align-items: center; gap: 7px; }
+.legend-hex { width: 30px; height: 30px; flex: 0 0 auto; }
+.legend-hex .hex-tile { stroke: rgba(0,0,0,0.45); stroke-width: 1.5; }
+.rule-legend-label { font-size: 0.82rem; color: rgba(255,255,255,0.88); }
+@media (min-width: 480px) { .rule-legend { grid-template-columns: repeat(4, 1fr); } }
 
 /* ---- タブ ---- */
 /* セグメント（タブ / ラジオ群）は「トラック＋チップ」で1つの操作に見せる。 */
