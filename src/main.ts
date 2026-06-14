@@ -31,10 +31,20 @@ import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction, cent
 import type { BuildMode } from './renderer/events';
 import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
-import { buildActionLog, MAX_LOG_ENTRIES, RES_EMOJI } from './engine/log';
+import { buildActionLog, MAX_LOG_ENTRIES } from './engine/log';
 import { calcVP, calcPublicVP, victoryTarget } from './engine/scoring';
 import { buildPlayerRecap } from './engine/recap';
 import { computeDiceProduction } from './engine/dice';
+import resWoodImg from './assets/res_wood.png';
+import resBrickImg from './assets/res_brick.png';
+import resSheepImg from './assets/res_sheep.png';
+import resWheatImg from './assets/res_wheat.png';
+import resOreImg from './assets/res_ore.png';
+
+// 資源取得アニメ用の画像（手札カードと同じ。既に読込済み＝追加負荷なし）。
+const RES_FLY_IMG: Record<ResourceType, string> = {
+  wood: resWoodImg, brick: resBrickImg, wool: resSheepImg, grain: resWheatImg, ore: resOreImg,
+};
 
 // ============================================================
 // ホーム画面設定
@@ -1347,20 +1357,26 @@ function appendSystemLog(message: string): void {
 const RES_FLY_MS = 1300;       // 飛行時間（ゆっくり）
 const RES_FLY_STAGGER = 300;   // アイコン1個ずつの間隔（0.3秒）
 function spawnResFlyer(
-  glyph: string,
+  res: ResourceType,
   target: { x: number; y: number },   // 着地先（ビューポート座標。.res-fly は position:fixed）
   origin: { x: number; y: number },
   delay: number,
   landEl?: HTMLElement | null,        // 着地時にポップさせるパネル（C-2）
 ): void {
   // 遅延スポーンは世代ガード必須: delay は最大数秒あり、ホーム復帰/新ゲーム開始後に
-  // 旧ゲームの絵文字が画面上を飛び続けるのを防ぐ（clearTransientFx は未発火タイマーを消せない）。
+  // 旧ゲームのアイコンが画面上を飛び続けるのを防ぐ（clearTransientFx は未発火タイマーを消せない）。
   const gen = gameGeneration;
   setTimeout(() => {
     if (gen !== gameGeneration) return;
     const span = document.createElement('span');
     span.className = 'res-fly';
-    span.textContent = glyph;
+    // 手札カードと同じ資源画像で飛ばす（絵文字→画像で見た目を統一）。
+    const img = document.createElement('img');
+    img.className = 'res-fly-img';
+    img.src = RES_FLY_IMG[res];
+    img.alt = '';
+    img.draggable = false;
+    span.appendChild(img);
     // 起点位置をセット
     span.style.left = `${origin.x}px`;
     span.style.top  = `${origin.y}px`;
@@ -1851,7 +1867,7 @@ function animateSetupGain(oldState: GameState, vertexId: string): void {
     const tid = tilesByRes.get(r)?.shift();
     const origin = (tid ? tileScreenCenter(tid) : null) ?? getBoardCenter();
     const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-    spawnResFlyer(RES_EMOJI[r], target, jitter, delay, targetEl);
+    spawnResFlyer(r, target, jitter, delay, targetEl);
     delay += RES_FLY_STAGGER;
   }
 }
@@ -1900,7 +1916,7 @@ function triggerResourceAnimation(
       const origin = isDice ? originForGain(diceTotal!, pid, r) : getBoardCenter();
       for (let i = 0; i < n && count < MAX_PER_PLAYER; i++) {
         const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-        spawnResFlyer(RES_EMOJI[r], target, jitter, delay, targetEl);
+        spawnResFlyer(r, target, jitter, delay, targetEl);
         delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
         count++;
       }
@@ -2950,7 +2966,7 @@ function returnToHome(): void {
   inGame = false;
   pendingNetStates = [];
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
-  document.getElementById('zoom-reset')?.remove(); document.getElementById('board-zoom')?.remove(); document.getElementById('place-confirm')?.remove();
+  document.getElementById('zoom-reset')?.remove(); document.getElementById('board-zoom')?.remove(); document.getElementById('place-confirm')?.remove(); document.getElementById('ship-help')?.remove();
   boardViewport = { scale: 1, tx: 0, ty: 0 };
   diceAnimating = false;
   clearTransientFx();

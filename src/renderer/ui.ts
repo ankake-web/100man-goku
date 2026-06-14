@@ -1036,6 +1036,59 @@ function appendDevCardButtons(
   }
 }
 
+// 船ルールの説明ポップアップ（航海者）。「船は作れるが動かせない」等の疑問に答える。
+function showShipRulesHelp(state: GameState, pid: PlayerId): void {
+  document.getElementById('ship-help')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'ship-help';
+  overlay.className = 'help-overlay';
+  const card = document.createElement('div');
+  card.className = 'help-modal';
+
+  const h = document.createElement('div');
+  h.className = 'help-title';
+  h.textContent = '⛵ 船のルール';
+  card.appendChild(h);
+
+  // 今動かせない理由を一言（分かる範囲で）。
+  const reason = document.createElement('p');
+  reason.className = 'help-reason';
+  const hasOwnShip = Object.values(state.edges).some(e => e.ship?.playerId === pid);
+  if (state.shipMovedThisTurn) {
+    reason.textContent = 'このターンはもう船を1隻動かしました（移動は1ターンに1隻まで）。';
+  } else if (hasOwnShip) {
+    reason.textContent = '今は「行き止まりの船」がないため動かせません。経路の途中の船は動かせません。';
+  } else {
+    reason.textContent = 'まだ動かせる船がありません。';
+  }
+  card.appendChild(reason);
+
+  const ul = document.createElement('ul');
+  ul.className = 'help-list';
+  for (const r of [
+    '船は「木材＋羊毛」。海に面した辺に置けます。',
+    '道・船は自分の建物／道／船とつながっている必要があります。',
+    '動かせるのは「行き止まり（片端が他とつながっていない）の船」だけ。',
+    '船の移動は1ターンに1隻まで。',
+    '新しい島に開拓地を建てると、そこから先へさらに船を伸ばせます。',
+  ]) {
+    const li = document.createElement('li');
+    li.textContent = r;
+    ul.appendChild(li);
+  }
+  card.appendChild(ul);
+
+  const close = document.createElement('button');
+  close.className = 'help-close';
+  close.textContent = '閉じる';
+  close.addEventListener('click', () => overlay.remove());
+  card.appendChild(close);
+
+  overlay.appendChild(card);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 // ============================================================
 // アクションボタン群
 // ============================================================
@@ -1150,8 +1203,14 @@ function buildActionButtons(
   div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
   if (hasSea) div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
   // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
+  // 動かせない場合は、理由＋ルールを見られるヘルプを出す（船を作れても動かせない、等の疑問対策）。
   if (hasSea && playerHasMovableShip(state, pid)) {
     div.appendChild(modeBtn('⛵ 船を移動', 'moveShip', true, buildMode, setBuildMode));
+  } else if (hasSea) {
+    const hasOwnShip = Object.values(state.edges).some(e => e.ship?.playerId === pid);
+    if (hasOwnShip || canShip) {
+      div.appendChild(makeBtn('⛵ 船が動かせない？', 'btn-ship-help', false, () => showShipRulesHelp(state, pid)));
+    }
   }
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));

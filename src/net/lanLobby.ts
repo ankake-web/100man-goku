@@ -47,7 +47,9 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false,
     cpuCount: 0, maxCpu: 3, cpuDifficulty: 'normal', orderMode: 'random', scenario: 'classic', error: '',
   };
-  let stage: 'idle' | 'lobby' | 'resuming' = 'idle';
+  let stage: 'idle' | 'connecting' | 'lobby' | 'resuming' = 'idle';
+  let connectTimer: ReturnType<typeof setTimeout> | null = null;
+  let connectMsg = '';
 
   const root = document.createElement('div');
   root.className = 'lan-lobby';
@@ -55,6 +57,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
 
   // ---- サーバメッセージ処理 ----
   const handle = (msg: ServerMessage): void => {
+    clearConnectTimer(); // サーバ応答が来た＝接続/作成/参加の待機は終了
     switch (msg.t) {
       case 'joined':
         view.you = msg.you; view.isHost = msg.isHost; view.code = msg.code; view.error = '';
@@ -100,15 +103,42 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     }
   };
 
+  function clearConnectTimer(): void {
+    if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
+  }
+  // 接続〜サーバ応答までローディング表示。応答が来ない場合は一定時間でタイムアウト。
+  async function beginConnect(label: string, send: () => void): Promise<void> {
+    stage = 'connecting'; connectMsg = label; view.error = ''; render();
+    clearConnectTimer();
+    connectTimer = setTimeout(() => {
+      connectTimer = null;
+      if (stage !== 'connecting') return;
+      client?.close(); client = null;
+      view.error = 'サーバが応答しません。少し待ってから再試行してください。';
+      stage = 'idle'; render();
+    }, 9000);
+    if (await ensureClient()) {
+      send();
+    } else {
+      clearConnectTimer();
+      stage = 'idle'; render(); // ensureClient が接続失敗時の error を設定済み
+    }
+  }
+
   // ---- レンダリング ----
   function render(): void {
     root.innerHTML = '';
     if (stage === 'idle') renderIdle();
-    else if (stage === 'resuming') {
-      const r = document.createElement('div');
-      r.className = 'lan-wait';
-      r.textContent = '🔄 再接続中…';
-      root.appendChild(r);
+    else if (stage === 'connecting' || stage === 'resuming') {
+      const wrap = document.createElement('div');
+      wrap.className = 'lan-wait';
+      const sp = document.createElement('span');
+      sp.className = 'lan-spinner';
+      wrap.appendChild(sp);
+      const tx = document.createElement('span');
+      tx.textContent = stage === 'resuming' ? '再接続中…' : (connectMsg || '接続中…');
+      wrap.appendChild(tx);
+      root.appendChild(wrap);
     } else renderLobby();
     if (view.error) {
       const err = document.createElement('div');
@@ -153,8 +183,8 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     const createBtn = document.createElement('button');
     createBtn.className = 'home-start-btn';
     createBtn.textContent = 'ルームを作成';
-    createBtn.addEventListener('click', async () => {
-      if (await ensureClient()) client!.send({ t: 'create', name: getName() });
+    createBtn.addEventListener('click', () => {
+      void beginConnect('🔄 ルームを作成中…', () => client!.send({ t: 'create', name: getName() }));
     });
     root.appendChild(createBtn);
 
@@ -199,7 +229,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
       sanitizeCode();
       const code = codeInput.value.trim();
       if (code.length < 4) { view.error = 'ルームコードを入力してください'; render(); return; }
-      if (await ensureClient()) client!.send({ t: 'join', code, name: getName() });
+      await beginConnect('🔄 ルームに参加中…', () => client!.send({ t: 'join', code, name: getName() }));
     };
     joinBtn.addEventListener('click', () => { void submitJoin(); });
     // 送信だけは keydown で扱う（Enter キーで参加）。
