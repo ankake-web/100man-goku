@@ -169,6 +169,43 @@ describe('canBuildRoad', () => {
     expect(canBuildRoad(stateWithRoad, 'player1', nextEdgeId)).toBe(true);
   });
 
+  it('相手の建物がある頂点を越えて道を伸ばせない（接続が遮断される）', () => {
+    // 自分の道(eid0)が va に接続。va に相手(player2)の開拓地。
+    // va の先（va に接する別の空き辺）は、相手の建物が遮断するので建設不可であるべき。
+    const edge0 = state.edges[eid0]!;
+    const [va] = edge0.vertexIds;
+    const s = {
+      ...state,
+      players: {
+        ...state.players,
+        player1: makePlayer('player1', { hand: makeHand({ wood: 5, brick: 5 }) }),
+        player2: makePlayer('player2'),
+      },
+      playerOrder: ['player1', 'player2'] as const,
+      vertices: {
+        ...state.vertices,
+        [va!]: { ...state.vertices[va!]!, building: { type: 'settlement' as const, playerId: 'player2' as const } },
+      },
+      edges: {
+        ...state.edges,
+        [eid0]: { ...edge0, road: { playerId: 'player1' as const } },
+      },
+    };
+    const nextEdgeId = s.vertices[va!]!.adjacentEdgeIds.find(e => e !== eid0);
+    if (!nextEdgeId) return; // 構造による
+    // va は相手の開拓地で遮断 → 自分の道が va に接していても接続不可。
+    expect(canBuildRoad(s, 'player1', nextEdgeId)).toBe(false);
+    // 同じ頂点が自分の建物なら接続可（正の対照）。
+    const sOwn = {
+      ...s,
+      vertices: {
+        ...s.vertices,
+        [va!]: { ...s.vertices[va!]!, building: { type: 'settlement' as const, playerId: 'player1' as const } },
+      },
+    };
+    expect(canBuildRoad(sOwn, 'player1', nextEdgeId)).toBe(true);
+  });
+
   it('returns true in SETUP phase without resources (adjacent settlement)', () => {
     const s = {
       ...state,

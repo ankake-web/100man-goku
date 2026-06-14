@@ -350,7 +350,10 @@ export function isEdgeConnectedForPiece(
   return edge.vertexIds.some(vid => {
     const v = vertices[vid];
     if (!v) return false;
-    if (v.building?.playerId === playerId) return true; // 建物は両種を接続
+    // 建物がある頂点: 自分の建物のみ接続点になる。相手の開拓地/都市はこの頂点での
+    // 接続を遮断する（相手の建物を越えて道・船を伸ばせない＝最長交易路の分断と同じルール）。
+    if (v.building) return v.building.playerId === playerId;
+    // 建物なし: その頂点に接する自分の道/船があれば接続。
     return v.adjacentEdgeIds.some(eid => {
       if (eid === edge.id) return false;
       const e = edges[eid];

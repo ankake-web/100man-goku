@@ -6,6 +6,7 @@ import {
   buildBoardGeometry,
   tileId,
   isDistanceRuleOk,
+  isEdgeConnectedForPiece,
 } from '../src/engine/board';
 
 describe('getAllTileCoords', () => {
@@ -164,4 +165,34 @@ describe('isDistanceRuleOk', () => {
     vertices[neighborId]!.building = { type: 'settlement', playerId: 'player1' };
     expect(isDistanceRuleOk(v, vertices)).toBe(false);
   });
+});
+
+describe('isEdgeConnectedForPiece: 相手の建物は接続を遮断する', () => {
+  const find2EdgeVertex = () => {
+    const geo = buildBoardGeometry();
+    const v = Object.values(geo.vertices).find(vx => vx.adjacentEdgeIds.length >= 2)!;
+    const [e1, e2] = v.adjacentEdgeIds;
+    return { geo, v, e1: e1!, e2: e2! };
+  };
+
+  for (const piece of ['road', 'ship'] as const) {
+    it(`${piece}: 自分のコマが接していても、相手の建物がある頂点は接続不可`, () => {
+      const { geo, v, e1, e2 } = find2EdgeVertex();
+      // e1 に自分のコマを置く（頂点 v に接続）。
+      if (piece === 'road') geo.edges[e1]!.road = { playerId: 'player1' };
+      else geo.edges[e1]!.ship = { playerId: 'player1' };
+
+      // v に相手(player2)の建物 → v 経由の接続は遮断されるべき。
+      geo.vertices[v.id]!.building = { type: 'settlement', playerId: 'player2' };
+      expect(isEdgeConnectedForPiece(geo.edges[e2]!, 'player1', geo.vertices, geo.edges, piece)).toBe(false);
+
+      // 自分の建物なら接続可（正の対照）。
+      geo.vertices[v.id]!.building = { type: 'settlement', playerId: 'player1' };
+      expect(isEdgeConnectedForPiece(geo.edges[e2]!, 'player1', geo.vertices, geo.edges, piece)).toBe(true);
+
+      // 建物なし＋自分のコマが接していれば接続可。
+      geo.vertices[v.id]!.building = null;
+      expect(isEdgeConnectedForPiece(geo.edges[e2]!, 'player1', geo.vertices, geo.edges, piece)).toBe(true);
+    });
+  }
 });
