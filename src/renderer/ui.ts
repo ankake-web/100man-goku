@@ -11,6 +11,7 @@ import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
 import { findPendingDiscarder } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
+  playerHasMovableKnight,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC } from '../constants';
 import type { CkTrack, CommodityType } from '../types';
@@ -1098,9 +1099,10 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
   document.body.appendChild(overlay);
 }
 
-// 騎士と商人: 都市改善・騎士・城壁の操作セクション（騎士は最初の有効頂点へ自動配置）。
+// 騎士と商人: 都市改善・騎士・城壁の操作セクション（騎士の建設は最初の有効頂点へ自動配置・移動は盤面で選択）。
 function appendCkBuildSection(
   div: HTMLElement, state: GameState, pid: PlayerId, dispatch: (a: Action) => void,
+  buildMode: BuildMode, setBuildMode: (m: BuildMode) => void,
 ): void {
   const player = state.players[pid]!;
   const sec = el('div', 'ck-build');
@@ -1135,6 +1137,10 @@ function appendCkBuildSection(
   const upVid = firstV(v => canUpgradeKnight(state, pid, v));
   knightRow.appendChild(makeBtn('⬆ 騎士を昇格', upVid ? 'btn-build' : 'btn-disabled', !upVid,
     () => upVid && dispatch({ type: 'UPGRADE_KNIGHT', vertexId: upVid })));
+  // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
+  if (playerHasMovableKnight(state, pid)) {
+    knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
+  }
   const wallVid = firstV(v => canBuildCityWall(state, pid, v));
   knightRow.appendChild(makeBtn('🧱 城壁', wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
     () => wallVid && dispatch({ type: 'BUILD_CITY_WALL', vertexId: wallVid })));
@@ -1290,7 +1296,7 @@ function buildActionButtons(
   }
 
   // 騎士と商人: 都市改善・騎士・城壁。
-  if (isCk(state)) appendCkBuildSection(div, state, pid, dispatch);
+  if (isCk(state)) appendCkBuildSection(div, state, pid, dispatch, buildMode, setBuildMode);
 
   div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
     () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));

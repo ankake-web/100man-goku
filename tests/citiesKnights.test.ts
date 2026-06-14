@@ -177,3 +177,51 @@ describe('C&K 進歩カード', () => {
     expect(next.players.player2!.hand.wood).toBe(1); // 残り1
   });
 });
+
+describe('C&K 騎士の移動', () => {
+  function ckBoard(): GameState {
+    return makeGameState({
+      expansion: 'cities_knights',
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+  }
+  it('自分の道沿いの隣接空き頂点へ起動騎士を移動でき、1ターン1回', async () => {
+    const { canMoveKnight, moveKnight } = await import('../src/engine/citiesKnights');
+    const g = ckBoard();
+    const eid = Object.keys(g.edges)[0]!;
+    const [v1, v2] = g.edges[eid]!.vertexIds;
+    const s: GameState = {
+      ...g,
+      edges: { ...g.edges, [eid]: { ...g.edges[eid]!, road: { playerId: 'player1' } } },
+      vertices: { ...g.vertices, [v1]: { ...g.vertices[v1]!, knight: { playerId: 'player1', strength: 2, active: true } } },
+    };
+    expect(canMoveKnight(s, 'player1', v1, v2)).toBe(true);
+    const next = moveKnight(s, 'player1', v1, v2);
+    expect(next.vertices[v1]!.knight).toBeNull();
+    expect(next.vertices[v2]!.knight!.playerId).toBe('player1');
+    expect(next.knightMovedThisTurn).toBe(true);
+    expect(canMoveKnight(next, 'player1', v2, v1)).toBe(false); // 1ターン1回
+  });
+  it('弱い敵騎士は押し出せるが、同等以上は不可。非起動・道なしも不可', async () => {
+    const { canMoveKnight } = await import('../src/engine/citiesKnights');
+    const g = ckBoard();
+    const eid = Object.keys(g.edges)[0]!;
+    const [v1, v2] = g.edges[eid]!.vertexIds;
+    const base: GameState = {
+      ...g,
+      edges: { ...g.edges, [eid]: { ...g.edges[eid]!, road: { playerId: 'player1' } } },
+      vertices: { ...g.vertices, [v1]: { ...g.vertices[v1]!, knight: { playerId: 'player1', strength: 2, active: true } } },
+    };
+    const weak: GameState = { ...base, vertices: { ...base.vertices, [v2]: { ...base.vertices[v2]!, knight: { playerId: 'player2', strength: 1, active: false } } } };
+    expect(canMoveKnight(weak, 'player1', v1, v2)).toBe(true); // 弱い敵→押し出し可
+    const strong: GameState = { ...base, vertices: { ...base.vertices, [v2]: { ...base.vertices[v2]!, knight: { playerId: 'player2', strength: 2, active: true } } } };
+    expect(canMoveKnight(strong, 'player1', v1, v2)).toBe(false); // 同等以上→不可
+    // 非起動は移動不可
+    const inactive: GameState = { ...base, vertices: { ...base.vertices, [v1]: { ...base.vertices[v1]!, knight: { playerId: 'player1', strength: 2, active: false } } } };
+    expect(canMoveKnight(inactive, 'player1', v1, v2)).toBe(false);
+    // 道が無い辺沿いは不可
+    const noRoad: GameState = { ...base, edges: { ...base.edges, [eid]: { ...base.edges[eid]!, road: null } } };
+    expect(canMoveKnight(noRoad, 'player1', v1, v2)).toBe(false);
+  });
+});

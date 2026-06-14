@@ -528,6 +528,11 @@ function renderVertices(
         setAttrs(ring, { cx: vx, cy: vy, r: r + 1.5 * bs, fill: 'none', stroke: '#ffe066', 'stroke-width': 1.5 * bs });
         kg.appendChild(ring);
       }
+      if (isValid) { // 騎士移動モードの操作対象（移動元 or 押し出し先）
+        const vr = svgEl('circle');
+        setAttrs(vr, { cx: vx, cy: vy, r: r + 3.5 * bs, fill: 'none', stroke: '#00ff88', 'stroke-width': 2 * bs });
+        kg.appendChild(vr);
+      }
       vg.appendChild(kg);
     } else {
       const dot = svgEl('circle');

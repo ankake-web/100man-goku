@@ -5,6 +5,7 @@
 import type { GameState, Action, PlayerId } from '../types';
 import { RESOURCE_TYPES } from '../constants';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
+import { canMoveKnight, isKnightMovable } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds } from '../engine/robber';
 
 // 公開情報での手札枚数（LANでは相手の hand はマスクされ handCount に枚数が入る）。
@@ -20,7 +21,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -125,6 +126,26 @@ export function nearestMoveShipEdgeId(
   return best;
 }
 
+/**
+ * 騎士移動モードで、点(x,y)に最も近い「操作対象の頂点」を返す（騎士と商人）。
+ *   from 未選択: 自分の動かせる起動騎士の頂点。
+ *   from 選択済: その騎士の合法な移動先頂点（canMoveKnight）。from 自身も返す（再タップで解除）。
+ */
+export function nearestMoveKnightVertexId(
+  state: GameState, pid: PlayerId, from: string | null, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
+): string | null {
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const v of Object.values(state.vertices)) {
+    const ok = from == null ? isKnightMovable(state, pid, v.id) : (v.id === from || canMoveKnight(state, pid, from, v.id));
+    if (!ok) continue;
+    const dx = v.pixel.x - x, dy = v.pixel.y - y;
+    const d = dx * dx + dy * dy;
+    if (d <= bestD) { bestD = d; best = v.id; }
+  }
+  return best;
+}
+
 /** 点(x,y)に最も近い合法な船の辺IDを maxDist 内で返す（航海者）。なければ null。 */
 export function nearestValidShipEdgeId(
   state: GameState, pid: PlayerId, mode: BuildMode, x: number, y: number, maxDist = EDGE_TAP_RADIUS,
@@ -171,6 +192,9 @@ export function attachBoardEvents(
   // 航海者・船移動モード: 選択中の移動元の取得/設定（未指定＝船移動UI無効）。
   getMoveShipFrom: () => string | null = () => null,
   setMoveShipFrom: (eid: string | null) => void = () => {},
+  // 騎士と商人・騎士移動モード: 選択中の移動元頂点。
+  getMoveKnightFrom: () => string | null = () => null,
+  setMoveKnightFrom: (vid: string | null) => void = () => {},
 ): void {
   svg.addEventListener('click', (e) => {
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
@@ -206,6 +230,21 @@ export function attachBoardEvents(
       } else if (canMoveShip(state, pid, from, eid)) {
         dispatch({ type: 'MOVE_SHIP', fromEdgeId: from, toEdgeId: eid });
         setMoveShipFrom(null);
+      }
+      return;
+    }
+
+    // ---- 騎士と商人: 騎士の移動モード（騎士を選択 → 移動先頂点をタップ）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'moveKnight') {
+      const from = getMoveKnightFrom();
+      const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = ptm ? nearestMoveKnightVertexId(state, pid, from, ptm.x, ptm.y) : null;
+      if (!vid) { if (from) setMoveKnightFrom(null); return; }
+      if (!from) setMoveKnightFrom(vid);
+      else if (vid === from) setMoveKnightFrom(null);
+      else if (canMoveKnight(state, pid, from, vid)) {
+        dispatch({ type: 'MOVE_KNIGHT', fromVertexId: from, toVertexId: vid });
+        setMoveKnightFrom(null);
       }
       return;
     }

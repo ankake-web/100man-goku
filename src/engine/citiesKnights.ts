@@ -115,6 +115,57 @@ export function upgradeKnight(state: GameState, pid: PlayerId, vid: VertexId): G
   };
 }
 
+// from と to を結ぶ辺ID（隣接時のみ）。
+function edgeBetween(state: GameState, fromVid: VertexId, toVid: VertexId): string | null {
+  const from = state.vertices[fromVid];
+  if (!from) return null;
+  for (const eid of from.adjacentEdgeIds) {
+    const e = state.edges[eid];
+    if (e && (e.vertexIds[0] === toVid || e.vertexIds[1] === toVid)) return eid;
+  }
+  return null;
+}
+
+/** 騎士を fromVid→toVid へ移動できるか。1ターン1回・隣接1歩・自分の道沿い・空きor弱い敵騎士(押し出し)。 */
+export function canMoveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, toVid: VertexId): boolean {
+  if (!isCk(state) || state.knightMovedThisTurn) return false;
+  const from = state.vertices[fromVid]; const to = state.vertices[toVid];
+  if (!from?.knight || from.knight.playerId !== pid || !from.knight.active) return false;
+  if (!to || fromVid === toVid) return false;
+  if (!from.adjacentVertexIds.includes(toVid)) return false;     // 隣接1歩
+  const eid = edgeBetween(state, fromVid, toVid);                 // 自分の道/船沿いに進む
+  const e = eid ? state.edges[eid] : null;
+  if (!(e?.road?.playerId === pid || e?.ship?.playerId === pid)) return false;
+  if (to.building) return false;                                 // 建物の上には行けない
+  if (to.knight) {
+    if (to.knight.playerId === pid) return false;                // 自分の騎士の上は不可
+    if (to.knight.strength >= from.knight.strength) return false;// 弱い敵騎士のみ押し出せる
+  }
+  return true;
+}
+export function isKnightMovable(state: GameState, pid: PlayerId, fromVid: VertexId): boolean {
+  const from = state.vertices[fromVid];
+  if (!from?.knight || from.knight.playerId !== pid || !from.knight.active) return false;
+  return from.adjacentVertexIds.some(to => canMoveKnight(state, pid, fromVid, to));
+}
+export function playerHasMovableKnight(state: GameState, pid: PlayerId): boolean {
+  if (!isCk(state) || state.knightMovedThisTurn) return false;
+  return Object.keys(state.vertices).some(v => isKnightMovable(state, pid, v));
+}
+/** 騎士を移動（バリデーション済み前提）。押し出した敵騎士は供給へ戻る。1ターン1回。 */
+export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, toVid: VertexId): GameState {
+  const k = state.vertices[fromVid]!.knight!;
+  return {
+    ...state,
+    knightMovedThisTurn: true,
+    vertices: {
+      ...state.vertices,
+      [fromVid]: { ...state.vertices[fromVid]!, knight: null },
+      [toVid]: { ...state.vertices[toVid]!, knight: { playerId: pid, strength: k.strength, active: k.active } },
+    },
+  };
+}
+
 function addRes(bank: ResourceHand, cost: ResourceHand): ResourceHand {
   const b = { ...bank };
   for (const r of RESOURCE_TYPES) b[r] += cost[r];

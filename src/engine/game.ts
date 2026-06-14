@@ -20,7 +20,7 @@ import {
   isCk, applyEventDie, distributeCkProduction, ckDiscardThreshold,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
-  canPlayProgress, playProgress,
+  canPlayProgress, playProgress, canMoveKnight, moveKnight,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
@@ -681,6 +681,11 @@ export function applyAction(
       if (!canPlayProgress(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
       return checkVictory(playProgress(state, pid, action.cardId, rng), pid);
     }
+    case 'MOVE_KNIGHT': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('MOVE_KNIGHT: must be in TRADE_BUILD');
+      if (!canMoveKnight(state, pid, action.fromVertexId, action.toVertexId)) throw new Error('MOVE_KNIGHT: invalid');
+      return moveKnight(state, pid, action.fromVertexId, action.toVertexId);
+    }
 
     // ----------------------------------------------------------
     // BANK_TRADE
@@ -778,6 +783,7 @@ export function applyAction(
         devCardPlayedThisTurn: false,
         shipMovedThisTurn: false,
         shipsBuiltThisTurn: [],
+        knightMovedThisTurn: false,
         pendingTrade: null,
       };
     }

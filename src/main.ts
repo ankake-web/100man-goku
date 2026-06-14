@@ -23,6 +23,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
+import { isKnightMovable, canMoveKnight } from './engine/citiesKnights';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
@@ -606,6 +607,11 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
         opts.validVertexIds = new Set(
           Object.keys(state.vertices).filter(vid => canBuildCity(state, pid, vid)),
         );
+      } else if (mode === 'moveKnight') {
+        // 騎士と商人・騎士移動: 未選択なら動かせる自分の起動騎士、選択済なら移動先頂点を光らせる。
+        opts.validVertexIds = moveKnightFrom == null
+          ? new Set(Object.keys(state.vertices).filter(vid => isKnightMovable(state, pid, vid)))
+          : new Set(Object.keys(state.vertices).filter(vid => canMoveKnight(state, pid, moveKnightFrom!, vid)));
       }
     }
   }
@@ -636,6 +642,9 @@ let state!: GameState;
 let buildMode: BuildMode = 'idle';
 // 航海者・船移動モードで選択中の移動元の辺ID（未選択は null）。
 let moveShipFrom: string | null = null;
+// 騎士と商人・騎士移動モードで選択中の移動元頂点ID（未選択は null）。
+let moveKnightFrom: string | null = null;
+function setMoveKnightFrom(vid: string | null): void { moveKnightFrom = vid; redraw(); }
 let uiPhase: UIPhase = { type: 'idle' };
 let lastConfig: HomeConfig | null = null;
 
@@ -833,6 +842,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'road')       return { text: '🛤 道を配置', alert: false };
       if (buildMode === 'ship')       return { text: '🚢 船を配置', alert: false };
       if (buildMode === 'moveShip')   return { text: moveShipFrom ? '⛵ 移動先をタップ' : '⛵ 動かす船を選択', alert: false };
+      if (buildMode === 'moveKnight') return { text: moveKnightFrom ? '🛡 移動先をタップ' : '🛡 動かす騎士を選択', alert: false };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -2285,9 +2295,13 @@ function dispatch(action: Action): void {
     if (action.type === 'END_TURN') {
       buildMode = 'idle';
       moveShipFrom = null;
+      moveKnightFrom = null;
     } else if (action.type === 'MOVE_SHIP') {
       if (buildMode === 'moveShip') buildMode = 'idle';
       moveShipFrom = null;
+    } else if (action.type === 'MOVE_KNIGHT') {
+      if (buildMode === 'moveKnight') buildMode = 'idle';
+      moveKnightFrom = null;
     }
 
     // ログ追記（公開情報のみ）。直近 MAX_LOG_ENTRIES 件に制限。
@@ -2337,6 +2351,7 @@ function setBuildMode(mode: BuildMode): void {
   if (uiPhase.type === 'placePreview') uiPhase = { type: 'idle' };
   // 船移動モード以外へ移ったら選択中の移動元を解除。
   if (mode !== 'moveShip') moveShipFrom = null;
+  if (mode !== 'moveKnight') moveKnightFrom = null;
   redraw();
 }
 
@@ -2627,7 +2642,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
   // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
   if (!boardEventsAttached) {
-    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct, () => moveShipFrom, setMoveShipFrom);
+    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct, () => moveShipFrom, setMoveShipFrom, () => moveKnightFrom, setMoveKnightFrom);
     attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
   }
@@ -2856,6 +2871,7 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
   if (action?.type === 'END_TURN' || action?.type === 'MOVE_SHIP') {
     buildMode = 'idle';
     moveShipFrom = null;
+    moveKnightFrom = null;
   }
   if (action?.type === 'PLAY_ROAD_BUILDING') buildMode = 'road';
   if (state.roadBuildingRoadsRemaining > 0) buildMode = 'road';
@@ -2942,6 +2958,8 @@ function startGame(cfg: HomeConfig): void {
       boardCanAct,
       () => moveShipFrom,
       setMoveShipFrom,
+      () => moveKnightFrom,
+      setMoveKnightFrom,
     );
     attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
