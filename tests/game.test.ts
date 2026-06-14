@@ -491,24 +491,25 @@ describe('発展カード使用タイミング', () => {
     });
   }
 
-  // 公式ルール: 発展カードは騎士に限らず、ダイスを振る前(PRE_ROLL)でも使える。
+  // ダイス前に意味があるのは盗賊を動かせる騎士だけ。進歩カード3種はダイス前に使う実益が
+  // なく（収穫/独占はむしろ7で自分が捨て札になる無駄手）、ダイス後のみに限定する。
   it('ダイス前に騎士は使える', () => {
     expect(() => applyAction(preRoll('knight'), { type: 'PLAY_KNIGHT' })).not.toThrow();
   });
 
-  it('ダイス前に年の豊穣が使える', () => {
+  it('ダイス前に年の豊穣は使えない', () => {
     expect(() => applyAction(preRoll('year_of_plenty'), { type: 'PLAY_YEAR_OF_PLENTY', resources: ['wood', 'grain'] }))
-      .not.toThrow();
+      .toThrow('must roll dice first');
   });
 
-  it('ダイス前に独占が使える', () => {
+  it('ダイス前に独占は使えない', () => {
     expect(() => applyAction(preRoll('monopoly'), { type: 'PLAY_MONOPOLY', resource: 'wood' }))
-      .not.toThrow();
+      .toThrow('must roll dice first');
   });
 
-  it('ダイス前に街道建設が使える', () => {
+  it('ダイス前に街道建設は使えない', () => {
     expect(() => applyAction(preRoll('road_building'), { type: 'PLAY_ROAD_BUILDING' }))
-      .not.toThrow();
+      .toThrow('must roll dice first');
   });
 
   it('ダイス後（diceRolledThisTurn=true）なら年の豊穣・独占・街道建設が使える', () => {

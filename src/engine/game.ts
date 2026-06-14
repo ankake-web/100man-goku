@@ -507,9 +507,11 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_YEAR_OF_PLENTY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: already played a dev card this turn');
-      // 騎士同様、自分の手番ならダイス前(PRE_ROLL)でも使える。DISCARD/ROBBER中は不可（不正クライアント対策）。
-      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
-        throw new Error('PLAY_YEAR_OF_PLENTY: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
+      // 進歩カードはダイス後のみ（ダイス前に使う実益がなく、収穫/独占はダイス前だと7で自分が
+      // 捨て札になる無駄手になる）。ダイス前に意味があるのは盗賊を動かせる騎士だけ。
+      if (!state.diceRolledThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: must roll dice first');
+      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_YEAR_OF_PLENTY: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const [r1, r2] = action.resources;
       const cardIdx = player.devCards.findIndex(
@@ -549,9 +551,10 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_MONOPOLY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_MONOPOLY: already played a dev card this turn');
-      // 騎士同様、自分の手番ならダイス前(PRE_ROLL)でも使える。DISCARD/ROBBER中は不可（不正クライアント対策）。
-      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
-        throw new Error('PLAY_MONOPOLY: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
+      // 進歩カードはダイス後のみ（ダイス前に意味があるのは盗賊を動かせる騎士だけ）。
+      if (!state.diceRolledThisTurn) throw new Error('PLAY_MONOPOLY: must roll dice first');
+      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_MONOPOLY: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const { resource } = action;
       const cardIdx = player.devCards.findIndex(
@@ -593,9 +596,10 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_ROAD_BUILDING': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_ROAD_BUILDING: already played a dev card this turn');
-      // 騎士同様、自分の手番ならダイス前(PRE_ROLL)でも使える。DISCARD/ROBBER中は不可（不正クライアント対策）。
-      if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
-        throw new Error('PLAY_ROAD_BUILDING: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
+      // 進歩カードはダイス後のみ（ダイス前に意味があるのは盗賊を動かせる騎士だけ）。
+      if (!state.diceRolledThisTurn) throw new Error('PLAY_ROAD_BUILDING: must roll dice first');
+      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_ROAD_BUILDING: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const cardIdx = player.devCards.findIndex(
         c => c.type === 'road_building' && c.purchasedOnTurn < state.globalTurnNumber,
