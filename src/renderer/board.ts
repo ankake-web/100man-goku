@@ -6,6 +6,26 @@ import type { GameState, Tile, HarborType, Harbor } from '../types';
 import { HEX_SIZE } from '../constants';
 import { axialToPixel } from '../engine/board';
 import robberImg from '../assets/robber.png'; // 盗賊コマの画像（Vite が base 付きURLへ解決）
+import pirateImg from '../assets/pirate.png'; // 海賊船コマの画像
+import houseRed from '../assets/house_red.png';
+import houseBlue from '../assets/house_blue.png';
+import housePurple from '../assets/house_purple.png';
+import houseOrange from '../assets/house_orange.png';
+import cityRed from '../assets/city_red.png';
+import cityBlue from '../assets/city_blue.png';
+import cityPurple from '../assets/city_purple.png';
+import cityOrange from '../assets/city_orange.png';
+
+// プレイヤーID→色キー。建物画像（屋根/上部をプレイヤー色に着色済み）の選択に使う。
+const BUILDING_COLOR_KEY: Record<string, string> = {
+  player1: 'red', player2: 'blue', player3: 'purple', player4: 'orange',
+};
+const HOUSE_IMG: Record<string, string> = {
+  red: houseRed, blue: houseBlue, purple: housePurple, orange: houseOrange,
+};
+const CITY_IMG: Record<string, string> = {
+  red: cityRed, blue: cityBlue, purple: cityPurple, orange: cityOrange,
+};
 
 // ============================================================
 // レンダリングオプション（有効配置ハイライト用）
@@ -219,18 +239,21 @@ function renderTile(
     g.appendChild(rg);
   }
 
-  // 海賊コマ（航海者）: 海タイルに 🏴‍☠️ マーカー。盗賊と排他（海タイルに盗賊は乗らない）。
+  // 海賊コマ（航海者）: 海タイルに海賊船フィギュア画像。盗賊と排他（海タイルに盗賊は乗らない）。
   if (opts?.piratePosition === tile.id) {
+    const touch = isTouchDevice();
+    const ry = cy + ROBBER_DY;
+    const w = size * (touch ? 1.32 : 1.14);
     const pg = svgEl('g');
     pg.classList.add('pirate');
     const shadow = svgEl('ellipse');
-    setAttrs(shadow, { cx, cy: cy + 11, rx: 9, ry: 2.6, fill: 'rgba(0,0,0,0.4)' });
+    setAttrs(shadow, { cx, cy: ry + w * 0.27, rx: w * 0.20, ry: w * 0.055, fill: 'rgba(0,0,0,0.32)', stroke: 'none' });
     pg.appendChild(shadow);
-    const flag = svgEl('text');
-    flag.classList.add('pirate-flag');
-    setAttrs(flag, { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': '20' });
-    flag.textContent = '🏴‍☠️';
-    pg.appendChild(flag);
+    const img = svgEl('image');
+    setAttrs(img, { x: cx - w / 2, y: ry - w * 0.62, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
+    img.setAttribute('href', pirateImg);
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', pirateImg);
+    pg.appendChild(img);
     g.appendChild(pg);
   }
 
@@ -427,10 +450,6 @@ function renderVertices(
   const g = svgEl('g');
   // 頂点プレビュー中は、選択した頂点だけが目立つよう他候補(緑ドット)を暗くする。
   if (opts?.previewVertexId) g.classList.add('vertices-previewing');
-  const buildingColor: Record<string, string> = {
-    player1: '#e03030', player2: '#3060e0',
-    player3: '#a855f7', player4: '#f0a020',
-  };
   // 建物は実機で目立つよう大きめに描く（従来比 約1.5倍）。タッチ端末はさらに少し大きく。
   const bs = isTouchDevice() ? 1.7 : 1.5;
 
@@ -445,74 +464,25 @@ function renderVertices(
     const isValid = opts?.validVertexIds?.has(vertex.id) ?? false;
 
     if (vertex.building) {
-      const color = buildingColor[vertex.building.playerId] ?? '#aaa';
-      const stroke = isValid ? '#00ff88' : '#fff';
-      const sw = (isValid ? 2.5 : 1.5) * bs;
-      // 頂点中心(vx,vy)基準で dx,dy を bs 倍した座標文字列を返す。
-      const P = (dx: number, dy: number): string => `${(vx + dx * bs).toFixed(1)},${(vy + dy * bs).toFixed(1)}`;
-
-      if (vertex.building.type === 'settlement') {
-        // 開拓地：小さくて分かりやすい家（影 + 丸みのある壁 + 三角屋根 + ドア）。都市より小さい。
-        const shadow = svgEl('ellipse');
-        setAttrs(shadow, { cx: vx, cy: vy + 6.3 * bs, rx: 7.5 * bs, ry: 2 * bs, fill: 'rgba(0,0,0,0.28)' });
-        vg.appendChild(shadow);
-        const wall = svgEl('rect');
-        setAttrs(wall, { x: vx - 6.5 * bs, y: vy - 2.5 * bs, width: 13 * bs, height: 8.5 * bs, rx: 1.5 * bs,
-          fill: color, stroke, 'stroke-width': sw, 'paint-order': 'stroke' });
-        vg.appendChild(wall);
-        const roof = svgEl('polygon');
-        roof.setAttribute('points', `${P(0, -11)} ${P(-8.5, -2)} ${P(8.5, -2)}`);
-        setAttrs(roof, { fill: color, stroke, 'stroke-width': sw, 'stroke-linejoin': 'round', 'paint-order': 'stroke' });
-        vg.appendChild(roof);
-        // ドア（家らしさ＋視認性）
-        const door = svgEl('rect');
-        setAttrs(door, { x: vx - 1.8 * bs, y: vy + 1.2 * bs, width: 3.6 * bs, height: 4.8 * bs, rx: 0.8 * bs,
-          fill: 'rgba(0,0,0,0.4)' });
-        vg.appendChild(door);
-      } else {
-        // 都市：開拓地より明確に大きい「城」型。
-        //   影 → 横長の城壁 → 城壁上部の鋸歯(銃眼) → 金色の王冠。
-        // 城壁はプレイヤーカラー、王冠は金色固定（「格上げ済み」の共通サイン）。
-        // 黒枠で縁取って、明るいタイル上でも一目で都市と分かるよう強調する。
-        const cityStroke = isValid ? '#00ff88' : '#0a0a0a';
-        const citySw = (isValid ? 2.6 : 2.2) * bs;
-        const shadow = svgEl('ellipse');
-        setAttrs(shadow, { cx: vx, cy: vy + 6.8 * bs, rx: 11.5 * bs, ry: 2.7 * bs,
-          fill: 'rgba(0,0,0,0.32)' });
-        vg.appendChild(shadow);
-
-        const wall = svgEl('rect');
-        setAttrs(wall, { x: vx - 11 * bs, y: vy - 2 * bs, width: 22 * bs, height: 9 * bs, rx: 1,
-          fill: color, stroke: cityStroke, 'stroke-width': citySw, 'paint-order': 'stroke' });
-        vg.appendChild(wall);
-
-        // 城壁上部の鋸歯（3つの銃眼=メルロン）。城らしさを出す。
-        const merlons = svgEl('polygon');
-        merlons.setAttribute('points', [
-          P(-11, -2), P(-11, -7), P(-7.5, -7), P(-7.5, -4),
-          P(-3, -4), P(-3, -7), P(3, -7), P(3, -4),
-          P(7.5, -4), P(7.5, -7), P(11, -7), P(11, -2),
-        ].join(' '));
-        setAttrs(merlons, { fill: color, stroke: cityStroke, 'stroke-width': citySw, 'paint-order': 'stroke' });
-        vg.appendChild(merlons);
-
-        // 窓（建物らしさ）。城壁に小さな明かり取りを3つ並べる。
-        for (const wx of [-6.5, 0, 6.5]) {
-          const win = svgEl('rect');
-          setAttrs(win, { x: vx + (wx - 1.2) * bs, y: vy + 0.8 * bs, width: 2.4 * bs, height: 4 * bs, rx: 0.6 * bs,
-            fill: 'rgba(0,0,0,0.45)' });
-          vg.appendChild(win);
-        }
-
-        // 金色の王冠（都市の識別マーク）。プレイヤーカラーとは別色で「都市」を一目で示す。
-        const crown = svgEl('polygon');
-        crown.setAttribute('points', [
-          P(-5, -8), P(-5, -11.5), P(-2.5, -9), P(0, -13.5), P(2.5, -9), P(5, -11.5), P(5, -8),
-        ].join(' '));
-        setAttrs(crown, { fill: '#ffd24a', stroke: '#7a5800', 'stroke-width': Math.max(1, 1 * bs),
-          'stroke-linejoin': 'round' });
-        vg.appendChild(crown);
-      }
+      // 開拓地＝家、都市＝城のフィギュア画像。屋根/上部がプレイヤー色に着色済み。
+      const ckey = BUILDING_COLOR_KEY[vertex.building.playerId] ?? 'red';
+      const isCity = vertex.building.type === 'city';
+      const w = (isCity ? 32 : 24) * bs;          // 表示サイズ
+      const by = vy + 5.2 * bs;                    // 足元の基準（旧コマの影位置に合わせる）
+      // 接地影
+      const shadow = svgEl('ellipse');
+      setAttrs(shadow, { cx: vx, cy: by, rx: w * (isCity ? 0.30 : 0.26), ry: w * 0.06,
+        fill: 'rgba(0,0,0,0.30)', stroke: 'none' });
+      vg.appendChild(shadow);
+      // フィギュア画像（足元 by が下に来るよう配置）
+      const img = svgEl('image');
+      const href = isCity ? CITY_IMG[ckey]! : HOUSE_IMG[ckey]!;
+      setAttrs(img, { x: vx - w / 2, y: by - w * 0.9, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
+      img.setAttribute('href', href);
+      img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
+      img.classList.add('building-img');
+      if (isValid) img.classList.add('building-valid');   // 都市化など有効ターゲット
+      vg.appendChild(img);
     } else {
       const dot = svgEl('circle');
       dot.classList.add('vertex-dot');

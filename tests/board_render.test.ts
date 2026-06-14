@@ -16,14 +16,17 @@ function svgEl(): SVGSVGElement {
 }
 
 describe('盤面描画（jsdom）: 海賊マーカー', () => {
-  it('piratePosition の海タイルに 🏴‍☠️ マーカーを描く', () => {
+  it('piratePosition の海タイルに海賊船フィギュア画像を描く', () => {
     const s: GameState = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_newshores');
     const seaTile = Object.values(s.tiles).find(t => t.type === 'sea')!.id;
     const svg = svgEl();
     renderBoard(svg, s, { piratePosition: seaTile });
     const pirate = svg.querySelector('.pirate');
     expect(pirate).not.toBeNull();
-    expect(pirate?.querySelector('.pirate-flag')?.textContent).toBe('🏴‍☠️');
+    // 絵文字フラッグ→画像(<image>)に変更済み。href が設定されていることを確認。
+    const img = pirate?.querySelector('image');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('href')).toBeTruthy();
   });
 
   it('piratePosition 未設定なら海賊マーカーは描かれない', () => {

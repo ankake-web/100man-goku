@@ -359,6 +359,10 @@ h1 {
   pointer-events: none;
 }
 
+/* 建物フィギュア画像。都市化など有効ターゲットは緑の発光で示す。 */
+.building-img { pointer-events: none; }
+.building-valid { filter: drop-shadow(0 0 3px #00ff88) drop-shadow(0 0 6px #00ff88); }
+
 /* ---- 港 ---- */
 .harbor-line {
   stroke-dasharray: 5 3;
@@ -855,6 +859,11 @@ h1 {
 .res-grain { background: rgba(200, 168,  48, 0.45); }
 .res-ore   { background: rgba(136, 136, 136, 0.50); }
 .res-card-emoji { font-size: clamp(0.72rem, 3.4vw, 1.0rem); line-height: 1.2; }
+.res-card-img {
+  width: clamp(20px, 6vw, 30px); height: clamp(20px, 6vw, 30px);
+  object-fit: contain; display: block;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35));
+}
 .res-card-count { font-size: clamp(0.64rem, 3vw, 0.92rem); font-weight: bold; line-height: 1; }
 .hand-total {
   font-size: 0.67rem;
@@ -886,6 +895,12 @@ h1 {
   white-space: nowrap;
 }
 .res-chip-emoji { font-size: 0.95rem; }
+.res-chip-img { width: 19px; height: 19px; object-fit: contain; vertical-align: middle; }
+.dev-knight-icon {
+  width: 22px; height: 22px; object-fit: contain;
+  vertical-align: middle; margin-right: 4px;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4));
+}
 .res-chip-count { color: rgba(255,255,255,0.85); }
 .res-chip-none { opacity: 0.5; }
 .trade-exchange {

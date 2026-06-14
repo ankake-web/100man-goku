@@ -10,6 +10,12 @@ import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
 import { findPendingDiscarder } from '../engine/robber';
 import type { BuildMode } from './events';
+import resWoodImg from '../assets/res_wood.png';
+import resBrickImg from '../assets/res_brick.png';
+import resSheepImg from '../assets/res_sheep.png';
+import resWheatImg from '../assets/res_wheat.png';
+import resOreImg from '../assets/res_ore.png';
+import knightImg from '../assets/knight.png';
 
 // ============================================================
 // 型定義（main.ts・events.ts 共有）
@@ -48,6 +54,21 @@ function isLandscapeCompact(): boolean {
 const RESOURCE_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
 };
+
+// 資源アイコン画像（手札カード・交易チップ用）。テキスト埋め込み箇所は絵文字のまま。
+const RESOURCE_IMG: Record<ResourceType, string> = {
+  wood: resWoodImg, brick: resBrickImg, wool: resSheepImg, grain: resWheatImg, ore: resOreImg,
+};
+
+// 資源アイコンの <img> 要素を生成。
+function resIconImg(r: ResourceType, cls: string): HTMLImageElement {
+  const img = document.createElement('img');
+  img.className = cls;
+  img.src = RESOURCE_IMG[r];
+  img.alt = RESOURCE_NAMES[r];
+  img.draggable = false;
+  return img;
+}
 
 const RESOURCE_NAMES: Record<ResourceType, string> = {
   wood: '木材', brick: 'レンガ', wool: '羊毛', grain: '麦', ore: '鉄鉱',
@@ -566,9 +587,9 @@ function resChips(partial: Partial<ResourceHand>): HTMLDivElement {
     if (n <= 0) continue;
     any = true;
     const chip = el('span', `res-chip res-chip-${r}`);
-    const em = el('span', 'res-chip-emoji'); em.textContent = RESOURCE_EMOJI[r];
+    const icon = resIconImg(r, 'res-chip-img');
     const ct = el('span', 'res-chip-count'); ct.textContent = `×${n}`;
-    chip.append(em, ct);
+    chip.append(icon, ct);
     wrap.appendChild(chip);
   }
   if (!any) { const none = el('span', 'res-chip res-chip-none'); none.textContent = '—'; wrap.appendChild(none); }
@@ -992,7 +1013,7 @@ function appendDevCardButtons(
   const devAlreadyPlayed = state.devCardPlayedThisTurn;
   for (const { type, count } of playable) {
     const label = `${DEV_CARD_NAMES[type] ?? type}${count > 1 ? ` ×${count}` : ''}`;
-    div.appendChild(makeBtn(
+    const btn = makeBtn(
       label,
       devAlreadyPlayed ? 'btn-disabled' : 'btn-build',
       devAlreadyPlayed,
@@ -1002,7 +1023,16 @@ function appendDevCardButtons(
         if (type === 'year_of_plenty') setUIPhase({ type: 'yearOfPlenty', slots: [null, null] });
         if (type === 'monopoly')       setUIPhase({ type: 'monopoly', resource: null });
       },
-    ));
+    );
+    // 騎士は ⚔ 絵文字の代わりに騎士フィギュア画像をアイコンとして先頭に表示。
+    if (type === 'knight') {
+      btn.textContent = label.replace('⚔ ', '');
+      const ic = document.createElement('img');
+      ic.className = 'dev-knight-icon';
+      ic.src = knightImg; ic.alt = '騎士'; ic.draggable = false;
+      btn.prepend(ic);
+    }
+    div.appendChild(btn);
   }
 }
 
@@ -1554,11 +1584,10 @@ function buildPlayerPanel(
     for (const r of RESOURCE_TYPES) {
       const count = player.hand[r];
       const card = el('div', `res-card res-${r}${count === 0 ? ' zero' : ''}`);
-      const emoji = el('span', 'res-card-emoji');
-      emoji.textContent = RESOURCE_EMOJI[r];
+      const icon = resIconImg(r, 'res-card-img');
       const cnt = el('span', 'res-card-count');
       cnt.textContent = String(count);
-      card.appendChild(emoji);
+      card.appendChild(icon);
       card.appendChild(cnt);
       resRow.appendChild(card);
     }
