@@ -489,7 +489,7 @@ h1 {
 
 /* ---- 航海者: 船（破線＋ボート） ---- */
 .ship-line-built { pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
-.ship-glyph { font-size: 17px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.ship-glyph { pointer-events: none; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.4)); }
 /* 船の配置候補（海に面した辺）。道候補(緑)と区別して水色の破線で示す。 */
 .edge-line.ship-valid {
   stroke: rgba(110, 200, 240, 0.85);

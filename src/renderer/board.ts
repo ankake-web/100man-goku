@@ -15,6 +15,10 @@ import cityRed from '../assets/city_red.png';
 import cityBlue from '../assets/city_blue.png';
 import cityPurple from '../assets/city_purple.png';
 import cityOrange from '../assets/city_orange.png';
+import shipRed from '../assets/ship_red.png';
+import shipBlue from '../assets/ship_blue.png';
+import shipPurple from '../assets/ship_purple.png';
+import shipOrange from '../assets/ship_orange.png';
 
 // プレイヤーID→色キー。建物画像（屋根/上部をプレイヤー色に着色済み）の選択に使う。
 const BUILDING_COLOR_KEY: Record<string, string> = {
@@ -25,6 +29,9 @@ const HOUSE_IMG: Record<string, string> = {
 };
 const CITY_IMG: Record<string, string> = {
   red: cityRed, blue: cityBlue, purple: cityPurple, orange: cityOrange,
+};
+const SHIP_IMG: Record<string, string> = {
+  red: shipRed, blue: shipBlue, purple: shipPurple, orange: shipOrange,
 };
 
 // ============================================================
@@ -350,12 +357,16 @@ function renderEdges(
     const x2 = vB.pixel.x + ox, y2 = vB.pixel.y + oy;
     const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
 
-    const drawBoat = (): void => {
-      const boat = svgEl('text');
-      boat.classList.add('ship-glyph');
-      setAttrs(boat, { x: mx, y: my });
-      boat.textContent = '⛵';
-      g.appendChild(boat);
+    // 船コマ: プレイヤー色に着色した帆船フィギュア画像を辺の中点に描く。
+    const drawBoat = (colorKey: string): void => {
+      const w = HEX_SIZE * 0.66;
+      const img = svgEl('image');
+      setAttrs(img, { x: mx - w / 2, y: my - w * 0.6, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
+      const href = SHIP_IMG[colorKey] ?? shipRed;
+      img.setAttribute('href', href);
+      img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
+      img.classList.add('ship-glyph');
+      g.appendChild(img);
     };
 
     if (edge.road) {
@@ -381,7 +392,7 @@ function renderEdges(
         'stroke-width': 6, 'stroke-linecap': 'round', 'stroke-dasharray': '9 6',
       });
       g.appendChild(line);
-      drawBoat();
+      drawBoat(BUILDING_COLOR_KEY[edge.ship.playerId] ?? 'red');
     } else {
       const isValid = opts?.validEdgeIds?.has(edge.id) ?? false;
       const isValidShip = opts?.validShipEdgeIds?.has(edge.id) ?? false;
@@ -417,7 +428,7 @@ function renderEdges(
         ghost.setAttribute('stroke', (curPid && roadColor[curPid]) || '#ffffff');
         setAttrs(ghost, { x1, y1, x2, y2 });
         g.appendChild(ghost);
-        drawBoat();
+        drawBoat(curPid ? (BUILDING_COLOR_KEY[curPid] ?? 'red') : 'red');
       }
       // タッチ用の透明な太い当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。
       if (isValid) {

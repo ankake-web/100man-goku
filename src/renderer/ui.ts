@@ -1054,7 +1054,9 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
   const reason = document.createElement('p');
   reason.className = 'help-reason';
   const hasOwnShip = Object.values(state.edges).some(e => e.ship?.playerId === pid);
-  if (state.shipMovedThisTurn) {
+  if (playerHasMovableShip(state, pid)) {
+    reason.textContent = '「⛵ 船を移動」で、行き止まりの船を1隻だけ別の海辺へ動かせます。';
+  } else if (state.shipMovedThisTurn) {
     reason.textContent = 'このターンはもう船を1隻動かしました（移動は1ターンに1隻まで）。';
   } else if (hasOwnShip) {
     reason.textContent = '今は「行き止まりの船」がないため動かせません。経路の途中の船は動かせません。';
@@ -1201,16 +1203,14 @@ function buildActionButtons(
   // レイアウトを崩すため表示しない。配置可能な頂点/辺は盤面側のハイライトで示す。
 
   div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
-  if (hasSea) div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
-  // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
-  // 動かせない場合は、理由＋ルールを見られるヘルプを出す（船を作れても動かせない、等の疑問対策）。
-  if (hasSea && playerHasMovableShip(state, pid)) {
-    div.appendChild(modeBtn('⛵ 船を移動', 'moveShip', true, buildMode, setBuildMode));
-  } else if (hasSea) {
-    const hasOwnShip = Object.values(state.edges).some(e => e.ship?.playerId === pid);
-    if (hasOwnShip || canShip) {
-      div.appendChild(makeBtn('⛵ 船が動かせない？', 'btn-ship-help', false, () => showShipRulesHelp(state, pid)));
+  if (hasSea) {
+    div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
+    // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
+    if (playerHasMovableShip(state, pid)) {
+      div.appendChild(modeBtn('⛵ 船を移動', 'moveShip', true, buildMode, setBuildMode));
     }
+    // 船ルールはいつでも見られるよう常時ヘルプを置く（作れても動かせない等の疑問対策）。
+    div.appendChild(makeBtn('⛵ 船のルール', 'btn-ship-help', false, () => showShipRulesHelp(state, pid)));
   }
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
