@@ -1,16 +1,72 @@
 // ============================================================
-// src/renderer/scenarioSelect.ts — 盤面シナリオの選択UI（ホーム/ロビー共通）
+// src/renderer/scenarioSelect.ts — 盤面シナリオ選択UI（ホーム/ロビー共通）
 // ============================================================
 //
-// シナリオが増えてもラジオが横に伸びないよう、カテゴリ分けしたドロップダウン＋
-// 選択中の説明文・勝利点を表示する。listScenarios() 由来なので追加シナリオは自動で並ぶ。
+// 各シナリオを「ミニ盤面プレビュー＋名前＋勝利点」のカードで見せるピッカー。
+// 盤面の形（島の数・海・金）が一目で分かる。listScenarios() 由来なので追加シナリオは自動で並ぶ。
 
-import { listScenarios, type ScenarioId } from '../engine/scenarios';
+import { listScenarios, getScenario, type ScenarioId } from '../engine/scenarios';
+import { buildBoardGeometry, axialToPixel } from '../engine/board';
+import { createRng } from '../engine/setup';
 
 const CATEGORY_LABEL: Record<'basic' | 'seafarers', string> = {
   basic: '基本',
   seafarers: '航海者（船で島へ）',
 };
+
+// 盤面の実色に合わせたミニプレビュー用タイル色。
+const TYPE_COLOR: Record<string, string> = {
+  forest: '#2d6a2d', field: '#c8a830', pasture: '#6dbf4a', hill: '#b85c2a',
+  mountain: '#888888', desert: '#d4b870', sea: '#1f6f8b', gold: '#ffd11a',
+};
+const PV = 10; // ミニ六角の中心→頂点
+
+function hexPoints(cx: number, cy: number, s: number): string {
+  let p = '';
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i;
+    p += `${(cx + s * Math.cos(a)).toFixed(1)},${(cy + s * Math.sin(a)).toFixed(1)} `;
+  }
+  return p.trim();
+}
+
+// 同一シナリオのプレビューは再計算せずクローンを返す（ロビーの再描画で都度作らない）。
+const previewCache = new Map<ScenarioId, SVGSVGElement>();
+
+/** シナリオの盤面レイアウトを小さなSVGで描く（タイル色のみ・数字/港なし）。 */
+export function renderScenarioPreview(id: ScenarioId): SVGSVGElement {
+  const cached = previewCache.get(id);
+  if (cached) return cached.cloneNode(true) as SVGSVGElement;
+
+  const sc = getScenario(id);
+  const geo = buildBoardGeometry(sc.coords());
+  const { tiles } = sc.build(geo, createRng(7)); // classic は乱数だが固定シードで安定
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg') as SVGSVGElement;
+  svg.setAttribute('class', 'scenario-preview');
+  svg.setAttribute('aria-hidden', 'true');
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const cells: { cx: number; cy: number; type: string }[] = [];
+  for (const t of Object.values(tiles)) {
+    const { x, y } = axialToPixel(t.coord, PV);
+    cells.push({ cx: x, cy: y, type: t.type });
+    minX = Math.min(minX, x - PV); maxX = Math.max(maxX, x + PV);
+    minY = Math.min(minY, y - PV * 0.9); maxY = Math.max(maxY, y + PV * 0.9);
+  }
+  const pad = 2;
+  svg.setAttribute('viewBox', `${minX - pad} ${minY - pad} ${maxX - minX + 2 * pad} ${maxY - minY + 2 * pad}`);
+  for (const c of cells) {
+    const poly = document.createElementNS(NS, 'polygon');
+    poly.setAttribute('points', hexPoints(c.cx, c.cy, PV * 0.95));
+    poly.setAttribute('fill', TYPE_COLOR[c.type] ?? '#555');
+    if (c.type === 'sea') { poly.setAttribute('stroke', '#3f93ad'); poly.setAttribute('stroke-width', '0.5'); }
+    else { poly.setAttribute('stroke', 'rgba(0,0,0,0.4)'); poly.setAttribute('stroke-width', '0.7'); }
+    svg.appendChild(poly);
+  }
+  previewCache.set(id, svg);
+  return svg.cloneNode(true) as SVGSVGElement;
+}
 
 export interface ScenarioSelectOptions {
   current: ScenarioId;
@@ -19,66 +75,71 @@ export interface ScenarioSelectOptions {
   disabled?: boolean;
 }
 
-/** シナリオ選択ウィジェット（<select> + 説明）。要素を返す。 */
+/** シナリオ選択ウィジェット（カードグリッド＋選択中の説明）。要素を返す。 */
 export function buildScenarioSelect(opts: ScenarioSelectOptions): HTMLElement {
   const scenarios = listScenarios();
   const wrap = document.createElement('div');
-  wrap.className = 'scenario-select';
+  wrap.className = 'scenario-picker' + (opts.disabled ? ' disabled' : '');
+  wrap.dataset.scenario = opts.current;
 
-  const select = document.createElement('select');
-  select.className = 'scenario-dropdown';
-  select.disabled = !!opts.disabled;
+  const desc = document.createElement('div');
+  desc.className = 'scenario-pdesc';
+  const setDesc = (id: ScenarioId): void => {
+    const s = scenarios.find(x => x.id === id);
+    desc.textContent = s ? s.description : '';
+  };
 
-  // カテゴリごとに optgroup でまとめる。
+  const cardEls = new Map<ScenarioId, HTMLButtonElement>();
+  const select = (id: ScenarioId): void => {
+    wrap.dataset.scenario = id;
+    for (const [cid, el] of cardEls) el.classList.toggle('selected', cid === id);
+    setDesc(id);
+    opts.onChange?.(id);
+  };
+
   for (const cat of ['basic', 'seafarers'] as const) {
     const inCat = scenarios.filter(s => s.category === cat);
     if (inCat.length === 0) continue;
-    const group = document.createElement('optgroup');
-    group.label = CATEGORY_LABEL[cat];
+    const head = document.createElement('div');
+    head.className = 'scenario-cat';
+    head.textContent = CATEGORY_LABEL[cat];
+    wrap.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'scenario-grid';
     for (const s of inCat) {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.name;
-      if (s.id === opts.current) opt.selected = true;
-      group.appendChild(opt);
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'scenario-card' + (s.id === opts.current ? ' selected' : '');
+      card.title = s.description;
+      card.setAttribute('aria-label', `${s.name}（${s.victoryTarget}点）`);
+      card.appendChild(renderScenarioPreview(s.id));
+
+      const main = document.createElement('div');
+      main.className = 'scenario-card-main';
+      const nm = document.createElement('div');
+      nm.className = 'scenario-card-name';
+      nm.textContent = s.name.replace('航海者：', '');
+      const vp = document.createElement('div');
+      vp.className = 'scenario-card-vp';
+      vp.textContent = `🏆 ${s.victoryTarget}点`;
+      main.append(nm, vp);
+      card.appendChild(main);
+
+      if (opts.disabled) card.disabled = true;
+      else card.addEventListener('click', () => select(s.id));
+      cardEls.set(s.id, card);
+      grid.appendChild(card);
     }
-    select.appendChild(group);
+    wrap.appendChild(grid);
   }
-  wrap.appendChild(select);
 
-  const desc = document.createElement('div');
-  desc.className = 'scenario-desc';
+  setDesc(opts.current);
   wrap.appendChild(desc);
-
-  const renderDesc = (id: ScenarioId): void => {
-    const s = scenarios.find(x => x.id === id);
-    if (!s) { desc.textContent = ''; return; }
-    desc.textContent = '';
-    const vt = document.createElement('span');
-    vt.className = 'scenario-vp';
-    vt.textContent = `🏆 ${s.victoryTarget}点`;
-    const tx = document.createElement('span');
-    tx.className = 'scenario-desc-text';
-    tx.textContent = s.description;
-    desc.append(vt, tx);
-  };
-  renderDesc(opts.current);
-
-  select.addEventListener('change', () => {
-    const id = select.value as ScenarioId;
-    renderDesc(id);
-    opts.onChange?.(id);
-  });
-
-  // 値の取得用に参照を付ける。
-  (wrap as HTMLElement & { value?: ScenarioId }).value = opts.current;
-  select.addEventListener('change', () => { (wrap as HTMLElement & { value?: ScenarioId }).value = select.value as ScenarioId; });
-
   return wrap;
 }
 
 /** ウィジェットの現在値を取得。 */
 export function getScenarioSelectValue(wrap: HTMLElement): ScenarioId {
-  const select = wrap.querySelector('select.scenario-dropdown') as HTMLSelectElement | null;
-  return (select?.value ?? 'classic') as ScenarioId;
+  return (wrap.dataset.scenario ?? 'classic') as ScenarioId;
 }

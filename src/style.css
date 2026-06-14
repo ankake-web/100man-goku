@@ -1703,24 +1703,44 @@ h1 {
 @keyframes lanSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .lan-spinner { animation-duration: 2.4s; } }
 
-/* ---- 盤面シナリオ選択（ドロップダウン＋説明）。ホーム/ロビー共通 ---- */
-.scenario-select { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
-.scenario-dropdown {
-  width: 100%; padding: 9px 10px; border-radius: 8px;
-  background: rgba(20,24,34,0.92); color: #fff;
-  border: 1px solid rgba(208,168,108,0.45);
-  font-size: 0.95rem; cursor: pointer;
+/* ---- 盤面シナリオ選択（ミニ盤面プレビュー付きカード）。ホーム/ロビー共通 ---- */
+.scenario-picker { display: flex; flex-direction: column; gap: 7px; width: 100%; min-width: 0; }
+.scenario-cat {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.5); margin-top: 2px;
 }
-.scenario-dropdown:focus { outline: none; border-color: rgba(208,168,108,0.85); }
-.scenario-dropdown:disabled { opacity: 0.65; cursor: default; }
-.scenario-desc {
-  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-  font-size: 0.8rem; line-height: 1.45;
-  background: rgba(255,255,255,0.05); border-radius: 7px; padding: 6px 9px;
+.scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.scenario-card {
+  display: flex; align-items: center; gap: 8px; padding: 7px;
+  text-align: left; min-width: 0;
+  background: rgba(255,255,255,0.05);
+  border: 1.5px solid rgba(255,255,255,0.12);
+  border-radius: 10px; cursor: pointer; color: #fff;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.12s, background 0.12s;
 }
-.scenario-vp { color: #ffcf4d; font-weight: 700; white-space: nowrap; }
-.scenario-desc-text { color: rgba(255,255,255,0.72); }
-/* ロビー: 盤面行は縦積み（説明に幅が要る） */
+.scenario-card:hover:not(:disabled) { border-color: rgba(208,168,108,0.55); background: rgba(255,255,255,0.09); }
+.scenario-card.selected { border-color: #d0a86c; background: rgba(208,168,108,0.2); box-shadow: 0 0 0 1px rgba(208,168,108,0.35) inset; }
+.scenario-card:disabled { cursor: default; }
+.scenario-preview {
+  width: 44px; height: 44px; flex: 0 0 auto;
+  border-radius: 6px; background: #103040;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+}
+.scenario-card-main { min-width: 0; flex: 1; }
+.scenario-card-name {
+  font-size: 0.85rem; font-weight: 700; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scenario-card-vp { font-size: 0.72rem; color: #ffcf4d; margin-top: 2px; }
+.scenario-pdesc {
+  font-size: 0.8rem; line-height: 1.45; color: rgba(255,255,255,0.78);
+  background: rgba(255,255,255,0.05); border-radius: 7px; padding: 7px 9px; margin-top: 1px;
+}
+.scenario-picker.disabled .scenario-card { opacity: 0.85; }
+/* 狭い画面ではカードを1列に（名前が省略されすぎないよう） */
+@media (max-width: 380px) { .scenario-grid { grid-template-columns: 1fr; } }
+/* ロビー: 盤面行は縦積み（カードに幅が要る） */
 .lan-cfg-scenario { flex-direction: column; align-items: stretch; gap: 6px; }
 .lan-leave { margin-top: 2px; }
 
