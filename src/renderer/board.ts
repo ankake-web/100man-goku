@@ -24,6 +24,10 @@ import shipOrange from '../assets/ship_orange.png';
 const BUILDING_COLOR_KEY: Record<string, string> = {
   player1: 'red', player2: 'blue', player3: 'purple', player4: 'orange',
 };
+// プレイヤーID→HEX色（騎士コマ等）。
+const PLAYER_HEX_COLOR: Record<string, string> = {
+  player1: '#e03030', player2: '#3060e0', player3: '#a855f7', player4: '#f0a020',
+};
 const HOUSE_IMG: Record<string, string> = {
   red: houseRed, blue: houseBlue, purple: housePurple, orange: houseOrange,
 };
@@ -496,6 +500,35 @@ function renderVertices(
       img.classList.add('building-img');
       if (isValid) img.classList.add('building-valid');   // 都市化など有効ターゲット
       vg.appendChild(img);
+      // 騎士と商人: メトロポリス(勝利点4)は冠マークで強調。
+      if (vertex.building.metropolis) {
+        const crown = svgEl('text');
+        crown.classList.add('metropolis-mark');
+        setAttrs(crown, { x: vx, y: vy - w * 0.95, 'text-anchor': 'middle', 'font-size': 14 * bs });
+        crown.textContent = '👑';
+        vg.appendChild(crown);
+      }
+    } else if (vertex.knight) {
+      // 騎士と商人: 騎士コマ（プレイヤー色の盾＋強さ数字。起動=明るい/非起動=暗い）。
+      const k = vertex.knight;
+      const col = PLAYER_HEX_COLOR[k.playerId] ?? '#aaa';
+      const kg = svgEl('g'); kg.classList.add('knight-piece');
+      const r = 8.5 * bs;
+      const shield = svgEl('circle');
+      setAttrs(shield, { cx: vx, cy: vy, r, fill: col, stroke: '#10100c',
+        'stroke-width': 2 * bs, opacity: k.active ? 1 : 0.55 });
+      kg.appendChild(shield);
+      const num = svgEl('text');
+      setAttrs(num, { x: vx, y: vy + 0.5 * bs, 'text-anchor': 'middle', 'dominant-baseline': 'central',
+        'font-size': 10 * bs, 'font-weight': 'bold', fill: '#fff', 'pointer-events': 'none' });
+      num.textContent = String(k.strength);
+      kg.appendChild(num);
+      if (k.active) {
+        const ring = svgEl('circle');
+        setAttrs(ring, { cx: vx, cy: vy, r: r + 1.5 * bs, fill: 'none', stroke: '#ffe066', 'stroke-width': 1.5 * bs });
+        kg.appendChild(ring);
+      }
+      vg.appendChild(kg);
     } else {
       const dot = svgEl('circle');
       dot.classList.add('vertex-dot');

@@ -1742,6 +1742,26 @@ h1 {
 @media (max-width: 380px) { .scenario-grid { grid-template-columns: 1fr; } }
 /* ロビー: 盤面行は縦積み（カードに幅が要る） */
 .lan-cfg-scenario { flex-direction: column; align-items: stretch; gap: 6px; }
+
+/* ---- 騎士と商人(Cities & Knights) ---- */
+.ck-build {
+  width: 100%; margin: 6px 0; padding: 6px 7px;
+  border: 1px solid rgba(208,168,108,0.35); border-radius: 9px;
+  background: rgba(208,168,108,0.06);
+}
+.ck-build-title { font-size: 0.76rem; color: #ffcf4d; font-weight: 700; margin-bottom: 5px; }
+.ck-imp-row, .ck-knight-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.ck-imp-row { margin-bottom: 5px; }
+.ck-imp-row .action-btn, .ck-knight-row .action-btn { font-size: 0.7rem; padding: 5px 6px; flex: 1 1 30%; min-width: 0; }
+.ck-comm-row { display: flex; gap: 5px; margin: 5px 0 1px; }
+.ck-comm { font-size: 0.82rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: rgba(255,255,255,0.1); }
+.ck-comm.zero { opacity: 0.4; }
+.ck-comm-coin  { background: rgba(255,205,70,0.22); }
+.ck-comm-cloth { background: rgba(110,200,240,0.2); }
+.ck-comm-paper { background: rgba(220,220,220,0.2); }
+.ck-status { font-size: 0.71rem; color: rgba(255,255,255,0.68); margin-top: 4px; }
+.turn-title-item.ck-barb-danger { color: #ff6b6b; font-weight: 700; }
+.metropolis-mark, .knight-piece { pointer-events: none; }
 .lan-leave { margin-top: 2px; }
 
 /* 名前入力欄＋🎲 再生成ボタン（ロビー / CPUホーム共通） */

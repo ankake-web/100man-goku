@@ -9,7 +9,14 @@ import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
 import { findPendingDiscarder } from '../engine/robber';
+import {
+  isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall,
+} from '../engine/citiesKnights';
+import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost } from '../constants';
+import type { CkTrack, CommodityType } from '../types';
 import type { BuildMode } from './events';
+
+const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
 import resWoodImg from '../assets/res_wood.png';
 import resBrickImg from '../assets/res_brick.png';
 import resSheepImg from '../assets/res_sheep.png';
@@ -1091,6 +1098,51 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
   document.body.appendChild(overlay);
 }
 
+// 騎士と商人: 都市改善・騎士・城壁の操作セクション（騎士は最初の有効頂点へ自動配置）。
+function appendCkBuildSection(
+  div: HTMLElement, state: GameState, pid: PlayerId, dispatch: (a: Action) => void,
+): void {
+  const player = state.players[pid]!;
+  const sec = el('div', 'ck-build');
+  const title = el('div', 'ck-build-title');
+  title.textContent = '⚔ 騎士と商人';
+  sec.appendChild(title);
+
+  // 都市改善（3ツリー）
+  const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
+  const impRow = el('div', 'ck-imp-row');
+  for (const track of ['trade', 'politics', 'science'] as CkTrack[]) {
+    const lvl = imp[track];
+    const can = canBuildImprovement(state, pid, track);
+    const c = CK_TRACK_COMMODITY[track];
+    const label = lvl >= 5
+      ? `🏛${CK_TRACK_NAME[track]} Lv5`
+      : `🏛${CK_TRACK_NAME[track]} Lv${lvl}→${lvl + 1}（${COMMODITY_EMOJI[c]}${improvementCost(lvl)}）`;
+    impRow.appendChild(makeBtn(label, can ? 'btn-build' : 'btn-disabled', !can,
+      () => dispatch({ type: 'BUILD_IMPROVEMENT', track })));
+  }
+  sec.appendChild(impRow);
+
+  // 騎士・城壁
+  const knightRow = el('div', 'ck-knight-row');
+  const firstV = (pred: (vid: string) => boolean): string | undefined => Object.keys(state.vertices).find(pred);
+  const buildVid = firstV(v => canBuildKnight(state, pid, v));
+  knightRow.appendChild(makeBtn('🛡 騎士を建てる', buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
+    () => buildVid && dispatch({ type: 'BUILD_KNIGHT', vertexId: buildVid })));
+  const actVid = firstV(v => canActivateKnight(state, pid, v));
+  knightRow.appendChild(makeBtn('⚡ 騎士を起動', actVid ? 'btn-build' : 'btn-disabled', !actVid,
+    () => actVid && dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: actVid })));
+  const upVid = firstV(v => canUpgradeKnight(state, pid, v));
+  knightRow.appendChild(makeBtn('⬆ 騎士を昇格', upVid ? 'btn-build' : 'btn-disabled', !upVid,
+    () => upVid && dispatch({ type: 'UPGRADE_KNIGHT', vertexId: upVid })));
+  const wallVid = firstV(v => canBuildCityWall(state, pid, v));
+  knightRow.appendChild(makeBtn('🧱 城壁', wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
+    () => wallVid && dispatch({ type: 'BUILD_CITY_WALL', vertexId: wallVid })));
+  sec.appendChild(knightRow);
+
+  div.appendChild(sec);
+}
+
 // ============================================================
 // アクションボタン群
 // ============================================================
@@ -1214,8 +1266,14 @@ function buildActionButtons(
   }
   div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
   div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
-  div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
-    () => dispatch({ type: 'BUY_DEV_CARD' })));
+  // 発展カードは騎士と商人では使わない（進歩カードに置換）。基本/航海者のみ表示。
+  if (!isCk(state)) {
+    div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
+      () => dispatch({ type: 'BUY_DEV_CARD' })));
+  }
+
+  // 騎士と商人: 都市改善・騎士・城壁。
+  if (isCk(state)) appendCkBuildSection(div, state, pid, dispatch);
 
   div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
     () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
@@ -1338,11 +1396,20 @@ export function renderUI(
     // （毎 redraw の DFS 再計算は道が密集した終盤にモーダル操作のジャンクになる）。
     ? `🛤最長 ${lrHolder.name}(${lrHolder.longestRoadLength})`
     : '🛤最長 未獲得';
-  const t2 = el('span', 'turn-title-item');
-  t2.textContent = laHolder ? `⚔最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : '⚔最大騎士 未獲得';
   const t3 = el('span', 'turn-title-item');
-  t3.textContent = `🃏山札 ${state.devDeck.length}`;
-  titles.append(t1, t2, t3);
+  if (isCk(state)) {
+    // 騎士と商人: 最大騎士の代わりに蛮族の進行度を表示。
+    const pos = state.barbarianPosition ?? 0;
+    const t2 = el('span', `turn-title-item${pos >= CK_BARBARIAN_MAX - 1 ? ' ck-barb-danger' : ''}`);
+    t2.textContent = `🛶蛮族 ${pos}/${CK_BARBARIAN_MAX}（襲来${state.barbarianAttacks ?? 0}回）`;
+    t3.textContent = '';
+    titles.append(t1, t2);
+  } else {
+    const t2 = el('span', 'turn-title-item');
+    t2.textContent = laHolder ? `⚔最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : '⚔最大騎士 未獲得';
+    t3.textContent = `🃏山札 ${state.devDeck.length}`;
+    titles.append(t1, t2, t3);
+  }
   turnPanel.appendChild(titles);
 
   // 直近に起きた公開イベントだけを1行で表示（履歴一覧は出さない）。
@@ -1651,6 +1718,30 @@ function buildPlayerPanel(
       resRow.appendChild(card);
     }
     div.appendChild(resRow);
+
+    // 騎士と商人: 商品の手札（自分のみ）。
+    if (isCk(state)) {
+      const comm = player.commodities ?? { coin: 0, cloth: 0, paper: 0 };
+      const cRow = el('div', 'ck-comm-row');
+      for (const c of COMMODITY_TYPES) {
+        const chip = el('span', `ck-comm ck-comm-${c}${comm[c] === 0 ? ' zero' : ''}`);
+        chip.textContent = `${COMMODITY_EMOJI[c]}${comm[c]}`;
+        cRow.appendChild(chip);
+      }
+      div.appendChild(cRow);
+    }
+  }
+
+  // 騎士と商人: 都市改善レベルと騎士力（全員・公開情報）。
+  if (isCk(state)) {
+    const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
+    const kStr = Object.values(state.vertices)
+      .filter(v => v.knight?.playerId === pId)
+      .reduce((s, v) => s + (v.knight!.active ? v.knight!.strength : 0), 0);
+    const kTotal = Object.values(state.vertices).filter(v => v.knight?.playerId === pId).length;
+    const ck = el('div', 'ck-status');
+    ck.textContent = `改善 交${imp.trade}/政${imp.politics}/科${imp.science}　🛡騎士${kTotal}(力${kStr})`;
+    div.appendChild(ck);
   }
 
   // 発展カードUI

@@ -9,10 +9,12 @@ import { listScenarios, getScenario, type ScenarioId } from '../engine/scenarios
 import { buildBoardGeometry, axialToPixel } from '../engine/board';
 import { createRng } from '../engine/setup';
 
-const CATEGORY_LABEL: Record<'basic' | 'seafarers', string> = {
+const CATEGORY_LABEL: Record<'basic' | 'seafarers' | 'cities_knights', string> = {
   basic: '基本',
   seafarers: '航海者（船で島へ）',
+  cities_knights: '騎士と商人（拡張）',
 };
+const CATEGORY_ORDER = ['basic', 'seafarers', 'cities_knights'] as const;
 
 // 盤面の実色に合わせたミニプレビュー用タイル色。
 const TYPE_COLOR: Record<string, string> = {
@@ -97,7 +99,7 @@ export function buildScenarioSelect(opts: ScenarioSelectOptions): HTMLElement {
     opts.onChange?.(id);
   };
 
-  for (const cat of ['basic', 'seafarers'] as const) {
+  for (const cat of CATEGORY_ORDER) {
     const inCat = scenarios.filter(s => s.category === cat);
     if (inCat.length === 0) continue;
     const head = document.createElement('div');
