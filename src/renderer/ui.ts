@@ -528,6 +528,7 @@ interface VPBreakdown {
   lr: boolean;
   la: boolean;
   vpCards: number;
+  islandBonus: number; // 航海者: 獲得した新島入植ボーナスの件数（各 +2VP）
 }
 
 function calcVPBreakdown(state: GameState, pid: PlayerId): VPBreakdown {
@@ -544,6 +545,7 @@ function calcVPBreakdown(state: GameState, pid: PlayerId): VPBreakdown {
     lr: player?.hasLongestRoad ?? false,
     la: player?.hasLargestArmy ?? false,
     vpCards: player?.devCards.filter(c => c.type === 'victory_point').length ?? 0,
+    islandBonus: Object.values(state.islandBonus ?? {}).filter(o => o === pid).length,
   };
 }
 
@@ -1494,8 +1496,14 @@ function buildPlayerPanel(
   // ボーナスVP内訳（最長/最大/VPカード）。開拓地・都市数は stat-row に集約済み。
   // GAME_OVER時は勝者のVPカード枚数も開示する（他プレイヤーは非公開のまま）。
   const showVpCards = (isSelf || isWinner) && bd.vpCards > 0;
-  if (bd.lr || bd.la || showVpCards) {
+  if (bd.lr || bd.la || bd.islandBonus > 0 || showVpCards) {
     const vpRow = el('div', 'vp-breakdown');
+    if (bd.islandBonus > 0) {
+      const item = el('span', 'vp-item bonus');
+      item.textContent = `🏝+${bd.islandBonus * 2}`;
+      item.title = `新しい島への入植 ${bd.islandBonus}件（+${bd.islandBonus * 2}点）`;
+      vpRow.appendChild(item);
+    }
     if (bd.lr) {
       const item = el('span', 'vp-item bonus');
       item.textContent = '🛤最長+2';

@@ -1384,13 +1384,32 @@ describe('Group A: engine rule-enforcement guards', () => {
   });
 
   // --- DECLARE_VICTORY: turnPhase ガード ---
-  it('DECLARE_VICTORY は TRADE_BUILD 以外では十分なVPでも拒否（Low）', () => {
+  it('DECLARE_VICTORY は ROBBER/DISCARD では拒否、PRE_ROLL/TRADE_BUILD では許可（Low）', () => {
     const vpCards = Array.from({ length: 10 }, (_, i) => ({ id: `vp${i}`, type: 'victory_point' as const, purchasedOnTurn: 0 }));
-    const s = makeGameState({
-      turnPhase: 'PRE_ROLL',
+    const mk = (turnPhase: 'ROBBER' | 'DISCARD' | 'PRE_ROLL' | 'TRADE_BUILD') => makeGameState({
+      turnPhase,
       players: { player1: makePlayer('player1', { devCards: vpCards }), player2: makePlayer('player2') },
     });
-    expect(() => applyAction(s, { type: 'DECLARE_VICTORY' })).toThrow('MAIN TRADE_BUILD');
+    // 7処理中（盗賊/捨て札）は十分なVPでも宣言不可
+    expect(() => applyAction(mk('ROBBER'), { type: 'DECLARE_VICTORY' })).toThrow();
+    expect(() => applyAction(mk('DISCARD'), { type: 'DECLARE_VICTORY' })).toThrow();
+    // 自分の手番開始時(PRE_ROLL)とダイス後(TRADE_BUILD)は宣言できる（称号移動で手番開始時に即勝てる）
+    for (const ph of ['PRE_ROLL', 'TRADE_BUILD'] as const) {
+      const won = applyAction(mk(ph), { type: 'DECLARE_VICTORY' });
+      expect(won.phase).toBe('GAME_OVER');
+      expect(won.winner).toBe('player1');
+    }
+  });
+
+  it('END_TURN: ターン上限(安全網)で最高VPのプレイヤーを勝者にして終了（無限ループ防止）', () => {
+    const vp = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `v${i}`, type: 'victory_point' as const, purchasedOnTurn: 0 }));
+    const s = makeGameState({
+      turnPhase: 'TRADE_BUILD', diceRolledThisTurn: true, globalTurnNumber: 999, // 次の END_TURN で 1000=上限に到達
+      players: { player1: makePlayer('player1', { devCards: vp(1) }), player2: makePlayer('player2', { devCards: vp(3) }) },
+    });
+    const next = applyAction(s, { type: 'END_TURN' });
+    expect(next.phase).toBe('GAME_OVER');
+    expect(next.winner).toBe('player2'); // 3VP > 1VP の方が勝者
   });
 
   // --- DISCARD_RESOURCES: 枚数/所持/フェーズ検証（M3 / Low） ---

@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
-import { attachLanServer, requiredActor, genCode, __resetRoomsForTest } from '../server/lanServer';
+import { attachLanServer, requiredActor, redactActionFor, genCode, __resetRoomsForTest } from '../server/lanServer';
 import type { LanServerOptions } from '../server/lanServer';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
@@ -193,6 +193,20 @@ describe('lanServer integration (M8)', () => {
     expect(requiredActor(s, { type: 'ROLL_DICE' })).toBe('player1');
     expect(requiredActor(s, { type: 'DISCARD_RESOURCES', playerId: 'player2', resources: {} })).toBe('player2');
     expect(requiredActor(s, { type: 'RESPOND_TRADE', response: { playerId: 'player2', status: 'REJECT' } })).toBe('player2');
+  });
+
+  it('redactActionFor: 捨て札/金タイル選択の資源は本人以外には秘匿（種類漏洩防止）', () => {
+    const discard = { type: 'DISCARD_RESOURCES', playerId: 'player2', resources: { ore: 3, wood: 1 } } as const;
+    const gold = { type: 'CHOOSE_GOLD', playerId: 'player2', resources: { grain: 2 } } as const;
+    // 本人(byPid)はそのまま見える
+    expect(redactActionFor(discard, 'player2', 'player2')).toEqual(discard);
+    expect(redactActionFor(gold, 'player2', 'player2')).toEqual(gold);
+    // 他者には resources が空に（枚数は視点別ログが count で持つ）
+    expect((redactActionFor(discard, 'player1', 'player2') as typeof discard).resources).toEqual({});
+    expect((redactActionFor(gold, 'player3', 'player2') as typeof gold).resources).toEqual({});
+    // 他の種別（盗賊移動など）はそのまま（盗む資源はサーバRNGで action に乗らない）
+    const robber = { type: 'MOVE_ROBBER', tileId: '0,0', stealFromPlayerId: 'player1' } as const;
+    expect(redactActionFor(robber, 'player1', 'player2')).toEqual(robber);
   });
 
   it('H5: when the current player disconnects, the CPU takes over and the game progresses (no stall)', async () => {

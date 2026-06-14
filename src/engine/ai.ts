@@ -799,6 +799,18 @@ function bankTradeToward(state: GameState, pid: PlayerId, cost: ResourceHand): A
 
 // 勝利まであと1点以上なら、勝利に直結する建設を最優先で実行する。
 // 建設できなければ、不足資源をバンク交易で1手ずつ補い、次ステップでの建設→勝利を狙う。
+// 資源を無視し、接続済み（自分の道/船）で距離ルールOKの空き陸頂点があるか。
+// 「実際に置ける開拓地」がある時だけバンク交易で資源を狙う（置けない先への無限交易を防ぐ）。
+function hasReachableSettlementSpot(state: GameState, pid: PlayerId): boolean {
+  return Object.values(state.vertices).some(v => {
+    if (v.building || !isLandVertex(v, state.tiles) || !isDistanceRuleOk(v, state.vertices)) return false;
+    return v.adjacentEdgeIds.some(eid => {
+      const e = state.edges[eid];
+      return e?.road?.playerId === pid || e?.ship?.playerId === pid;
+    });
+  });
+}
+
 function victoryPush(state: GameState, pid: PlayerId, rng: () => number = Math.random): Action | null {
   if (calcVP(state, pid) < victoryTarget(state) - 1) return null;
   const player = state.players[pid]!;
@@ -807,18 +819,22 @@ function victoryPush(state: GameState, pid: PlayerId, rng: () => number = Math.r
   if (city) return { type: 'BUILD_CITY', vertexId: city };
   const settl = bestSettlementVertex(state, pid, rng);
   if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
-  // 建設不可: 都市化先があれば都市、なければ開拓地の不足資源をバンク交易で補う
+  // 航海者: 本島で詰みなら新島へ船を継ぐ。島ボーナス(+2)＋新島の開拓地(+1)で勝ち切る経路。
+  // これが無いと target-1(12/13) から抜けられず、群島で CPU 対戦が永久ループしうる（監査指摘）。
+  const ship = bestExpansionShip(state, pid);
+  if (ship) return { type: 'BUILD_SHIP', edgeId: ship };
+  // バンク交易は「実際に置ける建設」に限る。置けない開拓地へ延々と交易して詰まないように。
   const hasUpgradable = Object.values(state.vertices).some(
     v => v.building?.type === 'settlement' && v.building.playerId === pid,
   );
   const targets: ResourceHand[] = [];
   if (hasUpgradable && player.remainingCities > 0) targets.push(BUILD_COSTS.city as ResourceHand);
-  if (player.remainingSettlements > 0) targets.push(BUILD_COSTS.settlement as ResourceHand);
+  if (player.remainingSettlements > 0 && hasReachableSettlementSpot(state, pid)) targets.push(BUILD_COSTS.settlement as ResourceHand);
   for (const cost of targets) {
     const bt = bankTradeToward(state, pid, cost);
     if (bt) return bt;
   }
-  return null;
+  return null; // 詰まったら通常方策（発展カード/道/船拡張/交易）へ委ねる
 }
 
 // ---- 進歩カード（豊作/独占/街道建設）の使用判断 ----

@@ -261,16 +261,28 @@ function broadcastLobby(room: Room, urls: string[]): void {
 // 更新後の正本 state を、各メンバーへ視点別マスク＋視点別ログで配信する。
 // ログは buildActionLog を「その視点(m.id)」で生成するため、自分の獲得内訳や
 // 「あなた」表記が各端末で正しくなり、他人の資源獲得内訳も漏れない。
+// 配信するアクションを視点別に秘匿する。捨て札・金タイル選択の「資源の種類」は本人以外には
+// 秘匿（枚数のみログで公開）。生 action をそのまま配ると DevTools で相手の捨て/金の内訳が漏れる。
+// 盗み/獲得アニメは各端末でマスク済み state の差分から導出するため、resources を消しても支障なし。
+export function redactActionFor(action: Action, viewerId: PlayerId, byPid: PlayerId): Action {
+  if (viewerId === byPid) return action; // 本人は自分の内訳を見てよい
+  if (action.type === 'DISCARD_RESOURCES' || action.type === 'CHOOSE_GOLD') {
+    return { ...action, resources: {} }; // 種類を秘匿（枚数は視点別ログが count で持つ）
+  }
+  return action;
+}
+
 function broadcastState(room: Room, prev: GameState, action: Action, byPid: PlayerId): void {
   if (!room.state) return;
   for (const m of room.members) {
     // ログは切断中でも蓄積する（送信だけスキップ）。これで再接続時に
     // 切断中のCPU代行手番もログに反映され、盤面と齟齬しない。
+    // ※ ログは正本 action（resources 込み）から生成するが、log.ts が種類を出さないので安全。
     const entries = buildActionLog(prev, action, room.state, m.id);
     const log = [...(room.memberLogs[m.id] ?? []), ...entries].slice(-MAX_LOG_ENTRIES);
     room.memberLogs[m.id] = log;
     if (!m.connected) continue;
-    send(m.ws, { t: 'state', state: { ...maskStateFor(room.state, m.id), log }, action, by: byPid });
+    send(m.ws, { t: 'state', state: { ...maskStateFor(room.state, m.id), log }, action: redactActionFor(action, m.id, byPid), by: byPid });
   }
 }
 

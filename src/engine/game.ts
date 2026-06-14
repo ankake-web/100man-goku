@@ -28,6 +28,10 @@ function currentPlayer(state: GameState): PlayerId {
   return state.playerOrder[state.currentPlayerIndex]!;
 }
 
+// 安全網のターン上限（個人手番のグローバル通し番号）。通常対戦は〜300で終わるため発火しない。
+// 病的な引き分け局面で永久ループしないための最終防御（END_TURN で最高VPを勝者に）。
+const TURN_CAP = 1000;
+
 /**
  * 初期配置2軒目で配る資源を、配置頂点に隣接するタイルから導出する純粋関数。
  * 付与（applyAction の BUILD_SETTLEMENT）と資源アニメ（renderer 側）の双方が
@@ -679,11 +683,23 @@ export function applyAction(
       // これが無いと PRE_ROLL でダイスを飛ばしたり、SETUP/7処理中に勝手に手番を進められる。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
         throw new Error('END_TURN: must be in MAIN TRADE_BUILD phase');
+      const nextGlobalTurn = state.globalTurnNumber + 1;
+      // 安全網: 異常に長引いた対戦（AIが勝ち切れない病的局面など）が永久ループしないよう、
+      // 上限ターンに達したら最高VPのプレイヤーを勝者として終了する。通常対戦(〜300)では発火しない。
+      if (nextGlobalTurn >= TURN_CAP) {
+        let best: PlayerId = state.playerOrder[0]!;
+        let bestVp = -1;
+        for (const p of state.playerOrder) {
+          const vp = calcVP(state, p);
+          if (vp > bestVp) { bestVp = vp; best = p; }
+        }
+        return { ...state, winner: best, phase: 'GAME_OVER' };
+      }
       const nextIndex = (state.currentPlayerIndex + 1) % state.playerOrder.length;
       return {
         ...state,
         currentPlayerIndex: nextIndex,
-        globalTurnNumber: state.globalTurnNumber + 1,
+        globalTurnNumber: nextGlobalTurn,
         turnPhase: 'PRE_ROLL',
         lastDiceRoll: null,
         diceRolledThisTurn: false,
@@ -698,8 +714,10 @@ export function applyAction(
     // DECLARE_VICTORY
     // ----------------------------------------------------------
     case 'DECLARE_VICTORY': {
-      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
-        throw new Error('DECLARE_VICTORY: must be in MAIN TRADE_BUILD phase');
+      // 自分の手番なら PRE_ROLL（ダイス前）でも宣言可。称号移動で手番開始時に目標到達する場合に
+      // 「勝利宣言」ボタンが反応しない問題を解消（ダイスを振らずに即勝てる）。
+      if (state.phase !== 'MAIN' || (state.turnPhase !== 'TRADE_BUILD' && state.turnPhase !== 'PRE_ROLL'))
+        throw new Error('DECLARE_VICTORY: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
       if (calcVP(state, pid) < victoryTarget(state)) throw new Error("DECLARE_VICTORY: insufficient VP");
       return { ...state, winner: pid, phase: 'GAME_OVER' };
     }

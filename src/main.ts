@@ -32,7 +32,7 @@ import type { BuildMode } from './renderer/events';
 import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
 import { buildActionLog, MAX_LOG_ENTRIES, RES_EMOJI } from './engine/log';
-import { calcVP, calcPublicVP } from './engine/scoring';
+import { calcVP, calcPublicVP, victoryTarget } from './engine/scoring';
 import { buildPlayerRecap } from './engine/recap';
 import { computeDiceProduction } from './engine/dice';
 
@@ -369,6 +369,58 @@ function ruleSection(heading: string, bullets: string[]): HTMLDivElement {
   return sec;
 }
 
+// タイルの色見本（小さな六角形）。盤面の色と一致させ、麦と金などを見分けやすくする。
+function legendHex(type: string): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 40 40');
+  svg.setAttribute('class', 'legend-hex');
+  const poly = document.createElementNS(NS, 'polygon');
+  const pts: string[] = [];
+  for (let i = 0; i < 6; i++) { const a = (Math.PI / 180) * (60 * i - 30); pts.push(`${(20 + 18 * Math.cos(a)).toFixed(1)},${(20 + 18 * Math.sin(a)).toFixed(1)}`); }
+  poly.setAttribute('points', pts.join(' '));
+  poly.setAttribute('class', `hex-tile ${type}`);
+  // 金は盤面のグラデーション(url)が凡例SVGでは解決しないので、近い単色＋濃縁を直接指定。
+  if (type === 'gold') poly.setAttribute('style', 'fill:#ffd11a;stroke:#7a5200;stroke-width:2.5;filter:none');
+  svg.appendChild(poly);
+  if (type === 'gold') {
+    const t = document.createElementNS(NS, 'text');
+    setAttrSvg(t, { x: '20', y: '26', 'text-anchor': 'middle', 'font-size': '17' });
+    t.textContent = '🪙'; svg.appendChild(t);
+  }
+  return svg;
+}
+function setAttrSvg(el: Element, attrs: Record<string, string>): void { for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); }
+
+// タイルの見分け方（色見本のグリッド）。ルール説明に入れて視覚的に分かりやすくする。
+function buildTileLegend(): HTMLDivElement {
+  const sec = document.createElement('div');
+  sec.className = 'rule-section';
+  const h = document.createElement('div');
+  h.className = 'rule-heading';
+  h.textContent = '🗺 タイルの見分け方';
+  sec.appendChild(h);
+  const grid = document.createElement('div');
+  grid.className = 'rule-legend';
+  const entries: [string, string][] = [
+    ['forest', '🌲 木材'], ['hill', '🧱 レンガ'], ['pasture', '🐑 羊毛'],
+    ['field', '🌾 麦'], ['mountain', '⛰ 鉱石'], ['desert', '🏜 砂漠（資源なし）'],
+    ['gold', '🪙 金＝好きな資源'], ['sea', '🌊 海（航海者）'],
+  ];
+  for (const [type, label] of entries) {
+    const cell = document.createElement('div');
+    cell.className = 'rule-legend-cell';
+    cell.appendChild(legendHex(type));
+    const lbl = document.createElement('span');
+    lbl.className = 'rule-legend-label';
+    lbl.textContent = label;
+    cell.appendChild(lbl);
+    grid.appendChild(cell);
+  }
+  sec.appendChild(grid);
+  return sec;
+}
+
 // TOPページのルール説明（折りたたみ式）
 function buildRulePanel(): HTMLDetailsElement {
   const details = document.createElement('details');
@@ -384,6 +436,7 @@ function buildRulePanel(): HTMLDetailsElement {
     `先に ${VP_TABLE.target} 点（航海者の盤面は 13 点）を取ったプレイヤーが勝ち。`,
     '開拓地・都市・最長交易路・最大騎士力・勝利点カードで点を集める。',
   ]));
+  body.appendChild(buildTileLegend());
   body.appendChild(ruleSection('🔁 ターンの流れ', [
     '① サイコロを振る',
     '② 出た数字のタイルから資源をもらう',
@@ -422,6 +475,14 @@ function buildRulePanel(): HTMLDetailsElement {
     '最長交易路：2点（道5本以上で最長の人）',
     '最大騎士力：2点（騎士3回以上で最多の人）',
     '勝利点カード：1点',
+  ]));
+  body.appendChild(ruleSection('⛵ 航海者（航海者・群島の盤面）', [
+    '盤面が海で島に分かれている。新しい島へは「船」で渡る。',
+    '船：木＋羊。海に面した辺に置く。道と船は自分の建物でつながる。「⛵船を移動」で行き止まりの船を1ターン1回動かせる。',
+    '🪙 金タイル：数字が出ると、木・レンガ・羊・麦・鉱石から好きな資源を選べる（開拓地1・都市2）。麦（黄土色）と違い金色＋コインが目印。',
+    '新しい島に最初に開拓地を建てると +2点（島ボーナス）。',
+    '7のとき、陸タイルをタップ＝盗賊、🌊海タイルをタップ＝🏴‍☠️海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
+    '海岸の港（3:1 / 2:1）も使える。航海者の盤面は 13点で勝ち。',
   ]));
   body.appendChild(ruleSection('💡 操作のコツ', [
     '最初は資源が多く出そうな数字の近くに開拓地を置く。',
@@ -1526,7 +1587,7 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   const color = PLAYER_HEX[winnerId] ?? '#ffd700';
   const vp = calcVP(state, winnerId);
   const isHuman = winner.type === 'human';
-  const reason = VICTORY_REASON[causeAction] ?? '10点到達で勝利！';
+  const reason = VICTORY_REASON[causeAction] ?? `${victoryTarget(state)}点到達で勝利！`;
 
   const overlay = document.createElement('div');
   overlay.className = 'victory-overlay';
@@ -2212,8 +2273,12 @@ function dispatch(action: Action): void {
     if (action.type === 'END_TURN') {
       cpuPlayerTradeOfferedThisTurn = false;
     }
-    // 航海者: 船移動後 or ターン終了で船移動モードを抜ける（1ターン1回・選択解除）。
-    if (action.type === 'MOVE_SHIP' || action.type === 'END_TURN') {
+    // ターン終了で建設モードを必ず解除。次ターンに『都市』等のモードが残って盤面に誤った
+    // 配置ハイライトが出る／誤タップを誘発するのを防ぐ。船移動後も移動モードを抜ける。
+    if (action.type === 'END_TURN') {
+      buildMode = 'idle';
+      moveShipFrom = null;
+    } else if (action.type === 'MOVE_SHIP') {
       if (buildMode === 'moveShip') buildMode = 'idle';
       moveShipFrom = null;
     }
@@ -2656,6 +2721,11 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
 
   if (action && (action.type === 'BUILD_ROAD' || action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY')) {
     buildMode = 'idle';
+  }
+  // ターン終了で建設モード/船移動選択を解除（次ターンにモードが残るのを防ぐ・LAN）。
+  if (action?.type === 'END_TURN' || action?.type === 'MOVE_SHIP') {
+    buildMode = 'idle';
+    moveShipFrom = null;
   }
   if (action?.type === 'PLAY_ROAD_BUILDING') buildMode = 'road';
   if (state.roadBuildingRoadsRemaining > 0) buildMode = 'road';
