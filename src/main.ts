@@ -380,17 +380,12 @@ function legendHex(type: string): SVGSVGElement {
   for (let i = 0; i < 6; i++) { const a = (Math.PI / 180) * (60 * i - 30); pts.push(`${(20 + 18 * Math.cos(a)).toFixed(1)},${(20 + 18 * Math.sin(a)).toFixed(1)}`); }
   poly.setAttribute('points', pts.join(' '));
   poly.setAttribute('class', `hex-tile ${type}`);
-  // 金は盤面のグラデーション(url)が凡例SVGでは解決しないので、近い単色＋濃縁を直接指定。
-  if (type === 'gold') poly.setAttribute('style', 'fill:#ffd11a;stroke:#7a5200;stroke-width:2.5;filter:none');
+  // 金は盤面のグラデーション(url)が凡例SVGでは解決しないので、近い光沢ゴールドの単色＋濃縁＋発光を直接指定。
+  // 麦(黄土色 #c8a830)よりはっきり明るい黄金色にして見分けやすくする。絵文字は環境差で崩れるため入れない。
+  if (type === 'gold') poly.setAttribute('style', 'fill:#ffcf1f;stroke:#7a5200;stroke-width:2.5;filter:drop-shadow(0 0 3px rgba(255,210,40,0.9))');
   svg.appendChild(poly);
-  if (type === 'gold') {
-    const t = document.createElementNS(NS, 'text');
-    setAttrSvg(t, { x: '20', y: '26', 'text-anchor': 'middle', 'font-size': '17' });
-    t.textContent = '🪙'; svg.appendChild(t);
-  }
   return svg;
 }
-function setAttrSvg(el: Element, attrs: Record<string, string>): void { for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); }
 
 // タイルの見分け方（色見本のグリッド）。ルール説明に入れて視覚的に分かりやすくする。
 function buildTileLegend(): HTMLDivElement {

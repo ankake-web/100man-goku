@@ -158,16 +158,12 @@ function renderTile(
   if (isValidRobber) poly.classList.add('valid-robber');
   g.appendChild(poly);
 
-  // 金タイル: 麦(field)と色が紛らわしいので、コインのマーカーと小さな「任意」ラベルで明示する。
+  // 金タイル: 麦(field)と色が紛らわしいので、光沢ゴールド＋発光（CSS）に加えて
+  // 下部に「任意資源」ラベルで明示する。絵文字マーカーは環境差で崩れるため使わない。
   if (tile.type === 'gold') {
-    const coin = svgEl('text');
-    coin.classList.add('gold-marker');
-    setAttrs(coin, { x: cx, y: cy - size * 0.46, 'text-anchor': 'middle', 'font-size': String(size * 0.5) });
-    coin.textContent = '🪙';
-    g.appendChild(coin);
     const tag = svgEl('text');
     tag.classList.add('gold-tag');
-    setAttrs(tag, { x: cx, y: cy + size * 0.62, 'text-anchor': 'middle', 'font-size': String(size * 0.22) });
+    setAttrs(tag, { x: cx, y: cy + size * 0.6, 'text-anchor': 'middle', 'font-size': String(size * 0.24) });
     tag.textContent = '任意資源';
     g.appendChild(tag);
   }

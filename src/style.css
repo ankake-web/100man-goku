@@ -325,10 +325,9 @@ h1 {
   stroke-width: 3.5;
   filter: drop-shadow(0 0 5px rgba(255,210,40,0.85));
 }
-.gold-marker { pointer-events: none; }
 .gold-tag {
   fill: #5a3d00; font-weight: bold; pointer-events: none;
-  paint-order: stroke; stroke: rgba(255,245,200,0.9); stroke-width: 2.2px; stroke-linejoin: round;
+  paint-order: stroke; stroke: rgba(255,245,200,0.95); stroke-width: 2.4px; stroke-linejoin: round;
 }
 
 /* ---- 数字トークン ---- */
