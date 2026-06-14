@@ -5,6 +5,7 @@
 import type { GameState, Tile, HarborType, Harbor } from '../types';
 import { HEX_SIZE } from '../constants';
 import { axialToPixel } from '../engine/board';
+import robberImg from '../assets/robber.png'; // 盗賊コマの画像（Vite が base 付きURLへ解決）
 
 // ============================================================
 // レンダリングオプション（有効配置ハイライト用）
@@ -195,38 +196,26 @@ function renderTile(
     g.appendChild(dots);
   }
 
-  // 強盗コマ: フード付きの黒いコマ（影＋不気味な光る目）。数字チップと丸かぶりしないよう下にずらす。
+  // 強盗コマ: フィギュア画像（asset）。数字チップと丸かぶりしないよう下にずらす。
   if (tile.hasRobber) {
-    const ry = cy + ROBBER_DY;
     const touch = isTouchDevice();
-    const rs = touch ? 1.15 : 1.0;                 // 盗賊スケール
+    const ry = cy + ROBBER_DY;
+    const w = size * (touch ? 1.3 : 1.12);          // 画像の表示サイズ（透明余白込み）
     const rg = svgEl('g');
     rg.classList.add('robber');
-    const P = (dx: number, dy: number): string => `${(cx + dx * rs).toFixed(1)},${(ry + dy * rs).toFixed(1)}`;
 
-    // 影
+    // 接地影（フィギュアの足元）。stroke:none を明示（.robber の白フチを継承させない）
     const shadow = svgEl('ellipse');
-    setAttrs(shadow, { cx, cy: ry + 10 * rs, rx: 8.5 * rs, ry: 2.4 * rs, fill: 'rgba(0,0,0,0.38)' });
+    setAttrs(shadow, { cx, cy: ry + w * 0.27, rx: w * 0.20, ry: w * 0.055, fill: 'rgba(0,0,0,0.32)', stroke: 'none' });
     rg.appendChild(shadow);
 
-    // フード付きの黒マント（雫型: 頭の丸み→裾が広がる）
-    const cloak = svgEl('path');
-    cloak.setAttribute('d',
-      `M ${P(-7.5, 9)} Q ${P(-8.5, -2)} ${P(-4, -7)} Q ${P(0, -10.5)} ${P(4, -7)} Q ${P(8.5, -2)} ${P(7.5, 9)} Z`);
-    setAttrs(cloak, { fill: '#15151c', stroke: '#000', 'stroke-width': 1.6 * rs, 'stroke-linejoin': 'round' });
-    rg.appendChild(cloak);
+    // 盗賊フィギュア画像（正方形・中央寄せ）。足元が ry より少し下に来るよう配置。
+    const img = svgEl('image');
+    setAttrs(img, { x: cx - w / 2, y: ry - w * 0.62, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
+    img.setAttribute('href', robberImg);
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', robberImg); // 旧ブラウザ互換
+    rg.appendChild(img);
 
-    // フード内側の影
-    const face = svgEl('ellipse');
-    setAttrs(face, { cx, cy: ry - 2.5 * rs, rx: 3.8 * rs, ry: 4.4 * rs, fill: 'rgba(0,0,0,0.6)' });
-    rg.appendChild(face);
-
-    // 不気味に光る目（2点）
-    for (const ex of [-1.8, 1.8]) {
-      const eye = svgEl('circle');
-      setAttrs(eye, { cx: cx + ex * rs, cy: ry - 2.5 * rs, r: 0.95 * rs, fill: '#ffcf4d' });
-      rg.appendChild(eye);
-    }
     g.appendChild(rg);
   }
 

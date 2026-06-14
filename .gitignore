@@ -13,3 +13,6 @@ dist/
 
 # Compiled test artifacts (sources are TypeScript in tests/)
 tests/*.js
+
+# 盗賊などソース画像のスクラッチ置き場（実行時は src/assets/ を使用）
+/asset/

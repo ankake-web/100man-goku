@@ -354,11 +354,8 @@ h1 {
 }
 .token-dots.red { fill: #cc2200; }
 
-/* ---- 強盗 ---- */
+/* ---- 強盗（画像フィギュア） ---- */
 .robber {
-  fill: #111;
-  stroke: #fff;
-  stroke-width: 1.5;
   pointer-events: none;
 }
 
