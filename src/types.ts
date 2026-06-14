@@ -12,6 +12,11 @@ export type Point = { readonly x: number; readonly y: number };
 export type ResourceType = 'wood' | 'brick' | 'wool' | 'grain' | 'ore';
 export type ResourceHand = Record<ResourceType, number>;
 
+// ---- 騎士と商人(Cities & Knights)拡張: 商品(コモディティ) ----
+// 都市が「森→紙 / 牧草→布 / 山→金貨」を1個ずつ追加産出する。都市改善の支払いに使う。
+export type CommodityType = 'coin' | 'cloth' | 'paper';
+export type CommodityHand = Record<CommodityType, number>;
+
 // ---- タイル ----
 
 // 基本タイル: forest/field/pasture/hill/mountain/desert
@@ -114,6 +119,8 @@ export interface Player {
   readonly aiDifficulty?: AiDifficulty;
 
   hand: ResourceHand;
+  // 騎士と商人: 商品(コモディティ)の手札。基本/航海者では未設定。
+  commodities?: CommodityHand;
 
   // - アクションカードは使用後に除去する
   // - 勝利点カードは宣言まで除去しない
@@ -200,6 +207,8 @@ export interface GameState {
   playerOrder: PlayerId[];
 
   bank: ResourceHand;
+  // 騎士と商人(Cities & Knights)拡張が有効か。未設定=基本/航海者ルール。
+  expansion?: 'cities_knights';
 
   devDeck: DevCard[];
   devDiscardPile: DevCard[];

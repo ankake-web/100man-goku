@@ -2,11 +2,31 @@
 // src/constants.ts — ゲーム定数
 // ============================================================
 
-import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand } from './types';
+import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, CommodityType, CommodityHand } from './types';
 
 // ---- リソース ----
 
 export const RESOURCE_TYPES: ResourceType[] = ['wood', 'brick', 'wool', 'grain', 'ore'];
+
+// ---- 騎士と商人(Cities & Knights): 商品(コモディティ) ----
+export const COMMODITY_TYPES: CommodityType[] = ['coin', 'cloth', 'paper'];
+
+/** 全コモディティキーを含む CommodityHand を生成。省略キーは 0。 */
+export function makeCommodities(partial: Partial<CommodityHand> = {}): CommodityHand {
+  return { coin: 0, cloth: 0, paper: 0, ...partial };
+}
+
+// 都市が追加産出する商品の対応（森→紙 / 牧草→布 / 山→金貨）。他地形は商品なし。
+export const TILE_COMMODITY_MAP: Record<TileType, CommodityType | null> = {
+  forest:   'paper',
+  pasture:  'cloth',
+  mountain: 'coin',
+  field:    null,
+  hill:     null,
+  desert:   null,
+  sea:      null,
+  gold:     null,
+};
 
 export const TILE_RESOURCE_MAP: Record<TileType, ResourceType | null> = {
   forest:   'wood',
