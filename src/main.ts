@@ -28,6 +28,7 @@ import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
 import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction, centeredZoom, ZOOM_LIMITS } from './renderer/events';
+import { buildScenarioSelect, getScenarioSelectValue } from './renderer/scenarioSelect';
 import type { BuildMode } from './renderer/events';
 import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
@@ -176,19 +177,15 @@ function renderHome(
   speedField.appendChild(speedGroup);
   cpuForm.appendChild(speedField);
 
-  // ---- 盤面（ルール）: 基本 or 航海者拡張 ----
+  // ---- 盤面（ルール）: 基本 or 航海者の各シナリオ（ドロップダウン＋説明） ----
   const scenarioField = document.createElement('div');
   scenarioField.className = 'home-field';
   const scenarioLabel = document.createElement('label');
   scenarioLabel.className = 'home-label';
   scenarioLabel.textContent = '盤面（ルール）';
-  const scenarioGroup = document.createElement('div');
-  scenarioGroup.className = 'home-radio-group';
-  const scenarioDefault = lastConfig?.scenario === 'seafarers_newshores' ? '航海者'
-    : lastConfig?.scenario === 'seafarers_archipelago' ? '群島' : '基本';
-  scenarioGroup.appendChild(createRadioGroup('scenario', ['基本', '航海者', '群島'], scenarioDefault));
+  const scenarioSelect = buildScenarioSelect({ current: lastConfig?.scenario ?? 'classic' });
   scenarioField.appendChild(scenarioLabel);
-  scenarioField.appendChild(scenarioGroup);
+  scenarioField.appendChild(scenarioSelect);
   cpuForm.appendChild(scenarioField);
 
   // ---- プレイヤー順 ----
@@ -342,10 +339,8 @@ function renderHome(
     const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast' };
     const cpuSpeed: CpuSpeed = speedMap[speedVal] ?? 'normal';
 
-    // 盤面シナリオ（基本 / 航海者 / 群島）を読み取る
-    const scenVal = (scenarioGroup.querySelector('input[name="scenario"]:checked') as HTMLInputElement | null)?.value ?? '基本';
-    const scenario: ScenarioId = scenVal === '航海者' ? 'seafarers_newshores'
-      : scenVal === '群島' ? 'seafarers_archipelago' : 'classic';
+    // 盤面シナリオを読み取る（ドロップダウンの値＝ScenarioId）。
+    const scenario: ScenarioId = getScenarioSelectValue(scenarioSelect);
 
     // プレイヤー順設定を読み取る
     const orderMode = readOrderMode();

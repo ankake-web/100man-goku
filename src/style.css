@@ -1702,6 +1702,26 @@ h1 {
 }
 @keyframes lanSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .lan-spinner { animation-duration: 2.4s; } }
+
+/* ---- 盤面シナリオ選択（ドロップダウン＋説明）。ホーム/ロビー共通 ---- */
+.scenario-select { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
+.scenario-dropdown {
+  width: 100%; padding: 9px 10px; border-radius: 8px;
+  background: rgba(20,24,34,0.92); color: #fff;
+  border: 1px solid rgba(208,168,108,0.45);
+  font-size: 0.95rem; cursor: pointer;
+}
+.scenario-dropdown:focus { outline: none; border-color: rgba(208,168,108,0.85); }
+.scenario-dropdown:disabled { opacity: 0.65; cursor: default; }
+.scenario-desc {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 0.8rem; line-height: 1.45;
+  background: rgba(255,255,255,0.05); border-radius: 7px; padding: 6px 9px;
+}
+.scenario-vp { color: #ffcf4d; font-weight: 700; white-space: nowrap; }
+.scenario-desc-text { color: rgba(255,255,255,0.72); }
+/* ロビー: 盤面行は縦積み（説明に幅が要る） */
+.lan-cfg-scenario { flex-direction: column; align-items: stretch; gap: 6px; }
 .lan-leave { margin-top: 2px; }
 
 /* 名前入力欄＋🎲 再生成ボタン（ロビー / CPUホーム共通） */

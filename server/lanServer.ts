@@ -34,6 +34,10 @@ import type { ClientMessage, ServerMessage, LobbyPlayer, LanOrderMode } from '..
 import type { PlayerId, PlayerColor, PlayerType, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
 import type { ScenarioId } from '../src/engine/scenarios';
+import { listScenarios } from '../src/engine/scenarios';
+
+// 受理する盤面シナリオID（レジストリ由来＝追加シナリオも自動で許可）。
+const KNOWN_SCENARIO_IDS = new Set<ScenarioId>(listScenarios().map(s => s.id));
 import type { PlayerOrderMode } from '../src/engine/setup';
 
 // LAN 同期する Action（サーバ側ホワイトリスト）。
@@ -518,7 +522,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
           if (msg.orderMode === 'random' || msg.orderMode === 'joined') {
             room.orderMode = msg.orderMode;
           }
-          if (msg.scenario === 'classic' || msg.scenario === 'seafarers_newshores' || msg.scenario === 'seafarers_archipelago') {
+          if (msg.scenario && KNOWN_SCENARIO_IDS.has(msg.scenario)) {
             room.scenario = msg.scenario;
           }
           broadcastLobby(room, currentUrls());

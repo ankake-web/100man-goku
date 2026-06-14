@@ -14,7 +14,14 @@ import type { AxialCoord, Tile, TileId, TileType, Harbor, HarborType } from '../
 import { getAllTileCoords, getHexRegion, tileId, parseTileId, edgeTileIds, type BoardGeometry } from './board';
 import { createRandomBoard } from './setup';
 
-export type ScenarioId = 'classic' | 'seafarers_newshores' | 'seafarers_archipelago';
+export type ScenarioId =
+  | 'classic'
+  | 'seafarers_newshores'
+  | 'seafarers_archipelago'
+  | 'seafarers_throughdesert'
+  | 'seafarers_goldenisles'
+  | 'seafarers_chainisles'
+  | 'seafarers_greatercatan';
 
 export interface ScenarioBoard {
   tiles: Record<TileId, Tile>;
@@ -24,6 +31,10 @@ export interface ScenarioBoard {
 export interface Scenario {
   readonly id: ScenarioId;
   readonly name: string;
+  /** UI 用の1行説明。 */
+  readonly description: string;
+  /** UI のグルーピング用カテゴリ。 */
+  readonly category: 'basic' | 'seafarers';
   /** タイル座標集合（盤面幾何の生成に使う）。航海者の可変盤ではここを差し替える。 */
   coords(): AxialCoord[];
   /** 幾何確定後にタイル種別・数字・港を割り当てる。 */
@@ -36,6 +47,8 @@ export interface Scenario {
 const classic: Scenario = {
   id: 'classic',
   name: '基本',
+  description: '標準の19タイル。海・船なしのオリジナルルール（10点で勝利）。',
+  category: 'basic',
   coords: () => getAllTileCoords(),
   build: (geo, rng) => createRandomBoard(geo, rng),
 };
@@ -127,6 +140,8 @@ function buildFromLandMap(landMap: LandMap): (geo: BoardGeometry, rng: () => num
 const seafarersNewShores: Scenario = {
   id: 'seafarers_newshores',
   name: '航海者：新たな海岸を求めて',
+  description: '本島から海峡を渡り、対岸の新島へ入植。最初の入植で+2点（13点で勝利）。',
+  category: 'seafarers',
   coords: SEAFARERS_COORDS,
   build: buildFromLandMap(NEW_SHORES_LAND),
   victoryTarget: 13,
@@ -166,15 +181,137 @@ const ARCHIPELAGO_LAND: LandMap = {
 const seafarersArchipelago: Scenario = {
   id: 'seafarers_archipelago',
   name: '航海者：群島',
+  description: '海で隔てた3つの島。本島＋新島2つを巡る、島ボーナスと金の争奪戦（13点）。',
+  category: 'seafarers',
   coords: SEAFARERS_COORDS,
   build: buildFromLandMap(ARCHIPELAGO_LAND),
   victoryTarget: 13,
+};
+
+// ============================================================
+// 追加シナリオ（航海者）。いずれも「本島＝最大の陸塊」で初期配置し、
+// それ以外の島へは航海で渡る（最初の入植で+2点）。陸タイル定義のみ書けば
+// 残りは海・港は自動配置（buildFromLandMap / coastalHarbors）。
+// ============================================================
+
+// 共通の本島（左 q=-3..-1、12タイル・全5資源＋砂漠）。各追加マップで使い回す。
+const MAIN_ISLAND: LandMap = {
+  '-3,0':  { type: 'forest',   number: 9 },
+  '-3,1':  { type: 'field',    number: 8 },
+  '-3,2':  { type: 'pasture',  number: 4 },
+  '-2,-1': { type: 'mountain', number: 5 },
+  '-2,0':  { type: 'hill',     number: 10 },
+  '-2,1':  { type: 'forest',   number: 3 },
+  '-2,2':  { type: 'field',    number: 11 },
+  '-1,-2': { type: 'pasture',  number: 6 },
+  '-1,-1': { type: 'desert',   number: null, robber: true },
+  '-1,0':  { type: 'mountain', number: 9 },
+  '-1,1':  { type: 'hill',     number: 2 },
+  '-1,2':  { type: 'field',    number: 5 },
+};
+
+// ---- 砂漠を越えて：広い大洋(q=0,1は海)の先に、遠い金の島（右奥 q=2,3）。長い航路が要る。 ----
+const THROUGH_DESERT_LAND: LandMap = {
+  ...MAIN_ISLAND,
+  '2,-2': { type: 'forest',   number: 5 },
+  '3,-2': { type: 'gold',     number: 8 },
+  '2,-1': { type: 'field',    number: 4 },
+  '3,-1': { type: 'pasture',  number: 10 },
+  '3,0':  { type: 'gold',     number: 9 },
+  '2,1':  { type: 'hill',     number: 6 },
+};
+
+// ---- 黄金諸島：右に2つの新島、合計3つの金タイル。ゴールドラッシュ。 ----
+const GOLDEN_ISLES_LAND: LandMap = {
+  ...MAIN_ISLAND,
+  // 新島A（上 4）：金1
+  '1,-2': { type: 'forest',   number: 6 },
+  '2,-2': { type: 'gold',     number: 9 },
+  '3,-2': { type: 'field',    number: 4 },
+  '2,-1': { type: 'hill',     number: 10 },
+  // 新島B（下 4）：金2
+  '1,1':  { type: 'field',    number: 8 },
+  '2,1':  { type: 'gold',     number: 4 },
+  '1,2':  { type: 'pasture',  number: 5 },
+  '3,0':  { type: 'gold',     number: 11 },
+};
+
+// ---- 連なる島々：小さな島が点在（島ボーナスを稼ぐアイランドホッピング）。 ----
+const CHAIN_ISLES_LAND: LandMap = {
+  ...MAIN_ISLAND,
+  // 島1（上）
+  '1,-2': { type: 'field',    number: 6 },
+  '1,-1': { type: 'gold',     number: 8 },
+  // 島2（中）
+  '2,0':  { type: 'forest',   number: 5 },
+  '3,0':  { type: 'pasture',  number: 9 },
+  // 島3（下）
+  '2,1':  { type: 'hill',     number: 4 },
+  '1,2':  { type: 'mountain', number: 10 },
+};
+
+// ---- 大連邦：海を少なくした大きな一枚陸。船は控えめ、人数多めでも遊べる大盤（12点）。 ----
+// 本島を右へ拡張して大陸化。沿岸に港、奥に金1。新島ボーナスは発生しない（1つの陸塊）。
+const GREATER_CATAN_LAND: LandMap = {
+  ...MAIN_ISLAND,
+  '0,-2': { type: 'forest',   number: 3 },
+  '0,-1': { type: 'field',    number: 11 },
+  '0,0':  { type: 'pasture',  number: 6 },
+  '0,1':  { type: 'hill',     number: 8 },
+  '1,-2': { type: 'mountain', number: 4 },
+  '1,-1': { type: 'gold',     number: 10 },
+  '1,0':  { type: 'forest',   number: 9 },
+  '1,1':  { type: 'field',    number: 3 },
+  '2,-1': { type: 'pasture',  number: 5 },
+  '2,0':  { type: 'mountain', number: 11 },
+  '2,-2': { type: 'hill',     number: 12 },
+};
+
+const seafarersThroughDesert: Scenario = {
+  id: 'seafarers_throughdesert',
+  name: '航海者：砂漠を越えて',
+  description: '広い大洋の先に遠い「金の島」。長い航路を繋いで渡れた者が勝つ（13点）。',
+  category: 'seafarers',
+  coords: SEAFARERS_COORDS,
+  build: buildFromLandMap(THROUGH_DESERT_LAND),
+  victoryTarget: 13,
+};
+const seafarersGoldenIsles: Scenario = {
+  id: 'seafarers_goldenisles',
+  name: '航海者：黄金諸島',
+  description: '金タイルが3つ。好きな資源を産む金を巡るゴールドラッシュ（13点）。',
+  category: 'seafarers',
+  coords: SEAFARERS_COORDS,
+  build: buildFromLandMap(GOLDEN_ISLES_LAND),
+  victoryTarget: 13,
+};
+const seafarersChainIsles: Scenario = {
+  id: 'seafarers_chainisles',
+  name: '航海者：連なる島々',
+  description: '小さな島が点在。島ボーナスを稼ぐアイランドホッピング（13点）。',
+  category: 'seafarers',
+  coords: SEAFARERS_COORDS,
+  build: buildFromLandMap(CHAIN_ISLES_LAND),
+  victoryTarget: 13,
+};
+const seafarersGreaterCatan: Scenario = {
+  id: 'seafarers_greatercatan',
+  name: '航海者：大連邦',
+  description: '海を少なくした大きな一枚大陸。船は控えめの拡大版（12点）。',
+  category: 'seafarers',
+  coords: SEAFARERS_COORDS,
+  build: buildFromLandMap(GREATER_CATAN_LAND),
+  victoryTarget: 12,
 };
 
 const SCENARIOS: Record<ScenarioId, Scenario> = {
   classic,
   seafarers_newshores: seafarersNewShores,
   seafarers_archipelago: seafarersArchipelago,
+  seafarers_throughdesert: seafarersThroughDesert,
+  seafarers_goldenisles: seafarersGoldenIsles,
+  seafarers_chainisles: seafarersChainIsles,
+  seafarers_greatercatan: seafarersGreaterCatan,
 };
 
 /** シナリオIDからシナリオ定義を取得（未知IDは基本にフォールバック）。 */
@@ -182,7 +319,17 @@ export function getScenario(id: ScenarioId = 'classic'): Scenario {
   return SCENARIOS[id] ?? classic;
 }
 
-/** UI/設定で使うシナリオ一覧（id, 表示名）。 */
-export function listScenarios(): ReadonlyArray<{ id: ScenarioId; name: string }> {
-  return (Object.keys(SCENARIOS) as ScenarioId[]).map(id => ({ id, name: SCENARIOS[id].name }));
+export interface ScenarioInfo {
+  id: ScenarioId;
+  name: string;
+  description: string;
+  category: 'basic' | 'seafarers';
+  victoryTarget: number;
+}
+/** UI/設定で使うシナリオ一覧（id, 表示名, 説明, カテゴリ, 勝利点）。 */
+export function listScenarios(): ReadonlyArray<ScenarioInfo> {
+  return (Object.keys(SCENARIOS) as ScenarioId[]).map(id => {
+    const s = SCENARIOS[id];
+    return { id, name: s.name, description: s.description, category: s.category, victoryTarget: s.victoryTarget ?? 10 };
+  });
 }
