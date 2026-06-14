@@ -107,19 +107,30 @@ h1 {
 }
 #zoom-reset:hover { background: rgba(28,32,44,0.92); }
 
-/* 盤面ズーム操作（＋ / 全体表示 / −）。盤面の左上の角（常に海＝タイルなし）に小さく表示し、
-   タイルや数字に被らないようにする。 */
+/* 盤面ズーム操作（グリップ＋ − / 全体表示 / ＋）。既定は盤面左上（常に海＝タイルなし）。
+   グリップ(⠿)を掴んで好きな位置へドラッグ移動できる。 */
 #board-zoom {
   position: absolute;
   left: 6px; top: 6px;
   z-index: 6;
-  display: flex; gap: 4px;
+  display: flex; align-items: center; gap: 4px;
   padding: 3px;
   border-radius: 18px;
   background: rgba(12,14,20,0.55);
   box-shadow: 0 1px 5px rgba(0,0,0,0.4);
   backdrop-filter: blur(3px);
+  touch-action: none;        /* グリップのドラッグでスクロール/ズームに奪われない */
 }
+#board-zoom.dragging { box-shadow: 0 3px 12px rgba(0,0,0,0.6); }
+#board-zoom .zoom-drag {
+  width: 18px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.55); font-size: 0.9rem; line-height: 1;
+  cursor: grab;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+#board-zoom.dragging .zoom-drag { cursor: grabbing; }
 #board-zoom .zoom-btn {
   width: 30px; height: 30px;
   border-radius: 50%;

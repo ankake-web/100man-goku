@@ -2434,8 +2434,61 @@ function resetBoardZoom(): void {
   redraw();
 }
 
-// 盤面のズーム操作クラスタ（＋ / − / 全体表示）を盤面下部中央に常時表示。
-// マップ部分だけ拡縮でき、拡大時はドラッグ/スワイプで島をスクロール可能。
+// ズーム操作クラスタの表示位置（board-area に対する割合）を記憶する。
+const ZOOM_POS_KEY = 'catan.zoomCtrlPos';
+function loadZoomPos(): { fx: number; fy: number } | null {
+  try { const s = localStorage.getItem(ZOOM_POS_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveZoomPos(fx: number, fy: number): void {
+  try { localStorage.setItem(ZOOM_POS_KEY, JSON.stringify({ fx, fy })); } catch { /* ignore */ }
+}
+// 記憶した割合位置を現在の board-area サイズに合わせて反映（はみ出さないようクランプ）。
+function applyZoomPos(box: HTMLElement, host: HTMLElement): void {
+  const pos = loadZoomPos();
+  if (!pos) return;
+  const bw = box.offsetWidth || 110, bh = box.offsetHeight || 36;
+  const maxX = Math.max(0, host.clientWidth - bw), maxY = Math.max(0, host.clientHeight - bh);
+  const nx = Math.min(maxX, Math.max(0, pos.fx * host.clientWidth));
+  const ny = Math.min(maxY, Math.max(0, pos.fy * host.clientHeight));
+  box.style.left = `${nx}px`; box.style.top = `${ny}px`;
+  box.style.right = 'auto'; box.style.bottom = 'auto';
+}
+// グリップ(⠿)を掴んでクラスタを自由に移動できるようにする。位置は割合で記憶。
+function makeZoomDraggable(box: HTMLElement, handle: HTMLElement): void {
+  let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+  handle.addEventListener('pointerdown', (e) => {
+    const host = document.getElementById('board-area');
+    if (!host) return;
+    dragging = true;
+    try { handle.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    const r = box.getBoundingClientRect(), hr = host.getBoundingClientRect();
+    sx = e.clientX; sy = e.clientY; ox = r.left - hr.left; oy = r.top - hr.top;
+    box.classList.add('dragging');
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const host = document.getElementById('board-area');
+    if (!host) return;
+    const maxX = Math.max(0, host.clientWidth - box.offsetWidth);
+    const maxY = Math.max(0, host.clientHeight - box.offsetHeight);
+    const nx = Math.min(maxX, Math.max(0, ox + (e.clientX - sx)));
+    const ny = Math.min(maxY, Math.max(0, oy + (e.clientY - sy)));
+    box.style.left = `${nx}px`; box.style.top = `${ny}px`;
+    box.style.right = 'auto'; box.style.bottom = 'auto';
+    saveZoomPos(host.clientWidth ? nx / host.clientWidth : 0, host.clientHeight ? ny / host.clientHeight : 0);
+    e.preventDefault();
+  });
+  const end = (e: PointerEvent): void => {
+    dragging = false; box.classList.remove('dragging');
+    try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
+// 盤面のズーム操作クラスタ（グリップ＋ − / 全体表示 / ＋）。既定は盤面左上、
+// グリップを掴んで好きな位置へドラッグ移動でき、位置は記憶される。
 function updateZoomControls(): void {
   const host = document.getElementById('board-area');
   if (!host || !inGame) { document.getElementById('board-zoom')?.remove(); return; }
@@ -2443,25 +2496,32 @@ function updateZoomControls(): void {
   if (!box) {
     box = document.createElement('div');
     box.id = 'board-zoom';
-    const mk = (txt: string, title: string, fn: () => void): HTMLButtonElement => {
+    const handle = document.createElement('div');
+    handle.className = 'zoom-drag';
+    handle.textContent = '⠿';
+    handle.title = 'ドラッグで移動';
+    handle.setAttribute('aria-label', 'ズーム操作の位置を移動');
+    box.appendChild(handle);
+    const mk = (txt: string, cls: string, title: string, fn: () => void): HTMLButtonElement => {
       const b = document.createElement('button');
-      b.className = 'zoom-btn';
+      b.className = `zoom-btn ${cls}`;
       b.textContent = txt;
       b.title = title;
       b.setAttribute('aria-label', title);
       b.addEventListener('click', fn);
       return b;
     };
-    box.appendChild(mk('−', '縮小（全体を表示）', () => zoomBoardBy(1 / 1.25)));
-    box.appendChild(mk('⤢', '全体表示に戻す', () => resetBoardZoom()));
-    box.appendChild(mk('＋', '拡大（島を大きく表示）', () => zoomBoardBy(1.25)));
+    box.appendChild(mk('−', 'z-out', '縮小（全体を表示）', () => zoomBoardBy(1 / 1.25)));
+    box.appendChild(mk('⤢', 'z-reset', '全体表示に戻す', () => resetBoardZoom()));
+    box.appendChild(mk('＋', 'z-in', '拡大（島を大きく表示）', () => zoomBoardBy(1.25)));
     host.appendChild(box);
+    applyZoomPos(box, host);
+    makeZoomDraggable(box, handle);
   }
   const s = boardViewport.scale;
-  const [zout, zreset, zin] = Array.from(box.children) as HTMLButtonElement[];
-  zout!.toggleAttribute('disabled', s <= ZOOM_LIMITS.min + 0.001);
-  zin!.toggleAttribute('disabled', s >= ZOOM_LIMITS.max - 0.001);
-  zreset!.classList.toggle('active', Math.abs(s - 1) > 0.01);
+  (box.querySelector('.z-out') as HTMLButtonElement | null)?.toggleAttribute('disabled', s <= ZOOM_LIMITS.min + 0.001);
+  (box.querySelector('.z-in') as HTMLButtonElement | null)?.toggleAttribute('disabled', s >= ZOOM_LIMITS.max - 0.001);
+  (box.querySelector('.z-reset') as HTMLButtonElement | null)?.classList.toggle('active', Math.abs(s - 1) > 0.01);
 }
 
 // 飛行中の一時演出ノード（ダイス/資源/盗賊/略奪/得点ポップ/手番トースト）を掃除する。
