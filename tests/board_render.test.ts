@@ -36,3 +36,24 @@ describe('盤面描画（jsdom）: 海賊マーカー', () => {
     expect(svg.querySelector('.pirate')).toBeNull();
   });
 });
+
+describe('盤面描画（jsdom）: 騎士と商人のコマ', () => {
+  it('vertex.knight があれば .knight-piece、メトロポリスは .metropolis-mark を描く', () => {
+    const s: GameState = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'cities_knights');
+    // 適当な空き頂点に騎士、別の頂点に player1 のメトロポリス都市を置く。
+    const vids = Object.keys(s.vertices);
+    const kv = vids[0]!, mv = vids[10]!;
+    const s2: GameState = {
+      ...s,
+      vertices: {
+        ...s.vertices,
+        [kv]: { ...s.vertices[kv]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [mv]: { ...s.vertices[mv]!, building: { type: 'city', playerId: 'player1', metropolis: true } },
+      },
+    };
+    const svg = svgEl();
+    renderBoard(svg, s2, {});
+    expect(svg.querySelector('.knight-piece')).not.toBeNull();
+    expect(svg.querySelector('.metropolis-mark')).not.toBeNull();
+  });
+});
