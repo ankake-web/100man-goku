@@ -122,7 +122,7 @@ export function applyAction(
 
       // ---- 騎士と商人: 毎ターン イベントダイス(蛮族)も振り、産出は資源＋商品。----
       if (isCk(state)) {
-        next = applyEventDie(next, rng); // 7でも蛮族は前進する
+        next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で商品報酬
         if (total === 7) {
           const needsDiscard = state.playerOrder.some(p =>
             RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= ckDiscardThreshold(next, p));

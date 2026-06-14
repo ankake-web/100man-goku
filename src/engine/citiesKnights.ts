@@ -247,17 +247,30 @@ export function resolveBarbarianAttack(state: GameState): GameState {
   return { ...state, players, vertices, barbarianPosition: 0, barbarianAttacks: (state.barbarianAttacks ?? 0) + 1 };
 }
 
-/** ROLL_DICE後にイベントダイスを処理（蛮族前進・襲来）。色面は当面効果なし(進歩カードは後続)。 */
-export function applyEventDie(state: GameState, rng: () => number): GameState {
+/**
+ * ROLL_DICE後にイベントダイスを処理。
+ *  - 蛮族船: 前進し、CK_BARBARIAN_MAX で襲来判定。
+ *  - 色(交易/政治/科学): その色の改善レベルが赤ダイス(redDie)以上のプレイヤーに、その色の商品を1個。
+ *    （公式の進歩カード抽選の簡易版＝改善投資への報酬。redDie は出目の片方1..6）
+ */
+export function applyEventDie(state: GameState, rng: () => number, redDie: number): GameState {
   const face = rollEventDie(rng);
   let next: GameState = { ...state, lastEventDie: face };
   if (face === 'ship') {
     const pos = (next.barbarianPosition ?? 0) + 1;
-    if (pos >= CK_BARBARIAN_MAX) {
-      next = resolveBarbarianAttack({ ...next, barbarianPosition: pos });
-    } else {
-      next = { ...next, barbarianPosition: pos };
+    next = pos >= CK_BARBARIAN_MAX ? resolveBarbarianAttack({ ...next, barbarianPosition: pos }) : { ...next, barbarianPosition: pos };
+  } else {
+    const c = CK_TRACK_COMMODITY[face];
+    const players = { ...next.players };
+    let changed = false;
+    for (const pid of next.playerOrder) {
+      const p = players[pid]!;
+      if ((p.improvements?.[face] ?? 0) >= redDie) {
+        players[pid] = { ...p, commodities: { ...commodities(p), [c]: commodities(p)[c] + 1 } };
+        changed = true;
+      }
     }
+    if (changed) next = { ...next, players };
   }
   return next;
 }

@@ -34,6 +34,11 @@ export function getEffectiveTradeRate(
     if (harbor === resource) rate = Math.min(rate, 2);
   }
 
+  // 騎士と商人: 交易ツリーLv3(トレーディングハウス)以上は全資源を銀行と2:1で交易できる。
+  if (state.expansion === 'cities_knights' && (state.players[playerId]?.improvements?.trade ?? 0) >= 3) {
+    rate = Math.min(rate, 2);
+  }
+
   return rate;
 }
 
