@@ -27,7 +27,7 @@ import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
-import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction } from './renderer/events';
+import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction, centeredZoom, ZOOM_LIMITS } from './renderer/events';
 import type { BuildMode } from './renderer/events';
 import { chooseAction, evaluateTradeOffer } from './engine/ai';
 import type { AiOpts } from './engine/ai';
@@ -759,7 +759,7 @@ function redraw(skipBoard = false): void {
     );
     updateGameNav();
     updatePlaceConfirmBar();
-    updateZoomReset();
+    updateZoomControls();
     updateLandscapeSheet();
     return;
   }
@@ -776,7 +776,7 @@ function redraw(skipBoard = false): void {
   renderUI(uiDiv, state, buildMode, setBuildMode, uiPhase, setUIPhase, dispatch);
   updateGameNav();
   updatePlaceConfirmBar();
-  updateZoomReset();
+  updateZoomControls();
   // CPUが責任を持つ場面ならフリーズ対策ウォッチドッグを再武装
   armCpuWatchdog();
   updateLandscapeSheet();
@@ -2408,27 +2408,60 @@ let boardEventsAttached = false;
 let boardViewport: BoardViewport = { scale: 1, tx: 0, ty: 0 };
 function setBoardViewport(vp: BoardViewport): void {
   boardViewport = vp;
-  updateZoomReset();
+  updateZoomControls();
 }
 
-// 拡大中のみ「ズーム解除」ボタンを盤面左下に出す。
-function updateZoomReset(): void {
+// 盤面の中心(viewBox中心)を返す。
+function boardCenter(): { cx: number; cy: number } {
+  const b = svgBoard.viewBox?.baseVal;
+  const w = b?.width || 800, h = b?.height || 700;
+  return { cx: (b?.x || 0) + w / 2, cy: (b?.y || 0) + h / 2 };
+}
+
+// 盤面を中心固定で拡大/縮小（factor>1=拡大, <1=縮小）。
+function zoomBoardBy(factor: number): void {
+  const { cx, cy } = boardCenter();
+  boardViewport = centeredZoom(boardViewport.scale * factor, cx, cy);
+  updateZoomControls();
+  redraw();
+}
+
+// 盤面ズームを等倍（全体表示）に戻す。
+function resetBoardZoom(): void {
+  const { cx, cy } = boardCenter();
+  boardViewport = centeredZoom(1, cx, cy);
+  updateZoomControls();
+  redraw();
+}
+
+// 盤面のズーム操作クラスタ（＋ / − / 全体表示）を盤面下部中央に常時表示。
+// マップ部分だけ拡縮でき、拡大時はドラッグ/スワイプで島をスクロール可能。
+function updateZoomControls(): void {
   const host = document.getElementById('board-area');
-  let btn = document.getElementById('zoom-reset');
-  if (!host || boardViewport.scale <= 1) { btn?.remove(); return; }
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'zoom-reset';
-    btn.textContent = '⟲';
-    btn.title = 'ズームを元に戻す';
-    btn.setAttribute('aria-label', 'ズームを元に戻す');
-    btn.addEventListener('click', () => {
-      boardViewport = { scale: 1, tx: 0, ty: 0 };
-      updateZoomReset();
-      redraw();
-    });
-    host.appendChild(btn);
+  if (!host || !inGame) { document.getElementById('board-zoom')?.remove(); return; }
+  let box = document.getElementById('board-zoom');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'board-zoom';
+    const mk = (txt: string, title: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = 'zoom-btn';
+      b.textContent = txt;
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.addEventListener('click', fn);
+      return b;
+    };
+    box.appendChild(mk('−', '縮小（全体を表示）', () => zoomBoardBy(1 / 1.25)));
+    box.appendChild(mk('⤢', '全体表示に戻す', () => resetBoardZoom()));
+    box.appendChild(mk('＋', '拡大（島を大きく表示）', () => zoomBoardBy(1.25)));
+    host.appendChild(box);
   }
+  const s = boardViewport.scale;
+  const [zout, zreset, zin] = Array.from(box.children) as HTMLButtonElement[];
+  zout!.toggleAttribute('disabled', s <= ZOOM_LIMITS.min + 0.001);
+  zin!.toggleAttribute('disabled', s >= ZOOM_LIMITS.max - 0.001);
+  zreset!.classList.toggle('active', Math.abs(s - 1) > 0.01);
 }
 
 // 飛行中の一時演出ノード（ダイス/資源/盗賊/略奪/得点ポップ/手番トースト）を掃除する。
@@ -2827,7 +2860,7 @@ function returnToHome(): void {
   inGame = false;
   pendingNetStates = [];
   document.querySelector('.victory-overlay')?.remove(); document.querySelector('.dicestats-overlay')?.remove(); document.getElementById('cpu-status')?.remove();
-  document.getElementById('zoom-reset')?.remove(); document.getElementById('place-confirm')?.remove();
+  document.getElementById('zoom-reset')?.remove(); document.getElementById('board-zoom')?.remove(); document.getElementById('place-confirm')?.remove();
   boardViewport = { scale: 1, tx: 0, ty: 0 };
   diceAnimating = false;
   clearTransientFx();

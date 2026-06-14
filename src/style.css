@@ -107,6 +107,33 @@ h1 {
 }
 #zoom-reset:hover { background: rgba(28,32,44,0.92); }
 
+/* 盤面ズーム操作（＋ / 全体表示 / −）。盤面下部中央に常時表示。四隅のパネルと被らない位置。 */
+#board-zoom {
+  position: absolute;
+  left: 50%; bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex; gap: 6px;
+  padding: 4px;
+  border-radius: 22px;
+  background: rgba(12,14,20,0.72);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+  backdrop-filter: blur(3px);
+}
+#board-zoom .zoom-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.28);
+  background: rgba(28,32,44,0.9);
+  color: #fff; font-size: 1.15rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#board-zoom .zoom-btn:hover { background: rgba(48,54,72,0.95); }
+#board-zoom .zoom-btn:disabled { opacity: 0.35; cursor: default; }
+#board-zoom .zoom-btn.active { border-color: #ffcf4d; color: #ffcf4d; }
+
 /* ---- 広い画面: プレイヤーパネルを盤面の四隅に配置 ---- */
 @media (min-width: 1200px) {
   /* 3カラムのゲーム領域として一体配置:

@@ -89,19 +89,35 @@ describe('resolvePlacePreviewAction (確認ステップの確定)', () => {
   });
 });
 
-describe('clampViewport (ピンチズーム/パンの範囲制限)', () => {
-  it('scale<=1 は中央(tx=ty=0)へ戻す', () => {
-    expect(clampViewport({ scale: 0.5, tx: 100, ty: 100 }, 800, 700)).toEqual({ scale: 1, tx: 0, ty: 0 });
+describe('clampViewport (ズーム/パンの範囲制限・中心維持)', () => {
+  it('等倍は中央(tx=ty=0)', () => {
+    // 既定の中心は viewBox 中央(vbW/2,vbH/2)。
     expect(clampViewport({ scale: 1, tx: 50, ty: 50 }, 800, 700)).toEqual({ scale: 1, tx: 0, ty: 0 });
   });
 
-  it('最大倍率を超えない', () => {
-    expect(clampViewport({ scale: 9, tx: 0, ty: 0 }, 800, 700).scale).toBe(2.6);
+  it('縮小(scale<1)は中心を固定して全体を小さく表示する', () => {
+    // tx,ty は中心(400,350)を固定する基準値 cx*(1-scale) になる。
+    const r = clampViewport({ scale: 0.5, tx: 100, ty: 100 }, 800, 700);
+    expect(r.scale).toBe(0.5);
+    expect(r.tx).toBeCloseTo(200); // 400*(1-0.5)
+    expect(r.ty).toBeCloseTo(175); // 350*(1-0.5)
   });
 
-  it('拡大時の tx/ty を ±(vb*(scale-1)/2) に制限する', () => {
+  it('最小・最大倍率を超えない', () => {
+    expect(clampViewport({ scale: 9, tx: 0, ty: 0 }, 800, 700).scale).toBe(3);
+    expect(clampViewport({ scale: 0.1, tx: 0, ty: 0 }, 800, 700).scale).toBe(0.5);
+  });
+
+  it('拡大時の tx/ty を中心基準 ±(vb*(scale-1)/2) に制限する', () => {
+    // 中心(400,350)。scale=2 の基準 base=cx*(1-2)=-400, 可動幅 ±400。
     const r = clampViewport({ scale: 2, tx: 9999, ty: -9999 }, 800, 700);
-    expect(r.tx).toBeCloseTo(400);   // 800*(2-1)/2
-    expect(r.ty).toBeCloseTo(-350);  // 700*(2-1)/2
+    expect(r.tx).toBeCloseTo(0);     // base(-400)+max(400)
+    expect(r.ty).toBeCloseTo(-700);  // base(-350)-max(350)
+  });
+
+  it('中心(cx,cy)を渡すとその点を固定して拡縮する', () => {
+    const r = clampViewport({ scale: 0.6, tx: 0, ty: 0 }, 752, 658, 400, 350);
+    expect(r.tx).toBeCloseTo(160); // 400*(1-0.6)
+    expect(r.ty).toBeCloseTo(140); // 350*(1-0.6)
   });
 });

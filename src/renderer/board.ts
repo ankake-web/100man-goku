@@ -54,8 +54,9 @@ export interface BoardViewport {
   ty: number;
 }
 
-// 強盗コマをタイル中心から下へずらす量（数字チップとの重なり回避）。
-const ROBBER_DY = 22;
+// 強盗コマをタイル中心から下へずらす量。大きめに下げて、数字チップの数字が
+// コマの上に覗くようにする（数字の視認性確保）。
+const ROBBER_DY = 31;
 
 // タッチ端末（スマホ等）か。港・数字チップを少し大きくして見やすくする。
 function isTouchDevice(): boolean {
@@ -220,7 +221,7 @@ function renderTile(
   if (tile.hasRobber) {
     const touch = isTouchDevice();
     const ry = cy + ROBBER_DY;
-    const w = size * (touch ? 1.3 : 1.12);          // 画像の表示サイズ（透明余白込み）
+    const w = size * (touch ? 0.92 : 0.8);          // 小さめ表示（数字チップと被っても数字が上に見えるよう）
     const rg = svgEl('g');
     rg.classList.add('robber');
 
@@ -240,10 +241,11 @@ function renderTile(
   }
 
   // 海賊コマ（航海者）: 海タイルに海賊船フィギュア画像。盗賊と排他（海タイルに盗賊は乗らない）。
+  // 海タイルは数字がないので強盗ほど下げず、中央寄りに置く。
   if (opts?.piratePosition === tile.id) {
     const touch = isTouchDevice();
-    const ry = cy + ROBBER_DY;
-    const w = size * (touch ? 1.32 : 1.14);
+    const ry = cy + 18;
+    const w = size * (touch ? 1.2 : 1.05);
     const pg = svgEl('g');
     pg.classList.add('pirate');
     const shadow = svgEl('ellipse');

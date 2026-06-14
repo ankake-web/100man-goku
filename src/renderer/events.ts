@@ -303,21 +303,39 @@ const SUPPRESS_CLICK_MS = 350;
 function markGestureMoved(): void { suppressClickUntil = Date.now() + SUPPRESS_CLICK_MS; }
 function consumeSuppressClick(): boolean { return Date.now() < suppressClickUntil; }
 
-const MIN_SCALE = 1;
-const MAX_SCALE = 2.6;
+// 盤面ズームの倍率レンジ。min<1=全体縮小（大きい盤面で四隅のパネルと被らないよう小さく表示）。
+export const ZOOM_LIMITS = { min: 0.5, max: 3 };
+const MIN_SCALE = ZOOM_LIMITS.min;
+const MAX_SCALE = ZOOM_LIMITS.max;
 const PAN_THRESHOLD = 8; // screen px。これ未満の1本指移動はタップ(配置)扱い。
 
-/** ビューポートを範囲内に収める純粋関数。scale<=1 は中央(tx=ty=0)へ戻す。 */
-export function clampViewport(vp: BoardViewport, vbW: number, vbH: number): BoardViewport {
+/**
+ * ビューポートを範囲内に収める純粋関数。
+ * 盤面コンテンツ中心(cx,cy)を基準に拡縮するため、scale に応じた中央維持の基準
+ * 平行移動 base=(cx,cy)*(1-scale) を計算し、拡大時(scale>1)のみその周囲をパン可能にする。
+ * cx,cy 省略時は viewBox 中心(vbW/2,vbH/2)を使用。
+ */
+export function clampViewport(
+  vp: BoardViewport, vbW: number, vbH: number,
+  cx: number = vbW / 2, cy: number = vbH / 2,
+): BoardViewport {
   const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, vp.scale));
-  if (scale <= 1) return { scale: 1, tx: 0, ty: 0 };
+  const baseX = cx * (1 - scale);
+  const baseY = cy * (1 - scale);
+  if (scale <= 1) return { scale, tx: baseX, ty: baseY }; // 縮小/等倍は中央固定
   const maxX = (vbW * (scale - 1)) / 2;
   const maxY = (vbH * (scale - 1)) / 2;
   return {
     scale,
-    tx: Math.max(-maxX, Math.min(maxX, vp.tx)),
-    ty: Math.max(-maxY, Math.min(maxY, vp.ty)),
+    tx: Math.max(baseX - maxX, Math.min(baseX + maxX, vp.tx)),
+    ty: Math.max(baseY - maxY, Math.min(baseY + maxY, vp.ty)),
   };
+}
+
+/** 盤面中心(cx,cy)を固定したまま指定倍率へ拡縮したビューポート（ボタン操作用）。 */
+export function centeredZoom(scale: number, cx: number, cy: number): BoardViewport {
+  const s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+  return { scale: s, tx: cx * (1 - s), ty: cy * (1 - s) };
 }
 
 /**
@@ -340,10 +358,6 @@ export function attachBoardGestures(
   let lastDist = 0;
   let lastMid = { x: 0, y: 0 };
 
-  const vbDims = (): { w: number; h: number } => {
-    const b = svg.viewBox?.baseVal;
-    return { w: b?.width || 800, h: b?.height || 700 };
-  };
   const screenScale = (): number => {
     const ctm = svg.getScreenCTM();
     return ctm && ctm.a ? ctm.a : 1;
@@ -360,8 +374,10 @@ export function attachBoardGestures(
     if (g) g.setAttribute('transform', `translate(${vp.tx} ${vp.ty}) scale(${vp.scale})`);
   };
   const commit = (vp: BoardViewport): void => {
-    const { w, h } = vbDims();
-    const c = clampViewport(vp, w, h);
+    const b = svg.viewBox?.baseVal;
+    const w = b?.width || 800, h = b?.height || 700;
+    const cx = (b?.x || 0) + w / 2, cy = (b?.y || 0) + h / 2;
+    const c = clampViewport(vp, w, h, cx, cy);
     setViewport(c);
     applyLive(c);
   };
