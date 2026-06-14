@@ -101,7 +101,7 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
     ];
     const rng = createRng(777);
     let s = createInitialGameState(specs, 'fixed', ['player1', 'player2', 'player3'], rng, 'cities_knights');
-    let improvements = 0, knights = 0;
+    let improvements = 0, knights = 0, progress = 0;
     const handTot = (st: any, p: string) => RESOURCE_TYPES.reduce((a: number, r: any) => a + st.players[p].hand[r], 0);
     for (let i = 0; i < 200_000 && s.phase !== 'GAME_OVER'; i++) {
       let pid = s.playerOrder[s.currentPlayerIndex]!;
@@ -112,6 +112,7 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
       if (!action) break;
       if (action.type === 'BUILD_IMPROVEMENT') improvements++;
       if (action.type === 'BUILD_KNIGHT') knights++;
+      if (action.type === 'PLAY_PROGRESS') progress++;
       s = applyAction(s, action, rng);
     }
     expect(s.phase).toBe('GAME_OVER');
@@ -119,6 +120,60 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
     expect(calcVP(s, s.winner!)).toBeGreaterThanOrEqual(13);
     expect(improvements).toBeGreaterThan(0);   // 都市改善が行われた
     expect(knights).toBeGreaterThan(0);        // 騎士が建設された
-    expect(s.barbarianAttacks ?? 0).toBeGreaterThan(0); // 蛮族の襲来が起きた
+    expect(s.barbarianAttacks ?? 0).toBeGreaterThan(0);
+    expect(progress).toBeGreaterThan(0); // 進歩カードが使われた
   }, 30000);
+});
+
+describe('C&K 進歩カード', () => {
+  it('buildProgressDecks: 3ツリーの山札が生成される', async () => {
+    const { buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const decks = buildProgressDecks(createRng(1));
+    expect(decks.science.length).toBeGreaterThan(0);
+    expect(decks.trade.length).toBeGreaterThan(0);
+    expect(decks.politics.length).toBeGreaterThan(0);
+  });
+
+  function ckState(extra: Partial<GameState> = {}): GameState {
+    return makeGameState({
+      expansion: 'cities_knights',
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+      ...extra,
+    } as Partial<GameState>);
+  }
+
+  it('warlord: 自分の騎士を全て起動する', async () => {
+    const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const g = ckState();
+    const kv = Object.keys(g.vertices)[0]!;
+    const s: GameState = {
+      ...g,
+      vertices: { ...g.vertices, [kv]: { ...g.vertices[kv]!, knight: { playerId: 'player1', strength: 1, active: false } } },
+      players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'w1', type: 'warlord', deck: 'politics' }] }) },
+    };
+    expect(canPlayProgress(s, 'player1', 'w1')).toBe(true);
+    const next = playProgress(s, 'player1', 'w1', createRng(1));
+    expect(next.vertices[kv]!.knight!.active).toBe(true);
+    expect((next.players.player1!.progressCards ?? []).length).toBe(0); // 使用後は手札から消える
+  });
+
+  it('resource_monopoly: 相手が最も多く持つ資源を各相手から2枚奪う', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const { makeHand } = await import('../src/constants');
+    const g = ckState();
+    const s: GameState = {
+      ...g,
+      players: {
+        player1: makePlayer('player1', { hand: makeHand(), progressCards: [{ id: 'm1', type: 'resource_monopoly', deck: 'trade' }] }),
+        player2: makePlayer('player2', { hand: makeHand({ wood: 3 }) }),
+      },
+    };
+    const next = playProgress(s, 'player1', 'm1', createRng(1));
+    expect(next.players.player1!.hand.wood).toBe(2); // 2枚奪取
+    expect(next.players.player2!.hand.wood).toBe(1); // 残り1
+  });
 });

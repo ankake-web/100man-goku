@@ -20,6 +20,7 @@ import {
   isCk, applyEventDie, distributeCkProduction, ckDiscardThreshold,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
+  canPlayProgress, playProgress,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
@@ -673,6 +674,12 @@ export function applyAction(
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_CITY_WALL: must be in TRADE_BUILD');
       if (!canBuildCityWall(state, pid, action.vertexId)) throw new Error('BUILD_CITY_WALL: invalid');
       return buildCityWall(state, pid, action.vertexId);
+    }
+    case 'PLAY_PROGRESS': {
+      // 進歩カードは自分の手番（ダイス後の交易・建設フェーズ）に使用。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_PROGRESS: must be in TRADE_BUILD');
+      if (!canPlayProgress(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
+      return checkVictory(playProgress(state, pid, action.cardId, rng), pid);
     }
 
     // ----------------------------------------------------------

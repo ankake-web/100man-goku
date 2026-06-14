@@ -6,7 +6,7 @@ import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceH
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
-  isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight,
+  isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight, canPlayProgress,
 } from './citiesKnights';
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
@@ -755,6 +755,10 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
   const p = state.players[pid]!;
   const imp = p.improvements ?? { trade: 0, politics: 0, science: 0 };
   const tracks: CkTrack[] = ['trade', 'politics', 'science'];
+
+  // 0) 使える進歩カードがあれば使う（canPlayProgress が効果の成立を保証）。
+  const card = (p.progressCards ?? []).find(c => canPlayProgress(state, pid, c.id));
+  if (card) return { type: 'PLAY_PROGRESS', cardId: card.id };
 
   // 1) 都市改善: 買えるなら買う（勝利点エンジン）。メトロポリス到達(Lv3→4・未保持)を最優先、
   //    次にレベルの低いツリー（安い）から進める。

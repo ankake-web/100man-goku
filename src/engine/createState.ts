@@ -16,6 +16,7 @@ import { getScenario } from './scenarios';
 import type { ScenarioId } from './scenarios';
 import { buildDevDeck } from './game';
 import { makeHand, makeCommodities, BANK_INITIAL } from '../constants';
+import { buildProgressDecks } from './citiesKnights';
 
 export interface PlayerSpec {
   readonly id: PlayerId;
@@ -66,8 +67,8 @@ export function createInitialGameState(
       longestRoadLength: 0,
       hasLongestRoad: false,
       hasLargestArmy: false,
-      // 騎士と商人: 商品手札・都市改善レベル・守護者VP（拡張時のみ）。
-      ...(ck ? { commodities: makeCommodities(), improvements: { trade: 0, politics: 0, science: 0 }, defenderVP: 0 } : {}),
+      // 騎士と商人: 商品手札・都市改善レベル・守護者VP・進歩カード（拡張時のみ）。
+      ...(ck ? { commodities: makeCommodities(), improvements: { trade: 0, politics: 0, science: 0 }, defenderVP: 0, progressCards: [] } : {}),
     };
     // exactOptionalPropertyTypes 対策: aiDifficulty は値があるときだけ付与。
     players[spec.id] = spec.aiDifficulty != null
@@ -104,7 +105,7 @@ export function createInitialGameState(
     longestRoadHolder: null,
     largestArmyHolder: null,
     ...(scenario.victoryTarget != null ? { victoryTarget: scenario.victoryTarget } : {}),
-    ...(ck ? { expansion: 'cities_knights' as const, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {} } : {}),
+    ...(ck ? { expansion: 'cities_knights' as const, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {}, progressDecks: buildProgressDecks(rng) } : {}),
     islandBonus: {},
     pendingTrade: null,
     winner: null,

@@ -74,6 +74,8 @@ export interface Building {
   readonly playerId: PlayerId;
   // 騎士と商人: 都市改善Lv4到達でメトロポリス化した都市（勝利点4・城壁扱い）。
   readonly metropolis?: boolean;
+  // 騎士と商人: 城壁付きの都市（7の捨て札上限+2）。
+  readonly wall?: boolean;
 }
 
 // ---- 騎士と商人(Cities & Knights) ----
@@ -85,6 +87,28 @@ export interface Knight {
   readonly playerId: PlayerId;
   readonly strength: KnightStrength;
   readonly active: boolean;
+}
+
+// 進歩カード（発展カードの置換）。色イベント面で改善レベルに応じて引く。即時効果。
+export type ProgressCardType =
+  // 科学(緑/紙)
+  | 'smith'        // 騎士を最大2体まで無料で1段昇格
+  | 'engineer'     // 城壁を1つ無料建設
+  | 'irrigation'   // 自分の建物に隣接する畑1つにつき麦2
+  | 'mining'       // 自分の建物に隣接する山1つにつき鉱石2
+  // 交易(黄/布)
+  | 'resource_monopoly' // 各相手から指定資源を2枚（自動で最良資源）
+  | 'trade_monopoly'    // 各相手から指定商品を1枚（自動で最良商品）
+  | 'master_merchant'   // VP最多の相手から無作為2枚
+  // 政治(青/金貨)
+  | 'warlord'      // 自分の騎士を全て無料で起動
+  | 'saboteur'     // 自分以上のVPの全員が資源を半数捨てる
+  | 'wedding';     // 自分よりVPが高い各相手から2枚もらう
+
+export interface ProgressCard {
+  readonly id: string;
+  readonly type: ProgressCardType;
+  readonly deck: CkTrack;
 }
 
 export interface Road {
@@ -140,6 +164,10 @@ export interface Player {
   improvements?: Record<CkTrack, number>;
   // 騎士と商人: 蛮族撃退で得た「カタンの守護者」勝利点。
   defenderVP?: number;
+  // 騎士と商人: 手札の進歩カード（最大4枚）。
+  progressCards?: ProgressCard[];
+  // LANマスク用: 相手の進歩カード枚数（中身は隠す）。
+  progressCardCount?: number;
 
   // - アクションカードは使用後に除去する
   // - 勝利点カードは宣言まで除去しない
@@ -236,6 +264,8 @@ export interface GameState {
   lastEventDie?: 'ship' | CkTrack;
   // 騎士と商人: 各メトロポリスの保持者（ツリーごとに最大1人・盤面で一意）。
   metropolis?: Partial<Record<CkTrack, PlayerId>>;
+  // 騎士と商人: 進歩カードの山札（ツリー別）。
+  progressDecks?: Record<CkTrack, ProgressCard[]>;
 
   devDeck: DevCard[];
   devDiscardPile: DevCard[];
@@ -332,6 +362,7 @@ export type Action =
   | { type: 'UPGRADE_KNIGHT';      vertexId: VertexId }
   | { type: 'BUILD_IMPROVEMENT';   track: CkTrack }
   | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
+  | { type: 'PLAY_PROGRESS';       cardId: string }
   | { type: 'OFFER_TRADE';         offer: TradeOffer; targetPlayerIds: PlayerId[] }
   | { type: 'RESPOND_TRADE';       response: PlayerResponse }
   | { type: 'CONFIRM_TRADE';       responderId: PlayerId }

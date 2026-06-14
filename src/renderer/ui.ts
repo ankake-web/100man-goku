@@ -10,9 +10,9 @@ import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
 import { findPendingDiscarder } from '../engine/robber';
 import {
-  isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall,
+  isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
 } from '../engine/citiesKnights';
-import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost } from '../constants';
+import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC } from '../constants';
 import type { CkTrack, CommodityType } from '../types';
 import type { BuildMode } from './events';
 
@@ -1139,6 +1139,23 @@ function appendCkBuildSection(
   knightRow.appendChild(makeBtn('🧱 城壁', wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
     () => wallVid && dispatch({ type: 'BUILD_CITY_WALL', vertexId: wallVid })));
   sec.appendChild(knightRow);
+
+  // 進歩カード（手札）。使えるものだけ有効。
+  const cards = player.progressCards ?? [];
+  if (cards.length > 0) {
+    const pcTitle = el('div', 'ck-pc-title');
+    pcTitle.textContent = `📜 進歩カード（${cards.length}/4）`;
+    sec.appendChild(pcTitle);
+    const pcRow = el('div', 'ck-pc-row');
+    for (const c of cards) {
+      const can = canPlayProgress(state, pid, c.id);
+      const btn = makeBtn(PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', !can,
+        () => dispatch({ type: 'PLAY_PROGRESS', cardId: c.id }));
+      btn.title = PROGRESS_CARD_DESC[c.type];
+      pcRow.appendChild(btn);
+    }
+    sec.appendChild(pcRow);
+  }
 
   div.appendChild(sec);
 }

@@ -11,12 +11,17 @@
 // 資源はバンク枯渇ルールを基本ゲームと同様に適用する。商品は当面ふんだんにあるものとして
 // 枯渇を扱わない（公式でも商品が尽きることは稀）。基本/航海者には一切影響しない純粋関数。
 
-import type { GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player } from '../types';
+import type {
+  GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player,
+  ProgressCard, TileType,
+} from '../types';
 import {
   RESOURCE_TYPES, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, COMMODITY_TYPES,
   makeCommodities, CK_COSTS, CK_TRACK_COMMODITY, CK_MAX_IMPROVEMENT, CK_METROPOLIS_LEVEL,
   CK_BARBARIAN_MAX, CK_MAX_WALLS, CK_WALL_DISCARD_BONUS, PIECE_LIMITS, improvementCost,
+  PROGRESS_DECK_CARDS, PROGRESS_HAND_LIMIT,
 } from '../constants';
+import { calcVP } from './scoring';
 
 // ============================================================
 // 小ヘルパ（資源・商品の支払い）
@@ -247,32 +252,209 @@ export function resolveBarbarianAttack(state: GameState): GameState {
   return { ...state, players, vertices, barbarianPosition: 0, barbarianAttacks: (state.barbarianAttacks ?? 0) + 1 };
 }
 
+// ============================================================
+// 進歩カード
+// ============================================================
+
+function shuffle<T>(arr: T[], rng: () => number): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+/** ツリー別の進歩カード山札を生成（各カード3枚ずつシャッフル）。 */
+export function buildProgressDecks(rng: () => number): Record<CkTrack, ProgressCard[]> {
+  const decks = { trade: [], politics: [], science: [] } as Record<CkTrack, ProgressCard[]>;
+  for (const track of ['trade', 'politics', 'science'] as CkTrack[]) {
+    const cards: ProgressCard[] = [];
+    let n = 0;
+    for (const type of PROGRESS_DECK_CARDS[track]) {
+      for (let i = 0; i < 3; i++) cards.push({ id: `${track}_${type}_${n++}`, type, deck: track });
+    }
+    decks[track] = shuffle(cards, rng);
+  }
+  return decks;
+}
+
+/** 色イベント面で、改善レベルが redDie 以上のプレイヤーが その色のカードを1枚引く（手札上限4）。 */
+function drawProgressCards(state: GameState, color: CkTrack, redDie: number): GameState {
+  const decks = state.progressDecks;
+  if (!decks) return state;
+  const deck = [...(decks[color] ?? [])];
+  if (deck.length === 0) return state;
+  const players = { ...state.players };
+  let changed = false;
+  for (const pid of state.playerOrder) {
+    const p = players[pid]!;
+    if ((p.improvements?.[color] ?? 0) < redDie) continue;
+    const held = p.progressCards ?? [];
+    if (held.length >= PROGRESS_HAND_LIMIT) continue;
+    if (deck.length === 0) break;
+    players[pid] = { ...p, progressCards: [...held, deck.shift()!] };
+    changed = true;
+  }
+  if (!changed) return state;
+  return { ...state, players, progressDecks: { ...decks, [color]: deck } };
+}
+
+function handTotalRes(p: Player): number {
+  return RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0);
+}
+function adjacentTerrainCount(state: GameState, pid: PlayerId, type: TileType): number {
+  const tiles = new Set<string>();
+  for (const v of Object.values(state.vertices)) {
+    if (v.building?.playerId !== pid) continue;
+    for (const tid of v.adjacentTileIds) if (state.tiles[tid]?.type === type) tiles.add(tid);
+  }
+  return tiles.size;
+}
+function discardLargest(hand: ResourceHand, n: number): ResourceHand {
+  const h = { ...hand };
+  for (let i = 0; i < n; i++) {
+    const r = [...RESOURCE_TYPES].sort((a, b) => h[b] - h[a])[0]!;
+    if (h[r] <= 0) break;
+    h[r] -= 1;
+  }
+  return h;
+}
+function takeRandom(hand: ResourceHand, n: number, rng: () => number): { hand: ResourceHand; taken: Partial<ResourceHand> } {
+  const h = { ...hand };
+  const taken: Partial<ResourceHand> = {};
+  for (let i = 0; i < n; i++) {
+    const pool: ResourceType[] = [];
+    for (const r of RESOURCE_TYPES) for (let k = 0; k < h[r]; k++) pool.push(r);
+    if (pool.length === 0) break;
+    const r = pool[Math.floor(rng() * pool.length)]!;
+    h[r] -= 1; taken[r] = (taken[r] ?? 0) + 1;
+  }
+  return { hand: h, taken };
+}
+function addHand(hand: ResourceHand, add: Partial<ResourceHand>): ResourceHand {
+  const h = { ...hand };
+  for (const r of RESOURCE_TYPES) h[r] += add[r] ?? 0;
+  return h;
+}
+
+/** 進歩カードを使用可能か（手札にあり、効果が成立する状況か）。 */
+export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string): boolean {
+  if (!isCk(state)) return false;
+  const p = state.players[pid]; if (!p) return false;
+  const card = (p.progressCards ?? []).find(c => c.id === cardId);
+  if (!card) return false;
+  const opps = state.playerOrder.filter(o => o !== pid);
+  const myVp = calcVP(state, pid);
+  switch (card.type) {
+    case 'smith':    return Object.values(state.vertices).some(v => v.knight?.playerId === pid && v.knight.strength < 3);
+    case 'engineer': return wallCount(state, pid) < CK_MAX_WALLS && Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city' && !v.building.metropolis && !(v.building as { wall?: boolean }).wall);
+    case 'irrigation': return adjacentTerrainCount(state, pid, 'field') > 0;
+    case 'mining':     return adjacentTerrainCount(state, pid, 'mountain') > 0;
+    case 'resource_monopoly': return opps.some(o => handTotalRes(state.players[o]!) > 0);
+    case 'trade_monopoly':    return opps.some(o => COMMODITY_TYPES.reduce((s, c) => s + commodities(state.players[o]!)[c], 0) > 0);
+    case 'master_merchant':   return opps.some(o => handTotalRes(state.players[o]!) > 0);
+    case 'warlord':  return Object.values(state.vertices).some(v => v.knight?.playerId === pid && !v.knight.active);
+    case 'saboteur': return opps.some(o => calcVP(state, o) >= myVp && handTotalRes(state.players[o]!) > 0);
+    case 'wedding':  return opps.some(o => calcVP(state, o) > myVp && handTotalRes(state.players[o]!) > 0);
+    default: return false;
+  }
+}
+
+/** 進歩カードを使用して効果を適用（バリデーション済み前提）。カードは手札から除去。 */
+export function playProgress(state: GameState, pid: PlayerId, cardId: string, rng: () => number): GameState {
+  const p0 = state.players[pid]!;
+  const card = (p0.progressCards ?? []).find(c => c.id === cardId)!;
+  const players: Record<string, Player> = { ...state.players, [pid]: { ...p0, progressCards: (p0.progressCards ?? []).filter(c => c.id !== cardId) } };
+  let vertices = state.vertices;
+  let bank = { ...state.bank };
+  const opps = state.playerOrder.filter(o => o !== pid);
+  const gainRes = (id: PlayerId, add: Partial<ResourceHand>): void => { players[id] = { ...players[id]!, hand: addHand(players[id]!.hand, add) }; };
+
+  switch (card.type) {
+    case 'smith': {
+      const v2 = { ...vertices };
+      const targets = Object.keys(v2)
+        .filter(id => v2[id]!.knight?.playerId === pid && v2[id]!.knight!.strength < 3)
+        .sort((a, b) => v2[a]!.knight!.strength - v2[b]!.knight!.strength).slice(0, 2);
+      for (const id of targets) { const k = v2[id]!.knight!; v2[id] = { ...v2[id]!, knight: { ...k, strength: (k.strength + 1) as 1 | 2 | 3 } }; }
+      vertices = v2; break;
+    }
+    case 'engineer': {
+      const id = Object.keys(vertices).find(v => vertices[v]!.building?.playerId === pid && vertices[v]!.building?.type === 'city' && !vertices[v]!.building?.metropolis && !(vertices[v]!.building as { wall?: boolean }).wall);
+      if (id) vertices = { ...vertices, [id]: { ...vertices[id]!, building: { ...vertices[id]!.building!, wall: true } } };
+      break;
+    }
+    case 'irrigation': case 'mining': {
+      const isIrr = card.type === 'irrigation';
+      const r: ResourceType = isIrr ? 'grain' : 'ore';
+      const amt = Math.min(adjacentTerrainCount(state, pid, isIrr ? 'field' : 'mountain') * 2, bank[r]);
+      bank[r] -= amt; gainRes(pid, { [r]: amt }); break;
+    }
+    case 'resource_monopoly': {
+      let best: ResourceType = 'wood', bt = -1;
+      for (const r of RESOURCE_TYPES) { const t = opps.reduce((s, o) => s + players[o]!.hand[r], 0); if (t > bt) { bt = t; best = r; } }
+      let gained = 0;
+      for (const o of opps) { const take = Math.min(2, players[o]!.hand[best]); if (take > 0) { players[o] = { ...players[o]!, hand: { ...players[o]!.hand, [best]: players[o]!.hand[best] - take } }; gained += take; } }
+      gainRes(pid, { [best]: gained }); break;
+    }
+    case 'trade_monopoly': {
+      let best: CommodityType = 'coin', bt = -1;
+      for (const c of COMMODITY_TYPES) { const t = opps.reduce((s, o) => s + commodities(players[o]!)[c], 0); if (t > bt) { bt = t; best = c; } }
+      let gained = 0;
+      for (const o of opps) { const take = Math.min(1, commodities(players[o]!)[best]); if (take > 0) { players[o] = { ...players[o]!, commodities: { ...commodities(players[o]!), [best]: commodities(players[o]!)[best] - take } }; gained += take; } }
+      players[pid] = { ...players[pid]!, commodities: { ...commodities(players[pid]!), [best]: commodities(players[pid]!)[best] + gained } }; break;
+    }
+    case 'master_merchant': {
+      const target = [...opps].filter(o => handTotalRes(players[o]!) > 0).sort((a, b) => calcVP(state, b) - calcVP(state, a))[0];
+      if (target) { const { hand, taken } = takeRandom(players[target]!.hand, 2, rng); players[target] = { ...players[target]!, hand }; gainRes(pid, taken); }
+      break;
+    }
+    case 'warlord': {
+      const v2 = { ...vertices };
+      for (const id of Object.keys(v2)) { const k = v2[id]!.knight; if (k?.playerId === pid && !k.active) v2[id] = { ...v2[id]!, knight: { ...k, active: true } }; }
+      vertices = v2; break;
+    }
+    case 'saboteur': {
+      const myVp = calcVP(state, pid);
+      for (const o of opps) {
+        if (calcVP(state, o) < myVp) continue;
+        const tot = handTotalRes(players[o]!);
+        const n = Math.floor(tot / 2);
+        if (n <= 0) continue;
+        const before = players[o]!.hand;
+        const after = discardLargest(before, n);
+        players[o] = { ...players[o]!, hand: after };
+        for (const r of RESOURCE_TYPES) bank[r] += before[r] - after[r]; // 捨て札はバンクへ
+      }
+      break;
+    }
+    case 'wedding': {
+      const myVp = calcVP(state, pid);
+      for (const o of opps) {
+        if (calcVP(state, o) <= myVp) continue;
+        const { hand, taken } = takeRandom(players[o]!.hand, 2, rng);
+        players[o] = { ...players[o]!, hand }; gainRes(pid, taken);
+      }
+      break;
+    }
+  }
+  return { ...state, players, vertices, bank };
+}
+
 /**
  * ROLL_DICE後にイベントダイスを処理。
  *  - 蛮族船: 前進し、CK_BARBARIAN_MAX で襲来判定。
- *  - 色(交易/政治/科学): その色の改善レベルが赤ダイス(redDie)以上のプレイヤーに、その色の商品を1個。
- *    （公式の進歩カード抽選の簡易版＝改善投資への報酬。redDie は出目の片方1..6）
+ *  - 色(交易/政治/科学): その色の改善レベルが赤ダイス(redDie)以上のプレイヤーが進歩カードを1枚引く。
  */
 export function applyEventDie(state: GameState, rng: () => number, redDie: number): GameState {
   const face = rollEventDie(rng);
-  let next: GameState = { ...state, lastEventDie: face };
+  const next: GameState = { ...state, lastEventDie: face };
   if (face === 'ship') {
     const pos = (next.barbarianPosition ?? 0) + 1;
-    next = pos >= CK_BARBARIAN_MAX ? resolveBarbarianAttack({ ...next, barbarianPosition: pos }) : { ...next, barbarianPosition: pos };
-  } else {
-    const c = CK_TRACK_COMMODITY[face];
-    const players = { ...next.players };
-    let changed = false;
-    for (const pid of next.playerOrder) {
-      const p = players[pid]!;
-      if ((p.improvements?.[face] ?? 0) >= redDie) {
-        players[pid] = { ...p, commodities: { ...commodities(p), [c]: commodities(p)[c] + 1 } };
-        changed = true;
-      }
-    }
-    if (changed) next = { ...next, players };
+    return pos >= CK_BARBARIAN_MAX ? resolveBarbarianAttack({ ...next, barbarianPosition: pos }) : { ...next, barbarianPosition: pos };
   }
-  return next;
+  return drawProgressCards(next, face, redDie);
 }
 
 /** C&K産出を手札・銀行へ適用（資源＋商品）。computeCkProduction の結果を反映した新stateを返す。 */

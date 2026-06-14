@@ -2,7 +2,7 @@
 // src/constants.ts — ゲーム定数
 // ============================================================
 
-import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, CommodityType, CommodityHand, CkTrack } from './types';
+import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, CommodityType, CommodityHand, CkTrack, ProgressCardType } from './types';
 
 // ---- リソース ----
 
@@ -92,6 +92,32 @@ export const CK_MAX_WALLS = 3;
 export function improvementCost(currentLevel: number): number {
   return currentLevel + 1;
 }
+
+// ---- 進歩カード ----
+export const PROGRESS_HAND_LIMIT = 4;
+// 各ツリーのデッキに含めるカード種別（buildProgressDecks で各種3枚ずつ等に展開）。
+export const PROGRESS_DECK_CARDS: Record<CkTrack, ProgressCardType[]> = {
+  science:  ['smith', 'engineer', 'irrigation', 'mining'],
+  trade:    ['resource_monopoly', 'trade_monopoly', 'master_merchant'],
+  politics: ['warlord', 'saboteur', 'wedding'],
+};
+export const PROGRESS_CARD_NAME: Record<ProgressCardType, string> = {
+  smith: '鍛冶屋', engineer: '技師', irrigation: '灌漑', mining: '採掘',
+  resource_monopoly: '資源独占', trade_monopoly: '商品独占', master_merchant: '大商人',
+  warlord: '将軍', saboteur: '破壊工作', wedding: '婚礼',
+};
+export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
+  smith: '騎士を最大2体まで無料で1段昇格',
+  engineer: '城壁を1つ無料で建設',
+  irrigation: '建物に隣接する畑1つにつき麦2',
+  mining: '建物に隣接する山1つにつき鉱石2',
+  resource_monopoly: '各相手から最良の資源を2枚ずつ',
+  trade_monopoly: '各相手から最良の商品を1枚ずつ',
+  master_merchant: 'VP最多の相手から無作為に2枚',
+  warlord: '自分の騎士を全て無料で起動',
+  saboteur: '自分以上のVPの全員が資源を半数捨てる',
+  wedding: '自分よりVPが高い各相手から2枚もらう',
+};
 
 // ---- バンク初期値 ----
 
