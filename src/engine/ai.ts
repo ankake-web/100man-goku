@@ -2,9 +2,12 @@
 // src/engine/ai.ts — AIプレイヤー（難易度対応）
 // ============================================================
 
-import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType } from '../types';
+import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType, CkTrack } from '../types';
 import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
+import {
+  isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight,
+} from './citiesKnights';
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
@@ -735,10 +738,53 @@ function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade
     return { type: 'FINISH_ROAD_BUILDING' };
   }
 
+  // 騎士と商人: 拡張固有の手（都市改善・騎士）を最優先で検討。無ければ通常建設へ。
+  if (isCk(state)) {
+    const ckAction = chooseCkBuildAction(state, pid, rng);
+    if (ckAction) return ckAction;
+  }
+
   const difficulty = getDifficulty(state, pid);
   if (difficulty === 'weak') return chooseTradeBuildWeak(state, pid, rng);
   if (difficulty === 'strong') return chooseTradeBuildStrong(state, pid, skipPlayerTrade, rng);
   return chooseTradeBuildNormal(state, pid, skipPlayerTrade, rng);
+}
+
+// ---- 騎士と商人: 拡張固有の建設判断（都市改善＋騎士による防衛） ----
+function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number): Action | null {
+  const p = state.players[pid]!;
+  const imp = p.improvements ?? { trade: 0, politics: 0, science: 0 };
+  const tracks: CkTrack[] = ['trade', 'politics', 'science'];
+
+  // 1) 都市改善: 買えるなら買う（勝利点エンジン）。メトロポリス到達(Lv3→4・未保持)を最優先、
+  //    次にレベルの低いツリー（安い）から進める。
+  const buyable = tracks.filter(t => canBuildImprovement(state, pid, t));
+  if (buyable.length > 0) {
+    const metro = buyable.find(t => imp[t] === 3 && !(state.metropolis?.[t]));
+    const pick = metro ?? [...buyable].sort((a, b) => imp[a] - imp[b])[0]!;
+    return { type: 'BUILD_IMPROVEMENT', track: pick };
+  }
+
+  // 2) 防衛: 蛮族が近い or 都市数に対し騎士力が足りないなら騎士を用意。
+  const myCities = Object.values(state.vertices).filter(v => v.building?.playerId === pid && v.building.type === 'city').length;
+  const myKnightStr = Object.values(state.vertices)
+    .filter(v => v.knight?.playerId === pid && v.knight.active)
+    .reduce((s, v) => s + v.knight!.strength, 0);
+  const barb = state.barbarianPosition ?? 0;
+  if (myCities > 0 && (barb >= 3 || myKnightStr < myCities)) {
+    // 既存の非起動騎士を起動（麦1で防衛力UP）。
+    const toActivate = Object.keys(state.vertices).find(vid => canActivateKnight(state, pid, vid));
+    if (toActivate) return { type: 'ACTIVATE_KNIGHT', vertexId: toActivate };
+    // 騎士を建てる（防衛力が都市数に満たないうちは増やす）。
+    if (myKnightStr <= myCities) {
+      const vid = Object.keys(state.vertices).find(v => canBuildKnight(state, pid, v));
+      if (vid) return { type: 'BUILD_KNIGHT', vertexId: vid };
+    }
+    // 政治Lv3があり余裕があれば昇格。
+    const up = Object.keys(state.vertices).find(vid => canUpgradeKnight(state, pid, vid));
+    if (up && RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0) >= 6) return { type: 'UPGRADE_KNIGHT', vertexId: up };
+  }
+  return null;
 }
 
 // ---- 弱: 可能なアクションからランダム ----

@@ -2,7 +2,7 @@
 // src/constants.ts — ゲーム定数
 // ============================================================
 
-import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, CommodityType, CommodityHand } from './types';
+import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, CommodityType, CommodityHand, CkTrack } from './types';
 
 // ---- リソース ----
 
@@ -66,7 +66,32 @@ export const PIECE_LIMITS = {
   ships: 15,
   settlements: 5,
   cities: 4,
+  knights: 6, // 騎士と商人: 騎士コマ上限
 } as const;
+
+// ---- 騎士と商人(Cities & Knights) ----
+export const CK_VICTORY_TARGET = 13;
+export const CK_COSTS = {
+  knightBuild:    makeHand({ ore: 1, wool: 1 }),  // 騎士1体（基本・非起動）
+  knightUpgrade:  makeHand({ ore: 1, wool: 1 }),  // 強さ+1
+  knightActivate: makeHand({ grain: 1 }),         // 起動（麦1）
+  cityWall:       makeHand({ brick: 2 }),          // 城壁（手札上限+2）
+};
+export const CK_TRACK_COMMODITY: Record<CkTrack, CommodityType> = {
+  trade: 'cloth', politics: 'coin', science: 'paper',
+};
+export const CK_TRACK_NAME: Record<CkTrack, string> = {
+  trade: '交易', politics: '政治', science: '科学',
+};
+export const CK_MAX_IMPROVEMENT = 5;     // 都市改善の最大レベル
+export const CK_METROPOLIS_LEVEL = 4;    // この到達でメトロポリス化
+export const CK_BARBARIAN_MAX = 7;       // 蛮族船がこの距離で襲来
+export const CK_WALL_DISCARD_BONUS = 2;  // 城壁1つにつき7の捨て札上限+2
+export const CK_MAX_WALLS = 3;
+/** 都市改善 level→level+1 のコスト（その商品を level+1 個）。 */
+export function improvementCost(currentLevel: number): number {
+  return currentLevel + 1;
+}
 
 // ---- バンク初期値 ----
 

@@ -16,6 +16,11 @@ import {
   hasEnoughResources,
 } from './actions';
 import { moveRobber, movePirate, discardResources, stealResource, getRobbablePlayerIds, getPirateRobbablePlayerIds, discardCount, handTotal } from './robber';
+import {
+  isCk, applyEventDie, distributeCkProduction, ckDiscardThreshold,
+  canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
+  canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
+} from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
 import { newIslandBonusRep } from './islands';
@@ -114,6 +119,17 @@ export function applyAction(
       const total = d1 + d2;
 
       let next: GameState = { ...state, lastDiceRoll: [d1, d2], diceRolledThisTurn: true };
+
+      // ---- 騎士と商人: 毎ターン イベントダイス(蛮族)も振り、産出は資源＋商品。----
+      if (isCk(state)) {
+        next = applyEventDie(next, rng); // 7でも蛮族は前進する
+        if (total === 7) {
+          const needsDiscard = state.playerOrder.some(p =>
+            RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= ckDiscardThreshold(next, p));
+          return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : 'ROBBER' };
+        }
+        return distributeCkProduction({ ...next, turnPhase: 'TRADE_BUILD' }, total);
+      }
 
       if (total === 7) {
         const needsDiscard = state.playerOrder.some(p => {
@@ -628,6 +644,35 @@ export function applyAction(
     case 'FINISH_ROAD_BUILDING': {
       if (state.roadBuildingRoadsRemaining === 0) throw new Error('FINISH_ROAD_BUILDING: no road building in progress');
       return { ...state, roadBuildingRoadsRemaining: 0 };
+    }
+
+    // ----------------------------------------------------------
+    // 騎士と商人(Cities & Knights) の建設アクション
+    // ----------------------------------------------------------
+    case 'BUILD_KNIGHT': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_KNIGHT: must be in TRADE_BUILD');
+      if (!canBuildKnight(state, pid, action.vertexId)) throw new Error('BUILD_KNIGHT: invalid');
+      return buildKnight(state, pid, action.vertexId);
+    }
+    case 'ACTIVATE_KNIGHT': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('ACTIVATE_KNIGHT: must be in TRADE_BUILD');
+      if (!canActivateKnight(state, pid, action.vertexId)) throw new Error('ACTIVATE_KNIGHT: invalid');
+      return activateKnight(state, pid, action.vertexId);
+    }
+    case 'UPGRADE_KNIGHT': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('UPGRADE_KNIGHT: must be in TRADE_BUILD');
+      if (!canUpgradeKnight(state, pid, action.vertexId)) throw new Error('UPGRADE_KNIGHT: invalid');
+      return upgradeKnight(state, pid, action.vertexId);
+    }
+    case 'BUILD_IMPROVEMENT': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_IMPROVEMENT: must be in TRADE_BUILD');
+      if (!canBuildImprovement(state, pid, action.track)) throw new Error('BUILD_IMPROVEMENT: invalid');
+      return checkVictory(buildImprovement(state, pid, action.track), pid);
+    }
+    case 'BUILD_CITY_WALL': {
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_CITY_WALL: must be in TRADE_BUILD');
+      if (!canBuildCityWall(state, pid, action.vertexId)) throw new Error('BUILD_CITY_WALL: invalid');
+      return buildCityWall(state, pid, action.vertexId);
     }
 
     // ----------------------------------------------------------

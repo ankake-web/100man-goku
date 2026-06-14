@@ -22,14 +22,21 @@ export function calcVP(state: GameState, playerId: PlayerId): number {
   let vp = 0;
   for (const vertex of Object.values(state.vertices)) {
     if (vertex.building?.playerId !== playerId) continue;
-    vp += vertex.building.type === 'city' ? VP_TABLE.city : VP_TABLE.settlement;
+    vp += buildingVp(vertex.building);
   }
   if (player.hasLongestRoad) vp += VP_TABLE.longestRoad;
   if (player.hasLargestArmy) vp += VP_TABLE.largestArmy;
   vp += player.devCards.filter(c => c.type === 'victory_point').length * VP_TABLE.victoryPoint;
   vp += islandBonusVP(state, playerId);
+  vp += player.defenderVP ?? 0; // 騎士と商人: 蛮族撃退の守護者VP
 
   return vp;
+}
+
+/** 建物の勝利点。メトロポリス(騎士と商人)は4、都市2、開拓地1。 */
+function buildingVp(b: { type: 'settlement' | 'city'; metropolis?: boolean }): number {
+  if (b.metropolis) return 4;
+  return b.type === 'city' ? VP_TABLE.city : VP_TABLE.settlement;
 }
 
 /** 航海者: このプレイヤーが獲得した新島入植ボーナスの合計VP（公開情報）。基本ゲームは常に0。 */
@@ -52,12 +59,13 @@ export function calcPublicVP(state: GameState, playerId: PlayerId): number {
   let vp = 0;
   for (const vertex of Object.values(state.vertices)) {
     if (vertex.building?.playerId !== playerId) continue;
-    vp += vertex.building.type === 'city' ? VP_TABLE.city : VP_TABLE.settlement;
+    vp += buildingVp(vertex.building);
   }
   if (player.hasLongestRoad) vp += VP_TABLE.longestRoad;
   if (player.hasLargestArmy) vp += VP_TABLE.largestArmy;
   // 新島入植ボーナスは盤面で見える公開情報なので公開VPにも算入する。
   vp += islandBonusVP(state, playerId);
+  vp += player.defenderVP ?? 0; // 守護者VPも公開情報
 
   return vp;
 }

@@ -21,7 +21,8 @@ export type ScenarioId =
   | 'seafarers_throughdesert'
   | 'seafarers_goldenisles'
   | 'seafarers_chainisles'
-  | 'seafarers_greatercatan';
+  | 'seafarers_greatercatan'
+  | 'cities_knights';
 
 export interface ScenarioBoard {
   tiles: Record<TileId, Tile>;
@@ -34,7 +35,9 @@ export interface Scenario {
   /** UI 用の1行説明。 */
   readonly description: string;
   /** UI のグルーピング用カテゴリ。 */
-  readonly category: 'basic' | 'seafarers';
+  readonly category: 'basic' | 'seafarers' | 'cities_knights';
+  /** 騎士と商人拡張を有効化する（GameState.expansion に反映）。 */
+  readonly expansion?: 'cities_knights';
   /** タイル座標集合（盤面幾何の生成に使う）。航海者の可変盤ではここを差し替える。 */
   coords(): AxialCoord[];
   /** 幾何確定後にタイル種別・数字・港を割り当てる。 */
@@ -304,6 +307,18 @@ const seafarersGreaterCatan: Scenario = {
   victoryTarget: 12,
 };
 
+// ---- 騎士と商人(Cities & Knights) ----
+const citiesKnights: Scenario = {
+  id: 'cities_knights',
+  name: '騎士と商人',
+  description: '商品・都市改善・騎士・蛮族の襲来。最も奥深い拡張ルール（13点）。',
+  category: 'cities_knights',
+  coords: () => getAllTileCoords(),
+  build: (geo, rng) => createRandomBoard(geo, rng),
+  victoryTarget: 13,
+  expansion: 'cities_knights',
+};
+
 const SCENARIOS: Record<ScenarioId, Scenario> = {
   classic,
   seafarers_newshores: seafarersNewShores,
@@ -312,6 +327,7 @@ const SCENARIOS: Record<ScenarioId, Scenario> = {
   seafarers_goldenisles: seafarersGoldenIsles,
   seafarers_chainisles: seafarersChainIsles,
   seafarers_greatercatan: seafarersGreaterCatan,
+  cities_knights: citiesKnights,
 };
 
 /** シナリオIDからシナリオ定義を取得（未知IDは基本にフォールバック）。 */
@@ -323,7 +339,7 @@ export interface ScenarioInfo {
   id: ScenarioId;
   name: string;
   description: string;
-  category: 'basic' | 'seafarers';
+  category: 'basic' | 'seafarers' | 'cities_knights';
   victoryTarget: number;
 }
 /** UI/設定で使うシナリオ一覧（id, 表示名, 説明, カテゴリ, 勝利点）。 */

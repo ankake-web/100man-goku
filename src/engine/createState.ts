@@ -15,7 +15,7 @@ import type { PlayerOrderMode } from './setup';
 import { getScenario } from './scenarios';
 import type { ScenarioId } from './scenarios';
 import { buildDevDeck } from './game';
-import { makeHand, BANK_INITIAL } from '../constants';
+import { makeHand, makeCommodities, BANK_INITIAL } from '../constants';
 
 export interface PlayerSpec {
   readonly id: PlayerId;
@@ -46,6 +46,7 @@ export function createInitialGameState(
   const geo = buildBoardGeometry(scenario.coords());
   const { tiles, harbors } = scenario.build(geo, rng);
 
+  const ck = scenario.expansion === 'cities_knights';
   const players: GameState['players'] = {};
   const allIds: PlayerId[] = [];
 
@@ -65,6 +66,8 @@ export function createInitialGameState(
       longestRoadLength: 0,
       hasLongestRoad: false,
       hasLargestArmy: false,
+      // 騎士と商人: 商品手札・都市改善レベル・守護者VP（拡張時のみ）。
+      ...(ck ? { commodities: makeCommodities(), improvements: { trade: 0, politics: 0, science: 0 }, defenderVP: 0 } : {}),
     };
     // exactOptionalPropertyTypes 対策: aiDifficulty は値があるときだけ付与。
     players[spec.id] = spec.aiDifficulty != null
@@ -85,7 +88,8 @@ export function createInitialGameState(
     players,
     playerOrder,
     bank: { ...BANK_INITIAL },
-    devDeck:        buildDevDeck(rng),
+    // 騎士と商人は発展カードを使わない（進歩カードに置換。本実装では未導入のため空デッキ）。
+    devDeck:        ck ? [] : buildDevDeck(rng),
     devDiscardPile: [],
     phase: 'SETUP_FORWARD',
     turnPhase: 'PRE_ROLL',
@@ -100,6 +104,7 @@ export function createInitialGameState(
     longestRoadHolder: null,
     largestArmyHolder: null,
     ...(scenario.victoryTarget != null ? { victoryTarget: scenario.victoryTarget } : {}),
+    ...(ck ? { expansion: 'cities_knights' as const, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {} } : {}),
     islandBonus: {},
     pendingTrade: null,
     winner: null,

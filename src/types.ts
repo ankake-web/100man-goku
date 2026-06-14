@@ -45,6 +45,8 @@ export interface Vertex {
   readonly adjacentVertexIds: VertexId[];
   building: Building | null;
   harborType: HarborType | null;
+  // 騎士と商人: この頂点の騎士コマ（建物とは排他）。基本/航海者では未設定。
+  knight?: Knight | null;
 }
 
 // ---- 辺（Edge） ----
@@ -70,6 +72,19 @@ export type BuildingType = 'settlement' | 'city';
 export interface Building {
   readonly type: BuildingType;
   readonly playerId: PlayerId;
+  // 騎士と商人: 都市改善Lv4到達でメトロポリス化した都市（勝利点4・城壁扱い）。
+  readonly metropolis?: boolean;
+}
+
+// ---- 騎士と商人(Cities & Knights) ----
+export type CkTrack = 'trade' | 'politics' | 'science'; // 交易(布)/政治(金貨)/科学(紙)
+export type KnightStrength = 1 | 2 | 3;                  // 基本/強力/最強
+
+// 騎士コマ（頂点に置く。自分の道網に接続。起動すると蛮族防衛に算入）。
+export interface Knight {
+  readonly playerId: PlayerId;
+  readonly strength: KnightStrength;
+  readonly active: boolean;
 }
 
 export interface Road {
@@ -121,6 +136,10 @@ export interface Player {
   hand: ResourceHand;
   // 騎士と商人: 商品(コモディティ)の手札。基本/航海者では未設定。
   commodities?: CommodityHand;
+  // 騎士と商人: 都市改善の各ツリーのレベル(0..5)。
+  improvements?: Record<CkTrack, number>;
+  // 騎士と商人: 蛮族撃退で得た「カタンの守護者」勝利点。
+  defenderVP?: number;
 
   // - アクションカードは使用後に除去する
   // - 勝利点カードは宣言まで除去しない
@@ -209,6 +228,14 @@ export interface GameState {
   bank: ResourceHand;
   // 騎士と商人(Cities & Knights)拡張が有効か。未設定=基本/航海者ルール。
   expansion?: 'cities_knights';
+  // 騎士と商人: 蛮族船の進行度(0..7)。7で襲来して判定後 0 に戻る。
+  barbarianPosition?: number;
+  // 騎士と商人: これまでの蛮族襲来回数。
+  barbarianAttacks?: number;
+  // 騎士と商人: 直近のイベントダイスの目（'ship'=蛮族前進 / 色=進歩カード抽選）。
+  lastEventDie?: 'ship' | CkTrack;
+  // 騎士と商人: 各メトロポリスの保持者（ツリーごとに最大1人・盤面で一意）。
+  metropolis?: Partial<Record<CkTrack, PlayerId>>;
 
   devDeck: DevCard[];
   devDiscardPile: DevCard[];
@@ -300,6 +327,11 @@ export type Action =
   | { type: 'PLAY_YEAR_OF_PLENTY'; resources: [ResourceType, ResourceType] }
   | { type: 'PLAY_MONOPOLY';       resource: ResourceType }
   | { type: 'BANK_TRADE';          give: ResourceType; receive: ResourceType }
+  | { type: 'BUILD_KNIGHT';        vertexId: VertexId }
+  | { type: 'ACTIVATE_KNIGHT';     vertexId: VertexId }
+  | { type: 'UPGRADE_KNIGHT';      vertexId: VertexId }
+  | { type: 'BUILD_IMPROVEMENT';   track: CkTrack }
+  | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
   | { type: 'OFFER_TRADE';         offer: TradeOffer; targetPlayerIds: PlayerId[] }
   | { type: 'RESPOND_TRADE';       response: PlayerResponse }
   | { type: 'CONFIRM_TRADE';       responderId: PlayerId }

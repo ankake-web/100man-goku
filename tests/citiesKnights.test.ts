@@ -85,3 +85,40 @@ describe('C&K 都市産出 computeCkProduction', () => {
     expect(prod.commodities.player2).toEqual({ coin: 1 });
   });
 });
+
+describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', () => {
+  it('改善・騎士・蛮族が発生し、勝者が13点に到達して GAME_OVER', async () => {
+    const { createInitialGameState } = await import('../src/engine/createState');
+    const { chooseAction } = await import('../src/engine/ai');
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const { calcVP } = await import('../src/engine/scoring');
+    const { RESOURCE_TYPES } = await import('../src/constants');
+    const specs = [
+      { id: 'player1' as const, name: 'A', color: 'red' as const,    type: 'ai' as const, aiDifficulty: 'strong' as const },
+      { id: 'player2' as const, name: 'B', color: 'blue' as const,   type: 'ai' as const, aiDifficulty: 'strong' as const },
+      { id: 'player3' as const, name: 'C', color: 'purple' as const, type: 'ai' as const, aiDifficulty: 'strong' as const },
+    ];
+    const rng = createRng(777);
+    let s = createInitialGameState(specs, 'fixed', ['player1', 'player2', 'player3'], rng, 'cities_knights');
+    let improvements = 0, knights = 0;
+    const handTot = (st: any, p: string) => RESOURCE_TYPES.reduce((a: number, r: any) => a + st.players[p].hand[r], 0);
+    for (let i = 0; i < 200_000 && s.phase !== 'GAME_OVER'; i++) {
+      let pid = s.playerOrder[s.currentPlayerIndex]!;
+      if (s.phase === 'MAIN' && s.turnPhase === 'DISCARD') {
+        pid = s.playerOrder.find(p => !(s.discardedThisRound ?? []).includes(p) && handTot(s, p) >= 8) ?? pid;
+      }
+      const action = chooseAction(s, pid, { rng });
+      if (!action) break;
+      if (action.type === 'BUILD_IMPROVEMENT') improvements++;
+      if (action.type === 'BUILD_KNIGHT') knights++;
+      s = applyAction(s, action, rng);
+    }
+    expect(s.phase).toBe('GAME_OVER');
+    expect(s.winner).not.toBeNull();
+    expect(calcVP(s, s.winner!)).toBeGreaterThanOrEqual(13);
+    expect(improvements).toBeGreaterThan(0);   // 都市改善が行われた
+    expect(knights).toBeGreaterThan(0);        // 騎士が建設された
+    expect(s.barbarianAttacks ?? 0).toBeGreaterThan(0); // 蛮族の襲来が起きた
+  }, 30000);
+});
