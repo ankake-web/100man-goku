@@ -88,6 +88,31 @@ describe('maskStateFor', () => {
     expect(p2.devCardCount).toBe(2);
   });
 
+  it('hides other players’ commodities and progress cards but keeps the counts (C&K)', () => {
+    const base = createInitialGameState(SPECS, 'fixed', ['player1', 'player2', 'player3']);
+    const players = { ...base.players };
+    players.player2 = {
+      ...players.player2!,
+      commodities: { coin: 2, cloth: 1, paper: 0 },
+      progressCards: [
+        { id: 's_smith_0', type: 'smith', deck: 'science' },
+        { id: 'p_warlord_1', type: 'warlord', deck: 'politics' },
+      ],
+    };
+    const s = { ...base, expansion: 'cities_knights' as const, players };
+    const p2 = maskStateFor(s, 'player1').players.player2!;
+    // 内訳は隠れる
+    expect(p2.commodities).toEqual({ coin: 0, cloth: 0, paper: 0 });
+    expect(p2.progressCards).toEqual([]);
+    // 枚数だけ開示
+    expect(p2.commodityCount).toBe(3);
+    expect(p2.progressCardCount).toBe(2);
+    // 自分視点では自分の内訳はそのまま
+    const me = maskStateFor(s, 'player2').players.player2!;
+    expect(me.commodities).toEqual({ coin: 2, cloth: 1, paper: 0 });
+    expect(me.progressCards).toHaveLength(2);
+  });
+
   it('produces different views per viewer (no cross-leak)', () => {
     const s = withHands(createInitialGameState(SPECS, 'fixed', ['player1', 'player2', 'player3']));
     const forP1 = maskStateFor(s, 'player1');

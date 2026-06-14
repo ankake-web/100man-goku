@@ -270,8 +270,12 @@ function broadcastLobby(room: Room, urls: string[]): void {
 // 盗み/獲得アニメは各端末でマスク済み state の差分から導出するため、resources を消しても支障なし。
 export function redactActionFor(action: Action, viewerId: PlayerId, byPid: PlayerId): Action {
   if (viewerId === byPid) return action; // 本人は自分の内訳を見てよい
-  if (action.type === 'DISCARD_RESOURCES' || action.type === 'CHOOSE_GOLD') {
-    return { ...action, resources: {} }; // 種類を秘匿（枚数は視点別ログが count で持つ）
+  if (action.type === 'DISCARD_RESOURCES') {
+    // 種類を秘匿（枚数は視点別ログが count で持つ）。騎士と商人の商品内訳も隠す。
+    return { ...action, resources: {}, commodities: {} };
+  }
+  if (action.type === 'CHOOSE_GOLD') {
+    return { ...action, resources: {} };
   }
   return action;
 }

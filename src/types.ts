@@ -168,6 +168,8 @@ export interface Player {
   progressCards?: ProgressCard[];
   // LANマスク用: 相手の進歩カード枚数（中身は隠す）。
   progressCardCount?: number;
+  // LANマスク用: 相手の商品(コモディティ)枚数（内訳は隠す）。
+  commodityCount?: number;
 
   // - アクションカードは使用後に除去する
   // - 勝利点カードは宣言まで除去しない
