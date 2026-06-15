@@ -1129,6 +1129,19 @@ h1 {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* 騎士と商人: 資源行と商品行を背景色で区別（交易/捨て札モーダル）。 */
+.modal-res-row[data-kind="commodity"] {
+  background: rgba(110,180,235,0.13);
+  border: 1px solid rgba(110,180,235,0.22);
+  border-radius: 8px;
+  padding: 5px 6px;
+}
+.modal-res-row[data-kind="resource"] {
+  background: rgba(208,168,108,0.10);
+  border: 1px solid rgba(208,168,108,0.18);
+  border-radius: 8px;
+  padding: 5px 6px;
+}
 
 .modal-res-cell {
   display: flex;
@@ -1763,8 +1776,8 @@ h1 {
 .ck-knight-row .action-btn, .ck-pc-row .action-btn { flex: 1 1 46%; } /* 騎士・進歩カードは2列（奇数は伸びて1行を埋める） */
 .ck-pc-title { font-size: 0.75rem; color: rgba(255,255,255,0.66); font-weight: 700; margin: 11px 0 6px; }
 .ck-comm-row { display: flex; gap: 7px; margin: 6px 0 2px; flex-wrap: wrap; }
-.ck-comm { font-size: 0.92rem; font-weight: 700; padding: 4px 11px; border-radius: 11px; background: rgba(255,255,255,0.1); }
-.ck-comm.zero { opacity: 0.4; }
+.ck-comm { font-size: 0.92rem; font-weight: 700; padding: 4px 11px; border-radius: 11px; background: rgba(255,255,255,0.1); color: #fff; }
+.ck-comm.zero { opacity: 0.5; }
 .ck-comm-coin  { background: rgba(255,205,70,0.22); }
 .ck-comm-cloth { background: rgba(110,200,240,0.2); }
 .ck-comm-paper { background: rgba(220,220,220,0.2); }

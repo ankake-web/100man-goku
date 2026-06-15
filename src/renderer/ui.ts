@@ -239,7 +239,10 @@ function buildDiscardUI(
   header.append(` ${player.name}：${target}枚を捨てる（あと ${remaining}枚 ・ ${chosen}/${target}）`);
   div.appendChild(header);
 
+  // 騎士と商人では資源と商品の両方が捨て対象なので、見出しと背景色で区別する。
+  if (ck) div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '捨てる資源：' }));
   const resRow = el('div', 'modal-res-row');
+  resRow.setAttribute('data-kind', 'resource');
   for (const r of RESOURCE_TYPES) {
     if (player.hand[r] === 0) continue;
 
@@ -262,8 +265,10 @@ function buildDiscardUI(
 
   // 騎士と商人: 商品も捨て対象。
   if (ck) {
+    div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '捨てる商品：' }));
     const comm = player.commodities!;
     const commRow = el('div', 'modal-res-row');
+    commRow.setAttribute('data-kind', 'commodity');
     for (const c of COMMODITY_TYPES) {
       if (comm[c] === 0) continue;
       const cur = selectedComm[c] ?? 0;
@@ -359,49 +364,41 @@ function buildBankTradeUI(
   header.textContent = '💱 バンク交易';
   div.appendChild(header);
 
-  const giveLabel = el('div', 'modal-section-label');
-  giveLabel.textContent = ck ? '渡す資源／商品：' : '渡す資源：';
-  div.appendChild(giveLabel);
+  // 渡す/受け取るの1ボタンを生成（give=渡す, receive=受け取る）。
+  const kindButton = (k: TradeKind, isReceive: boolean): HTMLButtonElement => {
+    if (!isReceive) {
+      const rate = getEffectiveTradeRate(state, pid, k);
+      const canAfford = heldOf(k) >= rate;
+      const label = isCommodity(k)
+        ? `${COMMODITY_EMOJI[k]} ×${heldOf(k)}（${rate}:1）`
+        : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]} ×${heldOf(k)}（${rate}:1）`;
+      return makeBtn(label, give === k ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled', !canAfford,
+        () => setUIPhase({ type: 'bankTrade', give: give === k ? null : k, receive }));
+    }
+    const inBank = bankOf(k) > 0;
+    const label = isCommodity(k) ? `${COMMODITY_EMOJI[k]}` : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]}`;
+    return makeBtn(label, receive === k ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled', !inBank,
+      () => setUIPhase({ type: 'bankTrade', give, receive: receive === k ? null : k }));
+  };
+  // 資源・商品を別々の見出し＋行（背景色で区別）で描画する。
+  const appendKindSection = (isReceive: boolean): void => {
+    const verb = isReceive ? '受け取る' : '渡す';
+    div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: `${verb}資源：` }));
+    const resRow = el('div', 'modal-res-row'); resRow.setAttribute('data-kind', 'resource');
+    for (const k of RESOURCE_TYPES) { if (isReceive && k === give) continue; resRow.appendChild(kindButton(k, isReceive)); }
+    div.appendChild(resRow);
+    if (ck) {
+      div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: `${verb}商品：` }));
+      const comRow = el('div', 'modal-res-row'); comRow.setAttribute('data-kind', 'commodity');
+      for (const k of COMMODITY_TYPES) { if (isReceive && k === give) continue; comRow.appendChild(kindButton(k, isReceive)); }
+      div.appendChild(comRow);
+    }
+  };
 
-  const giveKinds: TradeKind[] = ck ? [...RESOURCE_TYPES, ...COMMODITY_TYPES] : [...RESOURCE_TYPES];
-  const giveRow = el('div', 'modal-res-row');
-  for (const k of giveKinds) {
-    const rate = getEffectiveTradeRate(state, pid, k);
-    const canAfford = heldOf(k) >= rate;
-    const label = isCommodity(k)
-      ? `${COMMODITY_EMOJI[k]} ×${heldOf(k)} (${rate}:1)`
-      : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]} ×${heldOf(k)} (${rate}:1)`;
-    const btn = makeBtn(
-      label,
-      give === k ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled',
-      !canAfford,
-      () => setUIPhase({ type: 'bankTrade', give: give === k ? null : k, receive }),
-    );
-    giveRow.appendChild(btn);
-  }
-  div.appendChild(giveRow);
+  appendKindSection(false);
 
   if (give !== null) {
-    const receiveLabel = el('div', 'modal-section-label');
-    receiveLabel.textContent = ck ? '受け取る資源／商品：' : '受け取る資源：';
-    div.appendChild(receiveLabel);
-
-    const receiveRow = el('div', 'modal-res-row');
-    for (const k of giveKinds) {
-      if (k === give) continue;
-      const inBank = bankOf(k) > 0;
-      const label = isCommodity(k)
-        ? `${COMMODITY_EMOJI[k]}`
-        : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]}`;
-      const btn = makeBtn(
-        label,
-        receive === k ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled',
-        !inBank,
-        () => setUIPhase({ type: 'bankTrade', give, receive: receive === k ? null : k }),
-      );
-      receiveRow.appendChild(btn);
-    }
-    div.appendChild(receiveRow);
+    appendKindSection(true);
 
     if (receive !== null) {
       const rate = getEffectiveTradeRate(state, pid, give);
