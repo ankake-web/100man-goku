@@ -18,7 +18,7 @@ import type {
 import {
   RESOURCE_TYPES, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, COMMODITY_TYPES,
   makeCommodities, CK_COSTS, CK_TRACK_COMMODITY, CK_MAX_IMPROVEMENT, CK_METROPOLIS_LEVEL,
-  CK_BARBARIAN_MAX, CK_MAX_WALLS, CK_WALL_DISCARD_BONUS, PIECE_LIMITS, improvementCost,
+  CK_BARBARIAN_MAX, CK_MAX_WALLS, PIECE_LIMITS, improvementCost,
   PROGRESS_DECK_CARDS, PROGRESS_HAND_LIMIT,
 } from '../constants';
 import { calcVP } from './scoring';
@@ -252,11 +252,8 @@ export function buildCityWall(state: GameState, pid: PlayerId, vid: VertexId): G
   };
 }
 
-/** 7の捨て札のしきい値（手札がこの枚数以上で半数捨て）。城壁1つにつき+2。 */
-export function ckDiscardThreshold(state: GameState, pid: PlayerId): number {
-  if (!isCk(state)) return 8;
-  return 8 + CK_WALL_DISCARD_BONUS * wallCount(state, pid);
-}
+// 7の捨て札しきい値は robber.ts の discardThreshold が一元管理する
+// （城壁/メトロポリス1つにつき+2）。ここでは重複定義しない。
 
 // ============================================================
 // イベントダイス・蛮族
