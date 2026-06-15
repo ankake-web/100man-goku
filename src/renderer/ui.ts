@@ -24,6 +24,34 @@ import resSheepImg from '../assets/res_sheep.png';
 import resWheatImg from '../assets/res_wheat.png';
 import resOreImg from '../assets/res_ore.png';
 import knightImg from '../assets/knight.png';
+import commCoinImg from '../assets/comm_coin.png';
+import commClothImg from '../assets/comm_cloth.png';
+import commPaperImg from '../assets/comm_paper.png';
+import impTradeImg from '../assets/imp_trade.png';
+import impPoliticsImg from '../assets/imp_politics.png';
+import impScienceImg from '../assets/imp_science.png';
+
+// 騎士と商人: 商品アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
+const COMMODITY_IMG: Record<CommodityType, string> = { coin: commCoinImg, cloth: commClothImg, paper: commPaperImg };
+// 騎士と商人: 都市改善トラックのアイコン画像。
+const IMP_IMG: Record<CkTrack, string> = { trade: impTradeImg, politics: impPoliticsImg, science: impScienceImg };
+// 商品アイコンの <img>。
+function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
+  const img = document.createElement('img');
+  img.className = cls; img.src = COMMODITY_IMG[c]; img.alt = c; img.draggable = false;
+  return img;
+}
+// アイコン画像＋ラベルのボタン（改善ボタン等）。makeBtn と同じクラス体系。
+function makeImgBtn(imgSrc: string, label: string, cls: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
+  const btn = el('button', `action-btn has-icon ${cls}`);
+  const img = document.createElement('img');
+  img.className = 'btn-icon-img'; img.src = imgSrc; img.alt = ''; img.draggable = false;
+  const span = el('span', 'btn-icon-label'); span.textContent = label;
+  btn.appendChild(img); btn.appendChild(span);
+  btn.disabled = disabled;
+  if (!disabled) btn.addEventListener('click', onClick);
+  return btn;
+}
 
 // ============================================================
 // 型定義（main.ts・events.ts 共有）
@@ -1157,9 +1185,9 @@ function appendCkBuildSection(
     const can = canBuildImprovement(state, pid, track);
     const c = CK_TRACK_COMMODITY[track];
     const label = lvl >= 5
-      ? `🏛${CK_TRACK_NAME[track]} Lv5`
-      : `🏛${CK_TRACK_NAME[track]} Lv${lvl}→${lvl + 1}（${COMMODITY_EMOJI[c]}${improvementCost(lvl)}）`;
-    impRow.appendChild(makeBtn(label, can ? 'btn-build' : 'btn-disabled', !can,
+      ? `${CK_TRACK_NAME[track]} Lv5（最大）`
+      : `${CK_TRACK_NAME[track]} Lv${lvl}→${lvl + 1}（${COMMODITY_EMOJI[c]}${improvementCost(lvl)}）`;
+    impRow.appendChild(makeImgBtn(IMP_IMG[track], label, can ? 'btn-build' : 'btn-disabled', !can,
       () => dispatch({ type: 'BUILD_IMPROVEMENT', track })));
   }
   sec.appendChild(impRow);
@@ -1794,7 +1822,9 @@ function buildPlayerPanel(
       const cRow = el('div', 'ck-comm-row');
       for (const c of COMMODITY_TYPES) {
         const chip = el('span', `ck-comm ck-comm-${c}${comm[c] === 0 ? ' zero' : ''}`);
-        chip.textContent = `${COMMODITY_EMOJI[c]}${comm[c]}`;
+        chip.appendChild(commIconImg(c, 'ck-comm-img'));
+        const n = el('span', 'ck-comm-n'); n.textContent = String(comm[c]);
+        chip.appendChild(n);
         cRow.appendChild(chip);
       }
       div.appendChild(cRow);

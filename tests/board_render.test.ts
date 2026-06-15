@@ -53,7 +53,12 @@ describe('盤面描画（jsdom）: 騎士と商人のコマ', () => {
     };
     const svg = svgEl();
     renderBoard(svg, s2, {});
-    expect(svg.querySelector('.knight-piece')).not.toBeNull();
+    const kp = svg.querySelector('.knight-piece');
+    expect(kp).not.toBeNull();
+    // 騎士はSVG円→コマ画像(<image>)に変更済み。href が設定されていることを確認。
+    const kimg = kp?.querySelector('image');
+    expect(kimg).not.toBeNull();
+    expect(kimg?.getAttribute('href')).toBeTruthy();
     expect(svg.querySelector('.metropolis-mark')).not.toBeNull();
   });
 });

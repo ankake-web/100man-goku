@@ -1776,8 +1776,14 @@ h1 {
 .ck-knight-row .action-btn, .ck-pc-row .action-btn { flex: 1 1 46%; } /* 騎士・進歩カードは2列（奇数は伸びて1行を埋める） */
 .ck-pc-title { font-size: 0.75rem; color: rgba(255,255,255,0.66); font-weight: 700; margin: 11px 0 6px; }
 .ck-comm-row { display: flex; gap: 7px; margin: 6px 0 2px; flex-wrap: wrap; }
-.ck-comm { font-size: 0.92rem; font-weight: 700; padding: 4px 11px; border-radius: 11px; background: rgba(255,255,255,0.1); color: #fff; }
+.ck-comm { display: inline-flex; align-items: center; gap: 4px; font-size: 0.98rem; font-weight: 800; padding: 3px 10px 3px 5px; border-radius: 13px; background: rgba(255,255,255,0.1); color: #fff; }
+.ck-comm-img { width: 23px; height: 23px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+.ck-comm-n { min-width: 0.6em; text-align: center; }
 .ck-comm.zero { opacity: 0.5; }
+/* アイコン付きボタン（改善トラックなど） */
+.action-btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn-icon-img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+.btn-icon-label { min-width: 0; }
 .ck-comm-coin  { background: rgba(255,205,70,0.22); }
 .ck-comm-cloth { background: rgba(110,200,240,0.2); }
 .ck-comm-paper { background: rgba(220,220,220,0.2); }

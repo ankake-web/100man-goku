@@ -19,6 +19,12 @@ import shipRed from '../assets/ship_red.png';
 import shipBlue from '../assets/ship_blue.png';
 import shipPurple from '../assets/ship_purple.png';
 import shipOrange from '../assets/ship_orange.png';
+import knight1Img from '../assets/knight1.png';
+import knight2Img from '../assets/knight2.png';
+import knight3Img from '../assets/knight3.png';
+
+// 騎士と商人: 強さ(1/2/3)→騎士コマ画像。色はプレイヤー色の土台ディスクで示す。
+const KNIGHT_IMG: Record<number, string> = { 1: knight1Img, 2: knight2Img, 3: knight3Img };
 
 // プレイヤーID→色キー。建物画像（屋根/上部をプレイヤー色に着色済み）の選択に使う。
 const BUILDING_COLOR_KEY: Record<string, string> = {
@@ -509,30 +515,48 @@ function renderVertices(
         vg.appendChild(crown);
       }
     } else if (vertex.knight) {
-      // 騎士と商人: 騎士コマ（プレイヤー色の盾＋強さ数字。起動=明るい/非起動=暗い）。
+      // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
+      // 起動=くっきり、非起動=薄め。
       const k = vertex.knight;
       const col = PLAYER_HEX_COLOR[k.playerId] ?? '#aaa';
       const kg = svgEl('g'); kg.classList.add('knight-piece');
       const r = 8.5 * bs;
-      const shield = svgEl('circle');
-      setAttrs(shield, { cx: vx, cy: vy, r, fill: col, stroke: '#10100c',
-        'stroke-width': 2 * bs, opacity: k.active ? 1 : 0.55 });
-      kg.appendChild(shield);
-      const num = svgEl('text');
-      setAttrs(num, { x: vx, y: vy + 0.5 * bs, 'text-anchor': 'middle', 'dominant-baseline': 'central',
-        'font-size': 10 * bs, 'font-weight': 'bold', fill: '#fff', 'pointer-events': 'none' });
-      num.textContent = String(k.strength);
-      kg.appendChild(num);
+      const footY = vy + 6.5 * bs;          // 足元（土台）の基準
+      // 土台ディスク（所有者の色）。
+      const base = svgEl('ellipse');
+      setAttrs(base, { cx: vx, cy: footY, rx: r * 1.1, ry: r * 0.5, fill: col,
+        stroke: '#10100c', 'stroke-width': 1.6 * bs, opacity: k.active ? 1 : 0.6 });
+      kg.appendChild(base);
+      // 起動リング（足元）/ 移動対象リング。
       if (k.active) {
-        const ring = svgEl('circle');
-        setAttrs(ring, { cx: vx, cy: vy, r: r + 1.5 * bs, fill: 'none', stroke: '#ffe066', 'stroke-width': 1.5 * bs });
+        const ring = svgEl('ellipse');
+        setAttrs(ring, { cx: vx, cy: footY, rx: r * 1.32, ry: r * 0.62, fill: 'none', stroke: '#ffe066', 'stroke-width': 1.6 * bs });
         kg.appendChild(ring);
       }
-      if (isValid) { // 騎士移動モードの操作対象（移動元 or 押し出し先）
-        const vr = svgEl('circle');
-        setAttrs(vr, { cx: vx, cy: vy, r: r + 3.5 * bs, fill: 'none', stroke: '#00ff88', 'stroke-width': 2 * bs });
+      if (isValid) {
+        const vr = svgEl('ellipse');
+        setAttrs(vr, { cx: vx, cy: footY, rx: r * 1.6, ry: r * 0.82, fill: 'none', stroke: '#00ff88', 'stroke-width': 2 * bs });
         kg.appendChild(vr);
       }
+      // 騎士コマ画像。
+      const kw = 27 * bs;
+      const img = svgEl('image');
+      setAttrs(img, { x: vx - kw / 2, y: footY + 1 * bs - kw, width: kw, height: kw,
+        preserveAspectRatio: 'xMidYMid meet', opacity: k.active ? 1 : 0.5 });
+      const href = KNIGHT_IMG[k.strength] ?? knight1Img;
+      img.setAttribute('href', href);
+      img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
+      kg.appendChild(img);
+      // 強さバッジ（小サイズでも一目で分かる数字）。
+      const bx = vx + r * 1.15, byb = vy - r * 0.55;
+      const badge = svgEl('circle');
+      setAttrs(badge, { cx: bx, cy: byb, r: 5 * bs, fill: col, stroke: '#10100c', 'stroke-width': 1.2 * bs });
+      kg.appendChild(badge);
+      const num = svgEl('text');
+      setAttrs(num, { x: bx, y: byb + 0.3 * bs, 'text-anchor': 'middle', 'dominant-baseline': 'central',
+        'font-size': 7 * bs, 'font-weight': 'bold', fill: '#fff', 'pointer-events': 'none' });
+      num.textContent = String(k.strength);
+      kg.appendChild(num);
       vg.appendChild(kg);
     } else {
       const dot = svgEl('circle');
