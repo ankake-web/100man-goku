@@ -54,5 +54,7 @@ export function maskStateFor(state: GameState, viewerId: PlayerId): GameState {
     // クライアント/AI は devDeck.length しか参照しないため、枚数を保った不透明スタブに置換し、
     // DevTools から「次に誰が何を引くか」を先読みできないようにする（中身は決して読まれない）。
     devDeck: state.devDeck.map(() => ({ id: '', type: 'knight' as const, purchasedOnTurn: -1 })),
+    // 騎士と商人: 錬金術師で事前指定した次のダイス目は秘匿情報（相手に先読みさせない）。
+    ...(state.alchemistForcedDice != null ? { alchemistForcedDice: null } : {}),
   };
 }

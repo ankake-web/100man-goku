@@ -105,7 +105,7 @@ export function createInitialGameState(
     longestRoadHolder: null,
     largestArmyHolder: null,
     ...(scenario.victoryTarget != null ? { victoryTarget: scenario.victoryTarget } : {}),
-    ...(ck ? { expansion: 'cities_knights' as const, commodityBank: { ...COMMODITY_BANK_INITIAL }, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {}, progressDecks: buildProgressDecks(rng) } : {}),
+    ...(ck ? { expansion: 'cities_knights' as const, commodityBank: { ...COMMODITY_BANK_INITIAL }, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {}, progressDecks: buildProgressDecks(rng), knightMovedThisTurn: false, knightChasedThisTurn: false } : {}),
     islandBonus: {},
     pendingTrade: null,
     winner: null,

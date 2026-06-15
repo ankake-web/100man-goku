@@ -10,7 +10,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, LogEntry, ResourceType, TradeKind } from '../types';
-import { RESOURCE_TYPES } from '../constants';
+import { RESOURCE_TYPES, PROGRESS_CARD_NAME } from '../constants';
 
 export const RES_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
@@ -92,6 +92,11 @@ export function buildActionLog(
       push(actor, 'DEV_CARD', `🏛 ${nm(actor)} が独占を使用（${RES_EMOJI[action.resource]}）`); break;
     case 'BANK_TRADE':
       push(actor, 'TRADE_BANK', `💱 ${nm(actor)} が銀行交易（${kindEmoji(action.give)}→${kindEmoji(action.receive)}）`); break;
+    case 'PLAY_PROGRESS': {
+      // 進歩カードは使用すると効果が公開される（相手にも何を使ったか分かる）。
+      const card = prev.players[actor]?.progressCards?.find(c => c.id === action.cardId);
+      push(actor, 'DEV_CARD', `📜 ${nm(actor)} が進歩カード「${card ? PROGRESS_CARD_NAME[card.type] : '進歩'}」を使用`); break;
+    }
     case 'MOVE_ROBBER': {
       let msg = `🦹 ${nm(actor)} が盗賊を移動`;
       if (action.stealFromPlayerId) msg += `し ${nm(action.stealFromPlayerId)} から1枚奪った`; // 種類は秘匿

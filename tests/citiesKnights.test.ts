@@ -592,4 +592,31 @@ describe('C&K 追加進歩カード', () => {
     expect(a2.lastDiceRoll).toEqual(forced);            // 指定の目で振られる
     expect(a2.alchemistForcedDice ?? null).toBeNull();  // 消費済み
   });
+
+  it('spy: 手札4枚(spy含む)でも使え、使用後はちょうど4枚（5枚にならない）', async () => {
+    const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const four = [
+      { id: 'spy', type: 'spy' as const, deck: 'politics' as const },
+      { id: 'a', type: 'warlord' as const, deck: 'politics' as const },
+      { id: 'b', type: 'smith' as const, deck: 'science' as const },
+      { id: 'c', type: 'mining' as const, deck: 'science' as const },
+    ];
+    const s = ck2({ progressCards: four }, { progressCards: [{ id: 'v', type: 'irrigation', deck: 'science' }] });
+    expect(canPlayProgress(s, 'player1', 'spy')).toBe(true);
+    const r = playProgress(s, 'player1', 'spy', createRng(1));
+    expect((r.players.player1!.progressCards ?? []).length).toBe(4); // spy除去→3、奪取→4。5にはならない
+    expect((r.players.player2!.progressCards ?? []).length).toBe(0);
+  });
+
+  it('bishop: 通常盤では使用可、移動先(現在地以外の陸)が無ければ不可', async () => {
+    const { canPlayProgress } = await import('../src/engine/citiesKnights');
+    const s = ck2({ progressCards: [{ id: 'bi', type: 'bishop', deck: 'politics' }] });
+    expect(canPlayProgress(s, 'player1', 'bi')).toBe(true);
+    const tids = Object.keys(s.tiles);
+    const land = tids[0]!;
+    const tiles = Object.fromEntries(tids.map(t => [t, { ...s.tiles[t]!, type: (t === land ? 'forest' : 'sea') as TileType, hasRobber: t === land }]));
+    const s2 = { ...s, tiles } as GameState;
+    expect(canPlayProgress(s2, 'player1', 'bi')).toBe(false); // 現在地以外の陸が無い
+  });
 });

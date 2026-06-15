@@ -113,6 +113,13 @@ describe('maskStateFor', () => {
     expect(me.progressCards).toHaveLength(2);
   });
 
+  it('alchemistForcedDice を配信stateで秘匿する（相手に次の目を先読みさせない）', () => {
+    const base = createInitialGameState(SPECS, 'fixed', ['player1', 'player2', 'player3']);
+    const s = { ...base, expansion: 'cities_knights' as const, alchemistForcedDice: [3, 4] as [number, number] };
+    expect(maskStateFor(s, 'player1').alchemistForcedDice ?? null).toBeNull();
+    expect(maskStateFor(s, 'player2').alchemistForcedDice ?? null).toBeNull();
+  });
+
   it('produces different views per viewer (no cross-leak)', () => {
     const s = withHands(createInitialGameState(SPECS, 'fixed', ['player1', 'player2', 'player3']));
     const forP1 = maskStateFor(s, 'player1');

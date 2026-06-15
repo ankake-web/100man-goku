@@ -200,7 +200,7 @@ export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, t
  * 1ターン1回（knightChasedThisTurn）。本実装は陸の強盗のみ対象（海賊は対象外）。
  */
 export function robberAdjacentChasableVertexIds(state: GameState, pid: PlayerId): VertexId[] {
-  if (!isCk(state) || state.knightChasedThisTurn) return [];
+  if (!isCk(state) || state.knightChasedThisTurn || state.turnPhase !== 'TRADE_BUILD') return [];
   const robberTid = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
   if (!robberTid) return [];
   const out: VertexId[] = [];
@@ -213,7 +213,7 @@ export function robberAdjacentChasableVertexIds(state: GameState, pid: PlayerId)
 
 /** 指定頂点のアクティブ騎士で強盗を追い払えるか（強盗ヘクスに隣接・1ターン1回）。 */
 export function canChaseRobber(state: GameState, pid: PlayerId, vid: VertexId): boolean {
-  if (!isCk(state) || state.knightChasedThisTurn) return false;
+  if (!isCk(state) || state.knightChasedThisTurn || state.turnPhase !== 'TRADE_BUILD') return false;
   const k = state.vertices[vid]?.knight;
   if (!k || k.playerId !== pid || !k.active) return false;
   const adjTiles = state.vertices[vid]?.adjacentTileIds ?? [];
@@ -786,7 +786,10 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
     case 'commercial_harbor': return RESOURCE_TYPES.some(r => p.hand[r] > 0) && opps.some(o => COMMODITY_TYPES.some(c => commodities(state.players[o]!)[c] > 0));
     case 'merchant':      return bestResourceTileForPlayer(state, pid) != null;
     case 'merchant_fleet': return RESOURCE_TYPES.some(r => p.hand[r] > 0) || COMMODITY_TYPES.some(c => commodities(p)[c] > 0);
-    case 'bishop':    return true;
+    case 'bishop': { // 移動可能な陸タイル（現在地以外）が1つ以上必要
+      const cur = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
+      return Object.keys(state.tiles).some(t => state.tiles[t]!.type !== 'sea' && t !== cur);
+    }
     case 'deserter':  return knightCountOf(state, pid) < PIECE_LIMITS.knights && strongestOpponentKnight(state, pid) != null && knightPlacementVertex(state, pid) != null;
     case 'diplomat':  return removableOpponentRoad(state, pid) != null;
     case 'intrigue':  return enemyKnightAdjacentToMyRoad(state, pid) != null;

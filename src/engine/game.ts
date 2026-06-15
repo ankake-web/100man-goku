@@ -802,8 +802,8 @@ export function applyAction(
         devCardPlayedThisTurn: false,
         shipMovedThisTurn: false,
         shipsBuiltThisTurn: [],
-        knightMovedThisTurn: false,
-        knightChasedThisTurn: false,
+        // 騎士と商人専用フラグは CK でのみリセット（非CK状態を汚さない）。
+        ...(isCk(state) ? { knightMovedThisTurn: false, knightChasedThisTurn: false } : {}),
         pendingTrade: null,
       };
     }
