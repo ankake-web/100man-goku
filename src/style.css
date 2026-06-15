@@ -718,9 +718,11 @@ h1 {
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 7px;
   margin-top: 6px;
+  align-items: start; /* 列の高さに合わせてボタンが縦に引き伸ばされないように（巨大空白ボックス防止） */
 }
-/* セカンダリUI(交易/捨て札など)の内側コンテナや説明文は全幅で読みやすく */
+/* セカンダリUI(交易/捨て札・騎士と商人パネルなど)の内側コンテナや説明文は全幅で独立ブロックに */
 .action-buttons > .modal-panel,
+.action-buttons > .ck-build,
 .action-buttons > .turn-phase-text { grid-column: 1 / -1; }
 
 .action-btn {
