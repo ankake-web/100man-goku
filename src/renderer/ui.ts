@@ -7,14 +7,14 @@ import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
 import { calcVP, calcPublicVP, victoryTarget } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
-import { canBankTrade, getEffectiveTradeRate } from '../engine/trade';
+import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trade';
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
   playerHasMovableKnight,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC } from '../constants';
-import type { CkTrack, CommodityType, CommodityHand } from '../types';
+import type { CkTrack, CommodityType, CommodityHand, TradeKind } from '../types';
 import type { BuildMode } from './events';
 
 const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
@@ -32,7 +32,7 @@ import knightImg from '../assets/knight.png';
 export type UIPhase =
   | { type: 'idle' }
   | { type: 'discard'; playerId: PlayerId; selected: ResourceHand; selectedCommodities?: Partial<CommodityHand> }
-  | { type: 'bankTrade'; give: ResourceType | null; receive: ResourceType | null }
+  | { type: 'bankTrade'; give: TradeKind | null; receive: TradeKind | null }
   | { type: 'yearOfPlenty'; slots: (ResourceType | null)[] }
   | { type: 'goldChoice'; playerId: PlayerId; slots: (ResourceType | null)[] }
   | { type: 'monopoly'; resource: ResourceType | null }
@@ -350,24 +350,32 @@ function buildBankTradeUI(
 
   const give    = uiPhase.type === 'bankTrade' ? uiPhase.give : null;
   const receive = uiPhase.type === 'bankTrade' ? uiPhase.receive : null;
+  const ck = isCk(state);
+  const kindEmoji = (k: TradeKind): string => isCommodity(k) ? COMMODITY_EMOJI[k] : RESOURCE_EMOJI[k as ResourceType];
+  const heldOf = (k: TradeKind): number => isCommodity(k) ? (player.commodities ?? { coin: 0, cloth: 0, paper: 0 })[k] : player.hand[k as ResourceType];
+  const bankOf = (k: TradeKind): number => isCommodity(k) ? (state.commodityBank ?? { coin: 0, cloth: 0, paper: 0 })[k] : state.bank[k as ResourceType];
 
   const header = el('div', 'modal-header');
   header.textContent = '💱 バンク交易';
   div.appendChild(header);
 
   const giveLabel = el('div', 'modal-section-label');
-  giveLabel.textContent = '渡す資源：';
+  giveLabel.textContent = ck ? '渡す資源／商品：' : '渡す資源：';
   div.appendChild(giveLabel);
 
+  const giveKinds: TradeKind[] = ck ? [...RESOURCE_TYPES, ...COMMODITY_TYPES] : [...RESOURCE_TYPES];
   const giveRow = el('div', 'modal-res-row');
-  for (const r of RESOURCE_TYPES) {
-    const rate = getEffectiveTradeRate(state, pid, r);
-    const canAfford = player.hand[r] >= rate;
+  for (const k of giveKinds) {
+    const rate = getEffectiveTradeRate(state, pid, k);
+    const canAfford = heldOf(k) >= rate;
+    const label = isCommodity(k)
+      ? `${COMMODITY_EMOJI[k]} ×${heldOf(k)} (${rate}:1)`
+      : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]} ×${heldOf(k)} (${rate}:1)`;
     const btn = makeBtn(
-      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]} ×${player.hand[r]} (${rate}:1)`,
-      give === r ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled',
+      label,
+      give === k ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled',
       !canAfford,
-      () => setUIPhase({ type: 'bankTrade', give: give === r ? null : r, receive }),
+      () => setUIPhase({ type: 'bankTrade', give: give === k ? null : k, receive }),
     );
     giveRow.appendChild(btn);
   }
@@ -375,18 +383,21 @@ function buildBankTradeUI(
 
   if (give !== null) {
     const receiveLabel = el('div', 'modal-section-label');
-    receiveLabel.textContent = '受け取る資源：';
+    receiveLabel.textContent = ck ? '受け取る資源／商品：' : '受け取る資源：';
     div.appendChild(receiveLabel);
 
     const receiveRow = el('div', 'modal-res-row');
-    for (const r of RESOURCE_TYPES) {
-      if (r === give) continue;
-      const inBank = state.bank[r] > 0;
+    for (const k of giveKinds) {
+      if (k === give) continue;
+      const inBank = bankOf(k) > 0;
+      const label = isCommodity(k)
+        ? `${COMMODITY_EMOJI[k]}`
+        : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]}`;
       const btn = makeBtn(
-        `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}`,
-        receive === r ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled',
+        label,
+        receive === k ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled',
         !inBank,
-        () => setUIPhase({ type: 'bankTrade', give, receive: receive === r ? null : r }),
+        () => setUIPhase({ type: 'bankTrade', give, receive: receive === k ? null : k }),
       );
       receiveRow.appendChild(btn);
     }
@@ -396,7 +407,7 @@ function buildBankTradeUI(
       const rate = getEffectiveTradeRate(state, pid, give);
       const valid = canBankTrade(state, pid, give, receive);
       div.appendChild(makeBtn(
-        `✓ ${rate}枚の${RESOURCE_EMOJI[give]} → 1枚の${RESOURCE_EMOJI[receive]}`,
+        `✓ ${rate}枚の${kindEmoji(give)} → 1枚の${kindEmoji(receive)}`,
         valid ? 'btn-primary' : 'btn-disabled',
         !valid,
         () => dispatch({ type: 'BANK_TRADE', give, receive }),

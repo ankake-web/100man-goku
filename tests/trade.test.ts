@@ -741,3 +741,59 @@ describe('CPU→人間交易: 承認すると資源が交換される', () => {
     })).toThrow();
   });
 });
+
+// ============================================================
+// 騎士と商人: 商品のバンク交易・枯渇（F5）
+// ============================================================
+describe('C&K 商品のバンク交易', () => {
+  function ckTradeState(extra: Partial<GameState> = {}): GameState {
+    return makeGameState({
+      expansion: 'cities_knights',
+      commodityBank: { coin: 19, cloth: 19, paper: 19 },
+      players: {
+        player1: makePlayer('player1', { hand: makeHand({ wood: 4 }), commodities: { coin: 4, cloth: 0, paper: 0 } }),
+        player2: makePlayer('player2'),
+      },
+      playerOrder: ['player1', 'player2'],
+      ...extra,
+    } as Partial<GameState>);
+  }
+
+  it('商品のレート: トレーディングハウス(交易Lv3)で2:1、無ければ4:1。港は商品に効かない', () => {
+    const base = ckTradeState();
+    expect(getEffectiveTradeRate(base, 'player1', 'coin')).toBe(4);
+    const lv3: GameState = { ...base, players: { ...base.players, player1: makePlayer('player1', { improvements: { trade: 3, politics: 0, science: 0 }, commodities: { coin: 4, cloth: 0, paper: 0 }, hand: makeHand({ wood: 4 }) }) } };
+    expect(getEffectiveTradeRate(lv3, 'player1', 'coin')).toBe(2);
+  });
+
+  it('非CKでは商品の give/receive は不可（後方互換）', () => {
+    const base = makeGameState({ players: { player1: makePlayer('player1', { hand: makeHand({ wood: 8 }) }), player2: makePlayer('player2') } });
+    expect(canBankTrade(base, 'player1', 'coin', 'wood')).toBe(false);
+    expect(canBankTrade(base, 'player1', 'wood', 'coin')).toBe(false);
+  });
+
+  it('商品→資源 交易で commodities/commodityBank/hand/bank が正しく増減', () => {
+    const s = ckTradeState();
+    expect(canBankTrade(s, 'player1', 'coin', 'wool')).toBe(true); // coin4枚, 4:1
+    const r = executeBankTrade(s, 'player1', 'coin', 'wool');
+    expect(r.players.player1!.commodities!.coin).toBe(0);      // 4枚支払い
+    expect(r.commodityBank!.coin).toBe(23);                    // バンクへ戻る(19+4)
+    expect(r.players.player1!.hand.wool).toBe(1);              // 1枚受領
+    expect(r.bank.wool).toBe(s.bank.wool - 1);
+  });
+
+  it('資源→商品 交易で hand/bank/commodities/commodityBank が正しく増減', () => {
+    const s = ckTradeState();
+    expect(canBankTrade(s, 'player1', 'wood', 'paper')).toBe(true); // wood4, 4:1
+    const r = executeBankTrade(s, 'player1', 'wood', 'paper');
+    expect(r.players.player1!.hand.wood).toBe(0);
+    expect(r.bank.wood).toBe(s.bank.wood + 4);
+    expect(r.players.player1!.commodities!.paper).toBe(1);
+    expect(r.commodityBank!.paper).toBe(18);
+  });
+
+  it('商品バンクが枯渇していれば受け取れない', () => {
+    const s = ckTradeState({ commodityBank: { coin: 19, cloth: 19, paper: 0 } });
+    expect(canBankTrade(s, 'player1', 'wood', 'paper')).toBe(false);
+  });
+});

@@ -16,6 +16,9 @@ export function makeCommodities(partial: Partial<CommodityHand> = {}): Commodity
   return { coin: 0, cloth: 0, paper: 0, ...partial };
 }
 
+/** 騎士と商人: 商品銀行の初期在庫（資源バンクと対称に各19）。実質枯渇しないが供給の有限性を表す。 */
+export const COMMODITY_BANK_INITIAL: CommodityHand = { coin: 19, cloth: 19, paper: 19 };
+
 // 都市が追加産出する商品の対応（森→紙 / 牧草→布 / 山→金貨）。他地形は商品なし。
 export const TILE_COMMODITY_MAP: Record<TileType, CommodityType | null> = {
   forest:   'paper',

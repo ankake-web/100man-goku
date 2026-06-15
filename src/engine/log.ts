@@ -9,12 +9,16 @@
 //   - CPUの資源獲得の内訳（人間プレイヤー自身の分のみ内訳を出す）
 // ============================================================
 
-import type { GameState, Action, PlayerId, LogEntry, ResourceType } from '../types';
+import type { GameState, Action, PlayerId, LogEntry, ResourceType, TradeKind } from '../types';
 import { RESOURCE_TYPES } from '../constants';
 
 export const RES_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
 };
+
+const COMMODITY_EMOJI: Record<string, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
+/** 資源/商品どちらの絵文字も解決する（騎士と商人の銀行交易ログ用）。 */
+const kindEmoji = (k: TradeKind): string => RES_EMOJI[k as ResourceType] ?? COMMODITY_EMOJI[k] ?? '?';
 
 const DEV_PLAY_LABEL: Record<string, string> = {
   PLAY_KNIGHT:         '⚔ 騎士',
@@ -87,7 +91,7 @@ export function buildActionLog(
       // 独占は宣言した資源が公開情報
       push(actor, 'DEV_CARD', `🏛 ${nm(actor)} が独占を使用（${RES_EMOJI[action.resource]}）`); break;
     case 'BANK_TRADE':
-      push(actor, 'TRADE_BANK', `💱 ${nm(actor)} が銀行交易（${RES_EMOJI[action.give]}→${RES_EMOJI[action.receive]}）`); break;
+      push(actor, 'TRADE_BANK', `💱 ${nm(actor)} が銀行交易（${kindEmoji(action.give)}→${kindEmoji(action.receive)}）`); break;
     case 'MOVE_ROBBER': {
       let msg = `🦹 ${nm(actor)} が盗賊を移動`;
       if (action.stealFromPlayerId) msg += `し ${nm(action.stealFromPlayerId)} から1枚奪った`; // 種類は秘匿

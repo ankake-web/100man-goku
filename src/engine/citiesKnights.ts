@@ -17,7 +17,7 @@ import type {
 } from '../types';
 import {
   RESOURCE_TYPES, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, COMMODITY_TYPES,
-  makeCommodities, CK_COSTS, CK_TRACK_COMMODITY, CK_MAX_IMPROVEMENT, CK_METROPOLIS_LEVEL,
+  makeCommodities, COMMODITY_BANK_INITIAL, CK_COSTS, CK_TRACK_COMMODITY, CK_MAX_IMPROVEMENT, CK_METROPOLIS_LEVEL,
   CK_BARBARIAN_MAX, CK_MAX_WALLS, PIECE_LIMITS, improvementCost,
   PROGRESS_DECK_CARDS, PROGRESS_HAND_LIMIT,
 } from '../constants';
@@ -217,7 +217,10 @@ export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack
   const p = state.players[pid]!;
   const lvl = improvements(p)[track];
   const c = CK_TRACK_COMMODITY[track];
-  const newComm = { ...commodities(p), [c]: commodities(p)[c] - improvementCost(lvl) };
+  const cost = improvementCost(lvl);
+  const newComm = { ...commodities(p), [c]: commodities(p)[c] - cost };
+  // 支払った商品は供給(commodityBank)へ戻る（公式どおり。これが無いと供給が単調減少して枯渇する）。
+  const commodityBank = { ...(state.commodityBank ?? COMMODITY_BANK_INITIAL), [c]: (state.commodityBank ?? COMMODITY_BANK_INITIAL)[c] + cost };
   const newLvl = lvl + 1;
   let players = { ...state.players, [pid]: { ...p, commodities: newComm, improvements: { ...improvements(p), [track]: newLvl } } };
   let vertices = state.vertices;
@@ -245,7 +248,7 @@ export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack
       metropolis = { ...metropolis, [track]: { playerId: pid, vertexId: newVid } };
     }
   }
-  return { ...state, players, vertices, metropolis };
+  return { ...state, players, vertices, metropolis, commodityBank };
 }
 
 // ============================================================
@@ -585,6 +588,7 @@ export function distributeCkProduction(state: GameState, diceTotal: number): Gam
   const { resources, commodities: comm } = computeCkProduction(state, diceTotal);
   const players = { ...state.players };
   const bank = { ...state.bank };
+  const commodityBank = { ...(state.commodityBank ?? COMMODITY_BANK_INITIAL) };
   for (const pid of state.playerOrder) {
     const rGain = resources[pid]; const cGain = comm[pid];
     const p = players[pid]!;
@@ -592,7 +596,7 @@ export function distributeCkProduction(state: GameState, diceTotal: number): Gam
     let resGained = 0;
     if (rGain) for (const r of RESOURCE_TYPES) { const n = rGain[r] ?? 0; if (n) { hand[r] += n; bank[r] -= n; resGained += n; } }
     const newComm = { ...commodities(p) };
-    if (cGain) for (const c of COMMODITY_TYPES) { const n = cGain[c] ?? 0; if (n) newComm[c] += n; }
+    if (cGain) for (const c of COMMODITY_TYPES) { const n = cGain[c] ?? 0; if (n) { newComm[c] += n; commodityBank[c] -= n; } }
     // 水道橋(科学Lv3): このロールで資源を1つも得られなかったプレイヤーは、資源を1枚もらえる
     //   （手動選択UIを避けるため、最も少ない資源を自動選択。バンク在庫で頭打ち）。
     if (resGained === 0 && (p.improvements?.science ?? 0) >= 3) {
@@ -603,7 +607,7 @@ export function distributeCkProduction(state: GameState, diceTotal: number): Gam
       players[pid] = { ...p, hand, commodities: newComm };
     }
   }
-  return { ...state, players, bank };
+  return { ...state, players, bank, commodityBank };
 }
 
 export interface CkProduction {
@@ -620,14 +624,12 @@ export function computeCkProduction(state: GameState, diceTotal: number): CkProd
   const commodities: CkProduction['commodities'] = {};
   if (diceTotal === 7) return { resources, commodities };
 
-  // resource → playerId → 総需要量（バンク枯渇判定に使う）
+  // resource/commodity → playerId → 総需要量（バンク枯渇判定に使う）
   const resDemand: Record<ResourceType, Record<string, number>> = {
     wood: {}, brick: {}, wool: {}, grain: {}, ore: {},
   };
-  // commodity は枯渇を扱わないので直接 commodities に積む。
-  const addCommodity = (pid: string, c: CommodityType, n: number): void => {
-    if (!commodities[pid]) commodities[pid] = {};
-    commodities[pid]![c] = (commodities[pid]![c] ?? 0) + n;
+  const comDemand: Record<CommodityType, Record<string, number>> = {
+    coin: {}, cloth: {}, paper: {},
   };
 
   for (const tile of Object.values(state.tiles)) {
@@ -647,7 +649,7 @@ export function computeCkProduction(state: GameState, diceTotal: number): CkProd
         // 都市
         if (commodity) {
           resDemand[resource][playerId] = (resDemand[resource][playerId] ?? 0) + 1;
-          addCommodity(playerId, commodity, 1);
+          comDemand[commodity][playerId] = (comDemand[commodity][playerId] ?? 0) + 1;
         } else {
           resDemand[resource][playerId] = (resDemand[resource][playerId] ?? 0) + 2;
         }
@@ -671,6 +673,25 @@ export function computeCkProduction(state: GameState, diceTotal: number): CkProd
       bankLeft[resource] -= actual;
       if (!resources[pid]) resources[pid] = {};
       resources[pid]![resource] = (resources[pid]![resource] ?? 0) + actual;
+    }
+  }
+
+  // 商品にも同じ枯渇ルールを適用（commodityBank 在庫で頭打ち。複数需要が在庫超なら誰も貰えない）。
+  const comBankLeft = { ...(state.commodityBank ?? COMMODITY_BANK_INITIAL) };
+  for (const c of COMMODITY_TYPES) {
+    const demand = comDemand[c];
+    const pids = Object.keys(demand);
+    if (pids.length === 0) continue;
+    const totalDemand = pids.reduce((s, p) => s + (demand[p] ?? 0), 0);
+    if (pids.length > 1 && totalDemand > comBankLeft[c]) continue;
+    for (const pid of state.playerOrder) {
+      const needed = demand[pid] ?? 0;
+      if (needed === 0) continue;
+      const actual = Math.min(needed, comBankLeft[c]);
+      if (actual <= 0) continue;
+      comBankLeft[c] -= actual;
+      if (!commodities[pid]) commodities[pid] = {};
+      commodities[pid]![c] = (commodities[pid]![c] ?? 0) + actual;
     }
   }
 

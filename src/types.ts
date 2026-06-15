@@ -16,6 +16,8 @@ export type ResourceHand = Record<ResourceType, number>;
 // 都市が「森→紙 / 牧草→布 / 山→金貨」を1個ずつ追加産出する。都市改善の支払いに使う。
 export type CommodityType = 'coin' | 'cloth' | 'paper';
 export type CommodityHand = Record<CommodityType, number>;
+/** バンク交易の対象（資源または商品）。商品交易は騎士と商人のみ。 */
+export type TradeKind = ResourceType | CommodityType;
 
 // ---- タイル ----
 
@@ -256,6 +258,8 @@ export interface GameState {
   playerOrder: PlayerId[];
 
   bank: ResourceHand;
+  // 騎士と商人: 商品(コモディティ)の銀行在庫。バンク交易/産出で増減し枯渇したら配れない。非CKでは未設定。
+  commodityBank?: CommodityHand;
   // 騎士と商人(Cities & Knights)拡張が有効か。未設定=基本/航海者ルール。
   expansion?: 'cities_knights';
   // 騎士と商人: 蛮族船の進行度(0..7)。7で襲来して判定後 0 に戻る。
@@ -361,7 +365,7 @@ export type Action =
   | { type: 'PLAY_ROAD_BUILDING' }
   | { type: 'PLAY_YEAR_OF_PLENTY'; resources: [ResourceType, ResourceType] }
   | { type: 'PLAY_MONOPOLY';       resource: ResourceType }
-  | { type: 'BANK_TRADE';          give: ResourceType; receive: ResourceType }
+  | { type: 'BANK_TRADE';          give: TradeKind; receive: TradeKind }
   | { type: 'BUILD_KNIGHT';        vertexId: VertexId }
   | { type: 'ACTIVATE_KNIGHT';     vertexId: VertexId }
   | { type: 'UPGRADE_KNIGHT';      vertexId: VertexId }

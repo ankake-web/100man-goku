@@ -73,9 +73,9 @@ describe('C&K 都市産出 computeCkProduction', () => {
     expect(computeCkProduction(s2, 8)).toEqual({ resources: {}, commodities: {} });
   });
 
-  it('資源はバンク枯渇ルールを適用（複数需要が在庫超なら配布なし／商品は枯渇しない）', () => {
+  it('資源はバンク枯渇ルールを適用（複数需要が在庫超なら配布なし／商品は在庫十分なら配布）', () => {
     // 山タイルに player1/player2 の都市 → 各 鉱石1＋金貨1。ore 需要 1+1=2 を bank.ore=1 にすると
-    // 複数需要が在庫超 → ore は誰も貰えない。一方、商品(金貨)は枯渇を扱わないので両者とも貰える。
+    // 複数需要が在庫超 → ore は誰も貰えない。商品(金貨)は既定の在庫が十分なので両者とも貰える。
     const s0 = oneTile('mountain', [[0, 'city', 'player1'], [1, 'city', 'player2']]);
     const s = { ...s0, bank: makeHand({ ore: 1, wood: 9, brick: 9, wool: 9, grain: 9 }) };
     const prod = computeCkProduction(s, 8);
@@ -83,6 +83,15 @@ describe('C&K 都市産出 computeCkProduction', () => {
     expect(prod.resources.player2).toBeUndefined();
     expect(prod.commodities.player1).toEqual({ coin: 1 });
     expect(prod.commodities.player2).toEqual({ coin: 1 });
+  });
+
+  it('商品も枯渇ルールを適用（複数需要が商品在庫超なら配布なし）', () => {
+    // 金貨(coin)の在庫を1にすると、coin 需要 1+1=2 > 1 で複数需要在庫超 → 誰も金貨を貰えない。
+    const s0 = oneTile('mountain', [[0, 'city', 'player1'], [1, 'city', 'player2']]);
+    const s = { ...s0, commodityBank: { coin: 1, cloth: 19, paper: 19 } };
+    const prod = computeCkProduction(s, 8);
+    expect(prod.commodities.player1).toBeUndefined();
+    expect(prod.commodities.player2).toBeUndefined();
   });
 });
 

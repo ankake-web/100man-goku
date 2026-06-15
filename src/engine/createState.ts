@@ -15,7 +15,7 @@ import type { PlayerOrderMode } from './setup';
 import { getScenario } from './scenarios';
 import type { ScenarioId } from './scenarios';
 import { buildDevDeck } from './game';
-import { makeHand, makeCommodities, BANK_INITIAL } from '../constants';
+import { makeHand, makeCommodities, BANK_INITIAL, COMMODITY_BANK_INITIAL } from '../constants';
 import { buildProgressDecks } from './citiesKnights';
 
 export interface PlayerSpec {
@@ -105,7 +105,7 @@ export function createInitialGameState(
     longestRoadHolder: null,
     largestArmyHolder: null,
     ...(scenario.victoryTarget != null ? { victoryTarget: scenario.victoryTarget } : {}),
-    ...(ck ? { expansion: 'cities_knights' as const, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {}, progressDecks: buildProgressDecks(rng) } : {}),
+    ...(ck ? { expansion: 'cities_knights' as const, commodityBank: { ...COMMODITY_BANK_INITIAL }, barbarianPosition: 0, barbarianAttacks: 0, metropolis: {}, progressDecks: buildProgressDecks(rng) } : {}),
     islandBonus: {},
     pendingTrade: null,
     winner: null,

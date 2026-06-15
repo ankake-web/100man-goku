@@ -3,42 +3,60 @@
 // ============================================================
 
 import type {
-  GameState, PlayerId, ResourceType, TradeOffer, PlayerResponse,
+  GameState, PlayerId, ResourceType, CommodityType, TradeKind, Player, TradeOffer, PlayerResponse,
 } from '../types';
-import { RESOURCE_TYPES } from '../constants';
+import { RESOURCE_TYPES, COMMODITY_TYPES, makeCommodities } from '../constants';
+
+// ============================================================
+// 商品/資源の共通ヘルパ（騎士と商人のバンク交易は資源∪商品を扱う）
+// ============================================================
+
+const COMMODITY_SET = new Set<TradeKind>(COMMODITY_TYPES);
+/** k が商品(coin/cloth/paper)か。 */
+export function isCommodity(k: TradeKind): k is CommodityType {
+  return COMMODITY_SET.has(k);
+}
+/** プレイヤーの手持ち枚数（資源は hand、商品は commodities）。 */
+function handOf(player: Player, k: TradeKind): number {
+  return isCommodity(k) ? (player.commodities ?? makeCommodities())[k] : player.hand[k as ResourceType];
+}
+/** バンク在庫枚数（資源は bank、商品は commodityBank）。 */
+function bankOf(state: GameState, k: TradeKind): number {
+  return isCommodity(k) ? (state.commodityBank ?? makeCommodities())[k] : state.bank[k as ResourceType];
+}
 
 // ============================================================
 // 港交易レート計算
 // ============================================================
 
 /**
- * 指定プレイヤーの指定資源に対する最良交易レートを返す。
+ * 指定プレイヤーの give（資源 or 商品）に対する最良交易レートを返す。
  *
- * - デフォルト: 4:1
- * - 汎用港 (generic): 3:1
- * - 特殊港 (2:1 harbor for resource): 2:1
- * 複数の港を保有する場合は最も有利なレートを採用する。
+ * 資源: デフォルト4:1 / 汎用港3:1 / 特殊港2:1。複数港は最良を採用。
+ * 商品: 港は効かない。トレーディングハウス(交易Lv3)で2:1、無ければ4:1。
+ * 騎士と商人: 交易ツリーLv3以上は資源も全種2:1。
  */
 export function getEffectiveTradeRate(
   state: GameState,
   playerId: PlayerId,
-  resource: ResourceType,
+  give: TradeKind,
 ): number {
-  let rate = 4;
+  const tradeLv3 = state.expansion === 'cities_knights' && (state.players[playerId]?.improvements?.trade ?? 0) >= 3;
 
+  if (isCommodity(give)) {
+    // 商品は港レートを持たない。トレーディングハウスのみ2:1。
+    return tradeLv3 ? 2 : 4;
+  }
+
+  let rate = 4;
   for (const vertex of Object.values(state.vertices)) {
     if (vertex.building?.playerId !== playerId) continue;
     const harbor = vertex.harborType;
     if (!harbor) continue;
     if (harbor === 'generic') rate = Math.min(rate, 3);
-    if (harbor === resource) rate = Math.min(rate, 2);
+    if (harbor === give) rate = Math.min(rate, 2);
   }
-
-  // 騎士と商人: 交易ツリーLv3(トレーディングハウス)以上は全資源を銀行と2:1で交易できる。
-  if (state.expansion === 'cities_knights' && (state.players[playerId]?.improvements?.trade ?? 0) >= 3) {
-    rate = Math.min(rate, 2);
-  }
-
+  if (tradeLv3) rate = Math.min(rate, 2);
   return rate;
 }
 
@@ -49,56 +67,62 @@ export function getEffectiveTradeRate(
 /**
  * バンク/港交易が可能かバリデーションする。
  *
- * - 同じ資源同士の交換は不可。
- * - give 資源を rate 枚以上保有していること。
- * - バンクに receive 資源が 1 枚以上あること。
+ * - 同じ種類同士の交換は不可。
+ * - 非CKでは商品の give/receive は不可（後方互換・チート防止）。
+ * - give を rate 枚以上保有していること。
+ * - バンクに receive が 1 枚以上あること。
  */
 export function canBankTrade(
   state: GameState,
   playerId: PlayerId,
-  give: ResourceType,
-  receive: ResourceType,
+  give: TradeKind,
+  receive: TradeKind,
 ): boolean {
   if (give === receive) return false;
   const player = state.players[playerId];
   if (!player) return false;
-  if (state.bank[receive] < 1) return false;
+  // 非CKモードでは商品交易を一切禁止。
+  if (state.expansion !== 'cities_knights' && (isCommodity(give) || isCommodity(receive))) return false;
+  if (bankOf(state, receive) < 1) return false;
 
   const rate = getEffectiveTradeRate(state, playerId, give);
-  return player.hand[give] >= rate;
+  return handOf(player, give) >= rate;
 }
 
 /**
  * バンク/港交易を実行して新しい GameState を返す（バリデーション済み前提）。
- * give 資源を rate 枚バンクに戻し、receive 資源を 1 枚受け取る。
+ * give を rate 枚それぞれのバンクへ戻し、receive を 1 枚受け取る（資源/商品の4方向に対応）。
  */
 export function executeBankTrade(
   state: GameState,
   playerId: PlayerId,
-  give: ResourceType,
-  receive: ResourceType,
+  give: TradeKind,
+  receive: TradeKind,
 ): GameState {
   const player = state.players[playerId]!;
   const rate = getEffectiveTradeRate(state, playerId, give);
 
+  const hand = { ...player.hand };
+  const commodities = { ...(player.commodities ?? makeCommodities()) };
+  const bank = { ...state.bank };
+  const commodityBank = { ...(state.commodityBank ?? makeCommodities()) };
+
+  // give を rate 枚プレイヤーから引き、対応バンクへ戻す。
+  if (isCommodity(give)) { commodities[give] -= rate; commodityBank[give] += rate; }
+  else { hand[give] -= rate; bank[give] += rate; }
+  // receive を 1 枚バンクから引き、プレイヤーへ渡す。
+  if (isCommodity(receive)) { commodities[receive] += 1; commodityBank[receive] -= 1; }
+  else { hand[receive] += 1; bank[receive] -= 1; }
+
+  const playerNext: Player = state.expansion === 'cities_knights'
+    ? { ...player, hand, commodities }
+    : { ...player, hand };
+
   return {
     ...state,
-    bank: {
-      ...state.bank,
-      [give]:    state.bank[give] + rate,
-      [receive]: state.bank[receive] - 1,
-    },
-    players: {
-      ...state.players,
-      [playerId]: {
-        ...player,
-        hand: {
-          ...player.hand,
-          [give]:    player.hand[give] - rate,
-          [receive]: player.hand[receive] + 1,
-        },
-      },
-    },
+    bank,
+    ...(state.expansion === 'cities_knights' ? { commodityBank } : {}),
+    players: { ...state.players, [playerId]: playerNext },
   };
 }
 
