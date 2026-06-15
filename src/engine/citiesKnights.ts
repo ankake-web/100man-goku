@@ -13,7 +13,7 @@
 
 import type {
   GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player,
-  ProgressCard, TileType,
+  ProgressCard, TileType, Knight,
 } from '../types';
 import {
   RESOURCE_TYPES, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, COMMODITY_TYPES,
@@ -152,18 +152,41 @@ export function playerHasMovableKnight(state: GameState, pid: PlayerId): boolean
   if (!isCk(state) || state.knightMovedThisTurn) return false;
   return Object.keys(state.vertices).some(v => isKnightMovable(state, pid, v));
 }
-/** 騎士を移動（バリデーション済み前提）。押し出した敵騎士は供給へ戻る。1ターン1回。 */
+/**
+ * 押し出された騎士 displaced の再配置先頂点を返す（無ければ null=供給へ戻す）。
+ * 候補 = occupiedVid(=強い騎士が入った頂点)に隣接し、canPlaceKnightVertex(被押出側,cand) を満たす空き頂点。
+ * 決定論のため頂点ID昇順で先頭を選ぶ（rng不使用＝リプレイ安定）。
+ */
+export function findDisplacementTarget(state: GameState, displaced: Knight, occupiedVid: VertexId): VertexId | null {
+  const v = state.vertices[occupiedVid];
+  if (!v) return null;
+  const cands = v.adjacentVertexIds.filter(cv => canPlaceKnightVertex(state, displaced.playerId, cv));
+  cands.sort();
+  return cands[0] ?? null;
+}
+
+/**
+ * 騎士を移動（バリデーション済み前提）。1ターン1回。
+ * 弱い敵騎士を押し出した場合、公式どおりその騎士を所有者の隣接空き頂点（自網接続）へ再配置する。
+ * 合法な再配置先が無いときのみ供給へ戻す（盤から除去）。
+ */
 export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, toVid: VertexId): GameState {
   const k = state.vertices[fromVid]!.knight!;
-  return {
-    ...state,
-    knightMovedThisTurn: true,
-    vertices: {
-      ...state.vertices,
-      [fromVid]: { ...state.vertices[fromVid]!, knight: null },
-      [toVid]: { ...state.vertices[toVid]!, knight: { playerId: pid, strength: k.strength, active: k.active } },
-    },
+  const displaced = state.vertices[toVid]?.knight ?? null;
+  let vertices = {
+    ...state.vertices,
+    [fromVid]: { ...state.vertices[fromVid]!, knight: null },
+    [toVid]: { ...state.vertices[toVid]!, knight: { playerId: pid, strength: k.strength, active: k.active } },
   };
+  if (displaced && displaced.playerId !== pid) {
+    // 強い騎士を据えた後の盤を基準に再配置先を探す（occupiedVid自身は埋まっており候補から外れる）。
+    const dest = findDisplacementTarget({ ...state, vertices }, displaced, toVid);
+    if (dest) {
+      vertices = { ...vertices, [dest]: { ...vertices[dest]!, knight: { playerId: displaced.playerId, strength: displaced.strength, active: displaced.active } } };
+    }
+    // dest が null → 再配置先なし＝供給へ戻る（knightCount は頂点走査で動的算出のため別途減算不要）。
+  }
+  return { ...state, knightMovedThisTurn: true, vertices };
 }
 
 function addRes(bank: ResourceHand, cost: ResourceHand): ResourceHand {
@@ -266,7 +289,20 @@ export function rollEventDie(rng: () => number): 'ship' | CkTrack {
   return (['trade', 'politics', 'science'] as CkTrack[])[r - 3]!;
 }
 
-/** 蛮族襲来の判定。騎士の総力 vs 盤面の都市数。守護VP付与 or 最弱が都市喪失。終了後 全騎士を非起動・蛮族を0に。 */
+/** 同点防衛者が引くデッキ（最も枚数の多いデッキ。同数は trade→politics→science の固定順）。rng不使用＝決定的。 */
+function chooseBarbarianTieDeck(work: Record<CkTrack, ProgressCard[]>): CkTrack | null {
+  const order: CkTrack[] = ['trade', 'politics', 'science'];
+  const cand = order.filter(t => work[t].length > 0);
+  if (cand.length === 0) return null;
+  cand.sort((a, b) => (work[b].length - work[a].length) || (order.indexOf(a) - order.indexOf(b)));
+  return cand[0]!;
+}
+
+/**
+ * 蛮族襲来の判定。騎士の総力 vs 盤面の都市数。
+ * 防衛成功: 単独最大貢献者に守護者VP+1。同点最大なら守護VPは無く、同点者が各自 進歩カードを1枚引く（公式）。
+ * 防衛失敗: 平の都市を持つ最弱が都市1つを格下げ。終了後 全騎士を非起動・蛮族を0に。
+ */
 export function resolveBarbarianAttack(state: GameState): GameState {
   let cities = 0;
   const knightStr: Record<string, number> = {};
@@ -278,15 +314,38 @@ export function resolveBarbarianAttack(state: GameState): GameState {
 
   let players = { ...state.players };
   let vertices = { ...state.vertices };
+  let progressDecks = state.progressDecks;
 
   if (total >= cities) {
-    // 防衛成功: 最大貢献プレイヤーに守護者VP +1（同点は各自+1）。
+    // 防衛成功。
     const max = Math.max(0, ...state.playerOrder.map(p => knightStr[p] ?? 0));
     if (max > 0) {
-      for (const p of state.playerOrder) {
-        if ((knightStr[p] ?? 0) === max) players[p] = { ...players[p]!, defenderVP: (players[p]!.defenderVP ?? 0) + 1 };
+      const winners = state.playerOrder.filter(p => (knightStr[p] ?? 0) === max);
+      if (winners.length === 1) {
+        // 単独最大: 守護者VP +1。
+        const w = winners[0]!;
+        players[w] = { ...players[w]!, defenderVP: (players[w]!.defenderVP ?? 0) + 1 };
+      } else if (state.progressDecks) {
+        // 同点最大: 守護VPなし。各同点者が最も枚数の多いデッキから進歩カードを1枚引く（手札上限4まで）。
+        const work: Record<CkTrack, ProgressCard[]> = {
+          trade: [...state.progressDecks.trade],
+          politics: [...state.progressDecks.politics],
+          science: [...state.progressDecks.science],
+        };
+        let touched = false;
+        for (const w of winners) {
+          const held = players[w]!.progressCards ?? [];
+          if (held.length >= PROGRESS_HAND_LIMIT) continue;
+          const deck = chooseBarbarianTieDeck(work);
+          if (!deck) continue;
+          const card = work[deck].shift()!;
+          players[w] = { ...players[w]!, progressCards: [...held, card] };
+          touched = true;
+        }
+        if (touched) progressDecks = work;
       }
     }
+    // max===0（貢献0のみ）→ 報酬なし。
   } else {
     // 防衛失敗: 平の都市を持つプレイヤーのうち最弱(同点は全員)が都市1つを開拓地に格下げ。
     const owners = state.playerOrder.filter(p => playerHasPlainCity({ ...state, vertices }, p));
@@ -310,7 +369,10 @@ export function resolveBarbarianAttack(state: GameState): GameState {
     if (k?.active) vertices[id] = { ...vertices[id]!, knight: { ...k, active: false } };
   }
 
-  return { ...state, players, vertices, barbarianPosition: 0, barbarianAttacks: (state.barbarianAttacks ?? 0) + 1 };
+  return {
+    ...state, players, vertices, barbarianPosition: 0, barbarianAttacks: (state.barbarianAttacks ?? 0) + 1,
+    ...(progressDecks !== state.progressDecks ? { progressDecks } : {}),
+  };
 }
 
 // ============================================================

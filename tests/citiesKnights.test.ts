@@ -179,6 +179,79 @@ describe('C&K メトロポリス', () => {
   });
 });
 
+describe('C&K 蛮族防衛の報酬', () => {
+  function barbState(extra: (g: GameState, vs: string[]) => GameState): GameState {
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    return extra(g, Object.keys(g.vertices));
+  }
+
+  it('単独最大の貢献者は守護者VP+1（カードは引かない）', async () => {
+    const { resolveBarbarianAttack, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = barbState((g, vs) => ({
+      ...g,
+      progressDecks: buildProgressDecks(createRng(1)),
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [vs[2]!]: { ...g.vertices[vs[2]!]!, knight: { playerId: 'player2', strength: 1, active: true } },
+      },
+    }));
+    const r = resolveBarbarianAttack(s);
+    expect(r.players.player1!.defenderVP).toBe(1);
+    expect(r.players.player2!.defenderVP ?? 0).toBe(0);
+    expect((r.players.player1!.progressCards ?? []).length).toBe(0);
+  });
+
+  it('同点最大は守護VPなしで各同点者が進歩カードを1枚引く', async () => {
+    const { resolveBarbarianAttack, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = barbState((g, vs) => ({
+      ...g,
+      progressDecks: buildProgressDecks(createRng(2)),
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [vs[2]!]: { ...g.vertices[vs[2]!]!, knight: { playerId: 'player2', strength: 2, active: true } },
+      },
+    }));
+    const r = resolveBarbarianAttack(s);
+    expect(r.players.player1!.defenderVP ?? 0).toBe(0);
+    expect(r.players.player2!.defenderVP ?? 0).toBe(0);
+    expect((r.players.player1!.progressCards ?? []).length).toBe(1);
+    expect((r.players.player2!.progressCards ?? []).length).toBe(1);
+  });
+
+  it('同点でも手札上限4の防衛者はカードを引かない', async () => {
+    const { resolveBarbarianAttack, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const four = Array.from({ length: 4 }, (_, i) => ({ id: `x${i}`, type: 'warlord' as const, deck: 'politics' as const }));
+    const s = barbState((g, vs) => ({
+      ...g,
+      progressDecks: buildProgressDecks(createRng(3)),
+      players: {
+        ...g.players,
+        player1: makePlayer('player1', { progressCards: four }),
+      },
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [vs[2]!]: { ...g.vertices[vs[2]!]!, knight: { playerId: 'player2', strength: 2, active: true } },
+      },
+    }));
+    const r = resolveBarbarianAttack(s);
+    expect((r.players.player1!.progressCards ?? []).length).toBe(4); // 上限のため引かない
+    expect((r.players.player2!.progressCards ?? []).length).toBe(1);
+  });
+});
+
 describe('C&K 強盗・海賊', () => {
   it('資源0・商品のみの相手も奪取対象で、商品が奪われる', async () => {
     const { stealResource, robbableCardCount } = await import('../src/engine/robber');
@@ -307,5 +380,57 @@ describe('C&K 騎士の移動', () => {
     // 道が無い辺沿いは不可
     const noRoad: GameState = { ...base, edges: { ...base.edges, [eid]: { ...base.edges[eid]!, road: null } } };
     expect(canMoveKnight(noRoad, 'player1', v1, v2)).toBe(false);
+  });
+
+  it('押し出された弱い敵騎士は所有者の隣接空き頂点へ再配置され、strength/activeを保持', async () => {
+    const { moveKnight } = await import('../src/engine/citiesKnights');
+    const g = ckBoard();
+    const eid = Object.keys(g.edges)[0]!;
+    const [v1, v2] = g.edges[eid]!.vertexIds;
+    // v2 に隣接する別頂点 v3 とその間の辺 e23 を探し、player2 の道を置く。
+    let v3: string | undefined; let e23: string | undefined;
+    for (const e of g.vertices[v2]!.adjacentEdgeIds) {
+      const ed = g.edges[e]!;
+      const other = ed.vertexIds[0] === v2 ? ed.vertexIds[1] : ed.vertexIds[0];
+      if (other !== v1) { v3 = other; e23 = e; break; }
+    }
+    const s: GameState = {
+      ...g,
+      edges: {
+        ...g.edges,
+        [eid]: { ...g.edges[eid]!, road: { playerId: 'player1' } },
+        [e23!]: { ...g.edges[e23!]!, road: { playerId: 'player2' } },
+      },
+      vertices: {
+        ...g.vertices,
+        [v1]: { ...g.vertices[v1]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [v2]: { ...g.vertices[v2]!, knight: { playerId: 'player2', strength: 1, active: true } },
+      },
+    };
+    const next = moveKnight(s, 'player1', v1, v2);
+    expect(next.vertices[v2]!.knight!.playerId).toBe('player1'); // 強い騎士が入る
+    expect(next.vertices[v1]!.knight).toBeNull();
+    expect(next.vertices[v3!]!.knight).toEqual({ playerId: 'player2', strength: 1, active: true }); // 再配置・状態保持
+  });
+
+  it('再配置先が無ければ押し出された騎士は供給へ戻る（盤から消える）', async () => {
+    const { moveKnight } = await import('../src/engine/citiesKnights');
+    const g = ckBoard();
+    const eid = Object.keys(g.edges)[0]!;
+    const [v1, v2] = g.edges[eid]!.vertexIds;
+    const s: GameState = {
+      ...g,
+      edges: { ...g.edges, [eid]: { ...g.edges[eid]!, road: { playerId: 'player1' } } }, // player2の道なし
+      vertices: {
+        ...g.vertices,
+        [v1]: { ...g.vertices[v1]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [v2]: { ...g.vertices[v2]!, knight: { playerId: 'player2', strength: 1, active: true } },
+      },
+    };
+    const before = Object.values(s.vertices).filter(v => v.knight?.playerId === 'player2').length;
+    const next = moveKnight(s, 'player1', v1, v2);
+    const after = Object.values(next.vertices).filter(v => v.knight?.playerId === 'player2').length;
+    expect(after).toBe(before - 1); // 供給へ戻る
+    expect(next.vertices[v2]!.knight!.playerId).toBe('player1');
   });
 });
