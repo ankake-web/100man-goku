@@ -5,7 +5,7 @@
 import type {
   GameState, PlayerId, ResourceType, CommodityType, TradeKind, Player, TradeOffer, PlayerResponse,
 } from '../types';
-import { RESOURCE_TYPES, COMMODITY_TYPES, makeCommodities } from '../constants';
+import { RESOURCE_TYPES, COMMODITY_TYPES, makeCommodities, TILE_RESOURCE_MAP } from '../constants';
 
 // ============================================================
 // 商品/資源の共通ヘルパ（騎士と商人のバンク交易は資源∪商品を扱う）
@@ -41,11 +41,14 @@ export function getEffectiveTradeRate(
   playerId: PlayerId,
   give: TradeKind,
 ): number {
-  const tradeLv3 = state.expansion === 'cities_knights' && (state.players[playerId]?.improvements?.trade ?? 0) >= 3;
+  const ck = state.expansion === 'cities_knights';
+  const tradeLv3 = ck && (state.players[playerId]?.improvements?.trade ?? 0) >= 3;
+  // 商船隊(merchant_fleet): このターン指定した1種を2:1で交易できる。
+  const fleet2to1 = ck && state.players[playerId]?.merchantFleetType === give;
 
   if (isCommodity(give)) {
-    // 商品は港レートを持たない。トレーディングハウスのみ2:1。
-    return tradeLv3 ? 2 : 4;
+    // 商品は港レートを持たない。トレーディングハウス or 商船隊で2:1、無ければ4:1。
+    return (tradeLv3 || fleet2to1) ? 2 : 4;
   }
 
   let rate = 4;
@@ -56,7 +59,12 @@ export function getEffectiveTradeRate(
     if (harbor === 'generic') rate = Math.min(rate, 3);
     if (harbor === give) rate = Math.min(rate, 2);
   }
-  if (tradeLv3) rate = Math.min(rate, 2);
+  if (tradeLv3 || fleet2to1) rate = Math.min(rate, 2);
+  // 商人(merchant)コマを置いた地形の資源は、保持者は2:1で交易できる。
+  if (ck && state.merchant?.playerId === playerId) {
+    const mtile = state.tiles[state.merchant.tileId];
+    if (mtile && TILE_RESOURCE_MAP[mtile.type] === give) rate = Math.min(rate, 2);
+  }
   return rate;
 }
 

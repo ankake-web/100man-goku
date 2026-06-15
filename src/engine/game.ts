@@ -117,10 +117,12 @@ export function applyAction(
       if (state.phase !== 'MAIN') throw new Error('ROLL_DICE: not MAIN phase');
       if (state.turnPhase !== 'PRE_ROLL') throw new Error('ROLL_DICE: not PRE_ROLL');
 
-      const [d1, d2] = rollDice(rng);
+      // 騎士と商人: 錬金術師(alchemist)で目を事前指定済みなら、それを使い消費する。
+      const forced = isCk(state) ? (state.alchemistForcedDice ?? null) : null;
+      const [d1, d2] = forced ?? rollDice(rng);
       const total = d1 + d2;
 
-      let next: GameState = { ...state, lastDiceRoll: [d1, d2], diceRolledThisTurn: true };
+      let next: GameState = { ...state, lastDiceRoll: [d1, d2], diceRolledThisTurn: true, ...(forced ? { alchemistForcedDice: null } : {}) };
 
       // ---- 騎士と商人: 毎ターン イベントダイス(蛮族)も振り、産出は資源＋商品。----
       if (isCk(state)) {
@@ -673,8 +675,13 @@ export function applyAction(
       return buildCityWall(state, pid, action.vertexId);
     }
     case 'PLAY_PROGRESS': {
-      // 進歩カードは自分の手番（ダイス後の交易・建設フェーズ）に使用。
-      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_PROGRESS: must be in TRADE_BUILD');
+      // 進歩カードは自分の手番のダイス後(TRADE_BUILD)に使用。
+      // 例外: 錬金術師(alchemist)は「振る前」に使うので PRE_ROLL でのみ許可。
+      const card = state.players[pid]?.progressCards?.find(c => c.id === action.cardId);
+      const isAlchemist = card?.type === 'alchemist';
+      const okPhase = state.phase === 'MAIN'
+        && (state.turnPhase === 'TRADE_BUILD' || (isAlchemist && state.turnPhase === 'PRE_ROLL'));
+      if (!okPhase) throw new Error('PLAY_PROGRESS: wrong phase for this card');
       if (!canPlayProgress(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
       return checkVictory(playProgress(state, pid, action.cardId, rng), pid);
     }
@@ -778,8 +785,14 @@ export function applyAction(
         return { ...state, winner: best, phase: 'GAME_OVER' };
       }
       const nextIndex = (state.currentPlayerIndex + 1) % state.playerOrder.length;
+      // 騎士と商人: 商船隊(merchant_fleet)の「このターン2:1」を手番終了でクリア。
+      const endingPlayer = state.players[pid]!;
+      const playersAfter = isCk(state) && endingPlayer.merchantFleetType != null
+        ? { ...state.players, [pid]: { ...endingPlayer, merchantFleetType: null } }
+        : state.players;
       return {
         ...state,
+        players: playersAfter,
         currentPlayerIndex: nextIndex,
         globalTurnNumber: nextGlobalTurn,
         turnPhase: 'PRE_ROLL',

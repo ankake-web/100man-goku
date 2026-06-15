@@ -13,15 +13,17 @@
 
 import type {
   GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player,
-  ProgressCard, TileType, Knight,
+  ProgressCard, TileType, Knight, TradeKind,
 } from '../types';
 import {
   RESOURCE_TYPES, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, COMMODITY_TYPES,
   makeCommodities, COMMODITY_BANK_INITIAL, CK_COSTS, CK_TRACK_COMMODITY, CK_MAX_IMPROVEMENT, CK_METROPOLIS_LEVEL,
   CK_BARBARIAN_MAX, CK_MAX_WALLS, PIECE_LIMITS, improvementCost,
-  PROGRESS_DECK_CARDS, PROGRESS_HAND_LIMIT,
+  PROGRESS_DECK_CARDS, PROGRESS_DECK_COUNTS, PROGRESS_HAND_LIMIT,
 } from '../constants';
-import { calcVP } from './scoring';
+import { calcVP, updateLongestRoad } from './scoring';
+import { canBuildRoad } from './actions';
+import { moveRobber, stealResource, robbableCardCount } from './robber';
 
 // ============================================================
 // 小ヘルパ（資源・商品の支払い）
@@ -257,11 +259,11 @@ export function canBuildImprovement(state: GameState, pid: PlayerId, track: CkTr
   const c = CK_TRACK_COMMODITY[track];
   return commodities(p)[c] >= improvementCost(lvl);
 }
-export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack): GameState {
+export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack, discount = 0): GameState {
   const p = state.players[pid]!;
   const lvl = improvements(p)[track];
   const c = CK_TRACK_COMMODITY[track];
-  const cost = improvementCost(lvl);
+  const cost = Math.max(0, improvementCost(lvl) - discount); // crane は商品1個割引
   const newComm = { ...commodities(p), [c]: commodities(p)[c] - cost };
   // 支払った商品は供給(commodityBank)へ戻る（公式どおり。これが無いと供給が単調減少して枯渇する）。
   const commodityBank = { ...(state.commodityBank ?? COMMODITY_BANK_INITIAL), [c]: (state.commodityBank ?? COMMODITY_BANK_INITIAL)[c] + cost };
@@ -442,7 +444,8 @@ export function buildProgressDecks(rng: () => number): Record<CkTrack, ProgressC
     const cards: ProgressCard[] = [];
     let n = 0;
     for (const type of PROGRESS_DECK_CARDS[track]) {
-      for (let i = 0; i < 3; i++) cards.push({ id: `${track}_${type}_${n++}`, type, deck: track });
+      const count = PROGRESS_DECK_COUNTS[type];
+      for (let i = 0; i < count; i++) cards.push({ id: `${track}_${type}_${n++}`, type, deck: track });
     }
     decks[track] = shuffle(cards, rng);
   }
@@ -508,6 +511,249 @@ function addHand(hand: ResourceHand, add: Partial<ResourceHand>): ResourceHand {
   return h;
 }
 
+// ============================================================
+// 進歩カード（追加分）の補助ヘルパ
+// ============================================================
+
+const pip = (n: number | null): number => (n == null ? 0 : 6 - Math.abs(7 - n));
+
+/** pid の建物が隣接する資源産出タイルのうち pip 最大のもの（merchant用）。なければ null。 */
+function bestResourceTileForPlayer(state: GameState, pid: PlayerId): string | null {
+  let best: string | null = null; let bestPip = -1;
+  const seen = new Set<string>();
+  for (const v of Object.values(state.vertices)) {
+    if (v.building?.playerId !== pid) continue;
+    for (const tid of v.adjacentTileIds) {
+      if (seen.has(tid)) continue; seen.add(tid);
+      const t = state.tiles[tid];
+      if (!t || TILE_RESOURCE_MAP[t.type] == null) continue;
+      if (pip(t.number) > bestPip) { bestPip = pip(t.number); best = tid; }
+    }
+  }
+  return best;
+}
+
+/** crane: 改善でき、商品が (cost-1) で足りるトラック（lvl最大優先）。 */
+function craneTrack(state: GameState, pid: PlayerId): CkTrack | null {
+  const p = state.players[pid]; if (!p) return null;
+  if (!Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city')) return null;
+  const tracks: CkTrack[] = ['trade', 'politics', 'science'];
+  const ok = tracks.filter(t => {
+    const lvl = improvements(p)[t];
+    return lvl < CK_MAX_IMPROVEMENT && commodities(p)[CK_TRACK_COMMODITY[t]] >= Math.max(0, improvementCost(lvl) - 1);
+  });
+  ok.sort((a, b) => improvements(p)[b] - improvements(p)[a]);
+  return ok[0] ?? null;
+}
+
+/** medicine: 都市化できる自分の開拓地頂点（隣接pip合計が最大）。 */
+function medicineSettlement(state: GameState, pid: PlayerId): string | null {
+  let best: string | null = null; let bestPip = -1;
+  for (const [vid, v] of Object.entries(state.vertices)) {
+    if (v.building?.playerId !== pid || v.building.type !== 'settlement') continue;
+    const pp = v.adjacentTileIds.reduce((s, t) => s + pip(state.tiles[t]?.number ?? null), 0);
+    if (pp > bestPip) { bestPip = pp; best = vid; }
+  }
+  return best;
+}
+
+/** inventor: 入替可能なタイル（数字あり・6/8以外）。 */
+function inventorTiles(state: GameState): string[] {
+  return Object.keys(state.tiles).filter(t => {
+    const n = state.tiles[t]!.number;
+    return n != null && n !== 6 && n !== 8;
+  });
+}
+
+function knightCountOf(state: GameState, pid: PlayerId): number {
+  return Object.values(state.vertices).filter(v => v.knight?.playerId === pid).length;
+}
+function knightPlacementVertex(state: GameState, pid: PlayerId): string | null {
+  return Object.keys(state.vertices).find(vid => canPlaceKnightVertex(state, pid, vid)) ?? null;
+}
+/** deserter: 相手の最強の騎士頂点。 */
+function strongestOpponentKnight(state: GameState, pid: PlayerId): { vid: string; strength: number } | null {
+  let best: { vid: string; strength: number } | null = null;
+  for (const [vid, v] of Object.entries(state.vertices)) {
+    const k = v.knight;
+    if (!k || k.playerId === pid) continue;
+    if (!best || k.strength > best.strength) best = { vid, strength: k.strength };
+  }
+  return best;
+}
+/** intrigue: 自分の道/船に隣接する敵騎士の頂点（最強優先）。 */
+function enemyKnightAdjacentToMyRoad(state: GameState, pid: PlayerId): string | null {
+  let best: string | null = null; let bestStr = -1;
+  for (const [vid, v] of Object.entries(state.vertices)) {
+    const k = v.knight;
+    if (!k || k.playerId === pid) continue;
+    const adjMine = v.adjacentEdgeIds.some(eid => {
+      const e = state.edges[eid];
+      return e?.road?.playerId === pid || e?.ship?.playerId === pid;
+    });
+    if (adjMine && k.strength > bestStr) { bestStr = k.strength; best = vid; }
+  }
+  return best;
+}
+/** diplomat: 撤去できる相手の「端の道」（端点の一方に建物無し・同色の他の道が続かない）。 */
+function removableOpponentRoad(state: GameState, pid: PlayerId): string | null {
+  for (const [eid, e] of Object.entries(state.edges)) {
+    const owner = e.road?.playerId;
+    if (!owner || owner === pid) continue;
+    const isOpen = e.vertexIds.some(vtxId => {
+      const vtx = state.vertices[vtxId];
+      if (!vtx || vtx.building) return false;
+      const continues = vtx.adjacentEdgeIds.some(eid2 =>
+        eid2 !== eid && (state.edges[eid2]?.road?.playerId === owner || state.edges[eid2]?.ship?.playerId === owner));
+      return !continues;
+    });
+    if (isOpen) return eid;
+  }
+  return null;
+}
+
+// ---- 効果適用（追加分。いずれも自動最善選択で即時解決＝保留状態なし＝ソフトロックなし） ----
+
+function chooseAlchemistDice(state: GameState, pid: PlayerId): [number, number] {
+  let bestTotal = 8, bestW = -1;
+  for (let total = 2; total <= 12; total++) {
+    if (total === 7) continue;
+    let w = 0;
+    for (const t of Object.values(state.tiles)) {
+      if (t.number !== total || t.hasRobber || TILE_RESOURCE_MAP[t.type] == null) continue;
+      for (const vid of state.tileToVertices[t.id] ?? []) {
+        const b = state.vertices[vid]?.building;
+        if (b?.playerId === pid) w += b.type === 'city' ? 2 : 1;
+      }
+    }
+    if (w > bestW) { bestW = w; bestTotal = total; }
+  }
+  const d1 = Math.min(6, bestTotal - 1);
+  return [d1, bestTotal - d1];
+}
+
+function chooseFleetType(state: GameState, pid: PlayerId): TradeKind {
+  const p = state.players[pid]!;
+  let best: TradeKind = 'wood'; let bestN = -1;
+  for (const r of RESOURCE_TYPES) if (p.hand[r] > bestN) { bestN = p.hand[r]; best = r; }
+  for (const c of COMMODITY_TYPES) if (commodities(p)[c] > bestN) { bestN = commodities(p)[c]; best = c; }
+  return best;
+}
+
+function playInventor(state: GameState, pid: PlayerId): GameState {
+  const eligible = inventorTiles(state);
+  if (eligible.length < 2) return state;
+  const adjCount = (tid: string): number => (state.tileToVertices[tid] ?? []).filter(v => state.vertices[v]?.building?.playerId === pid).length;
+  // 自分に最も隣接し低pipのタイルを、自分に無関係で高pipのタイルと入替（自分有利）。
+  const tileA = [...eligible].sort((a, b) => (adjCount(b) - adjCount(a)) || (pip(state.tiles[a]!.number) - pip(state.tiles[b]!.number)))[0]!;
+  const tileB = [...eligible].filter(t => t !== tileA).sort((a, b) => (adjCount(a) - adjCount(b)) || (pip(state.tiles[b]!.number) - pip(state.tiles[a]!.number)))[0];
+  if (!tileB || tileA === tileB) return state;
+  const nA = state.tiles[tileA]!.number, nB = state.tiles[tileB]!.number;
+  return { ...state, tiles: { ...state.tiles, [tileA]: { ...state.tiles[tileA]!, number: nB }, [tileB]: { ...state.tiles[tileB]!, number: nA } } };
+}
+
+function playMedicine(state: GameState, pid: PlayerId): GameState {
+  const vid = medicineSettlement(state, pid);
+  const p = state.players[pid]!;
+  if (!vid || p.hand.grain < 1 || p.hand.ore < 2 || p.remainingCities <= 0) return state;
+  return {
+    ...state,
+    vertices: { ...state.vertices, [vid]: { ...state.vertices[vid]!, building: { type: 'city', playerId: pid } } },
+    bank: { ...state.bank, grain: state.bank.grain + 1, ore: state.bank.ore + 2 },
+    players: { ...state.players, [pid]: { ...p, hand: { ...p.hand, grain: p.hand.grain - 1, ore: p.hand.ore - 2 }, remainingCities: p.remainingCities - 1, remainingSettlements: p.remainingSettlements + 1 } },
+  };
+}
+
+function playMerchant(state: GameState, pid: PlayerId): GameState {
+  const tid = bestResourceTileForPlayer(state, pid);
+  if (!tid) return state;
+  return { ...state, merchant: { playerId: pid, tileId: tid } };
+}
+
+function playCommercialHarbor(state: GameState, pid: PlayerId): GameState {
+  const players = { ...state.players };
+  const me = players[pid]!;
+  let myHand = { ...me.hand };
+  let myComm = { ...commodities(me) };
+  for (const o of state.playerOrder) {
+    if (o === pid) continue;
+    const opp = players[o]!;
+    const giveRes = RESOURCE_TYPES.filter(r => myHand[r] > 0).sort((a, b) => myHand[b] - myHand[a])[0];
+    const takeCom = COMMODITY_TYPES.filter(c => commodities(opp)[c] > 0).sort((a, b) => commodities(opp)[b] - commodities(opp)[a])[0];
+    if (!giveRes || !takeCom) continue;
+    myHand = { ...myHand, [giveRes]: myHand[giveRes] - 1 };
+    myComm = { ...myComm, [takeCom]: myComm[takeCom] + 1 };
+    players[o] = { ...opp, hand: { ...opp.hand, [giveRes]: opp.hand[giveRes] + 1 }, commodities: { ...commodities(opp), [takeCom]: commodities(opp)[takeCom] - 1 } };
+  }
+  players[pid] = { ...me, hand: myHand, commodities: myComm };
+  return { ...state, players };
+}
+
+function playBishop(state: GameState, pid: PlayerId, rng: () => number): GameState {
+  const current = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
+  let bestTid: string | null = null; let bestScore = -1;
+  for (const [tid, t] of Object.entries(state.tiles)) {
+    if (t.type === 'sea' || tid === current) continue;
+    const opps = new Set<PlayerId>();
+    for (const vid of state.tileToVertices[tid] ?? []) {
+      const o = state.vertices[vid]?.building?.playerId;
+      if (o && o !== pid) opps.add(o);
+    }
+    const score = [...opps].reduce((s, o) => s + robbableCardCount(state, o), 0);
+    if (score > bestScore) { bestScore = score; bestTid = tid; }
+  }
+  if (!bestTid) return state;
+  let s = moveRobber(state, bestTid);
+  const victims = new Set<PlayerId>();
+  for (const vid of s.tileToVertices[bestTid] ?? []) {
+    const o = s.vertices[vid]?.building?.playerId;
+    if (o && o !== pid && robbableCardCount(s, o) > 0) victims.add(o);
+  }
+  for (const o of victims) s = stealResource(s, pid, o, rng);
+  return s;
+}
+
+function playDeserter(state: GameState, pid: PlayerId): GameState {
+  const target = strongestOpponentKnight(state, pid);
+  if (!target) return state;
+  let vertices = { ...state.vertices, [target.vid]: { ...state.vertices[target.vid]!, knight: null } };
+  const place = knightPlacementVertex({ ...state, vertices }, pid);
+  if (place && knightCountOf(state, pid) < PIECE_LIMITS.knights) {
+    vertices = { ...vertices, [place]: { ...vertices[place]!, knight: { playerId: pid, strength: target.strength as 1 | 2 | 3, active: false } } };
+  }
+  return { ...state, vertices };
+}
+
+function playIntrigue(state: GameState, pid: PlayerId): GameState {
+  const vid = enemyKnightAdjacentToMyRoad(state, pid);
+  if (!vid) return state;
+  return { ...state, vertices: { ...state.vertices, [vid]: { ...state.vertices[vid]!, knight: null } } };
+}
+
+function playDiplomat(state: GameState, pid: PlayerId): GameState {
+  const eid = removableOpponentRoad(state, pid);
+  if (!eid) return state;
+  return updateLongestRoad({ ...state, edges: { ...state.edges, [eid]: { ...state.edges[eid]!, road: null } } });
+}
+
+function playSpy(state: GameState, pid: PlayerId, rng: () => number): GameState {
+  const opps = state.playerOrder.filter(o => o !== pid && (state.players[o]!.progressCards?.length ?? 0) > 0);
+  if (opps.length === 0) return state;
+  const target = [...opps].sort((a, b) => (state.players[b]!.progressCards?.length ?? 0) - (state.players[a]!.progressCards?.length ?? 0))[0]!;
+  const tc = state.players[target]!.progressCards ?? [];
+  const idx = Math.floor(rng() * tc.length);
+  const stolen = tc[idx]!;
+  const me = state.players[pid]!;
+  return {
+    ...state,
+    players: {
+      ...state.players,
+      [target]: { ...state.players[target]!, progressCards: tc.filter((_, i) => i !== idx) },
+      [pid]: { ...me, progressCards: [...(me.progressCards ?? []), stolen] },
+    },
+  };
+}
+
 /** 進歩カードを使用可能か（手札にあり、効果が成立する状況か）。 */
 export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string): boolean {
   if (!isCk(state)) return false;
@@ -527,6 +773,24 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
     case 'warlord':  return Object.values(state.vertices).some(v => v.knight?.playerId === pid && !v.knight.active);
     case 'saboteur': return opps.some(o => calcVP(state, o) >= myVp && handTotalRes(state.players[o]!) > 0);
     case 'wedding':  return opps.some(o => calcVP(state, o) > myVp && handTotalRes(state.players[o]!) > 0);
+    // ---- 追加分 ----
+    case 'alchemist': return state.turnPhase === 'PRE_ROLL'; // ダイスを振る前のみ
+    case 'crane':     return craneTrack(state, pid) != null;
+    case 'inventor':  return inventorTiles(state).length >= 2;
+    case 'medicine':  return p.hand.grain >= 1 && p.hand.ore >= 2 && p.remainingCities > 0 && medicineSettlement(state, pid) != null;
+    case 'printer': case 'constitution': return true;
+    case 'road_building_progress': {
+      const free = { ...state, roadBuildingRoadsRemaining: 1 }; // コスト無視で接続性のみ判定
+      return p.remainingRoads > 0 && Object.keys(state.edges).some(e => canBuildRoad(free, pid, e));
+    }
+    case 'commercial_harbor': return RESOURCE_TYPES.some(r => p.hand[r] > 0) && opps.some(o => COMMODITY_TYPES.some(c => commodities(state.players[o]!)[c] > 0));
+    case 'merchant':      return bestResourceTileForPlayer(state, pid) != null;
+    case 'merchant_fleet': return RESOURCE_TYPES.some(r => p.hand[r] > 0) || COMMODITY_TYPES.some(c => commodities(p)[c] > 0);
+    case 'bishop':    return true;
+    case 'deserter':  return knightCountOf(state, pid) < PIECE_LIMITS.knights && strongestOpponentKnight(state, pid) != null && knightPlacementVertex(state, pid) != null;
+    case 'diplomat':  return removableOpponentRoad(state, pid) != null;
+    case 'intrigue':  return enemyKnightAdjacentToMyRoad(state, pid) != null;
+    case 'spy':       return opps.some(o => (state.players[o]!.progressCards?.length ?? 0) > 0);
     default: return false;
   }
 }
@@ -535,7 +799,35 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
 export function playProgress(state: GameState, pid: PlayerId, cardId: string, rng: () => number): GameState {
   const p0 = state.players[pid]!;
   const card = (p0.progressCards ?? []).find(c => c.id === cardId)!;
-  const players: Record<string, Player> = { ...state.players, [pid]: { ...p0, progressCards: (p0.progressCards ?? []).filter(c => c.id !== cardId) } };
+  // カードを手札から除去した基準state。
+  const removed: GameState = { ...state, players: { ...state.players, [pid]: { ...p0, progressCards: (p0.progressCards ?? []).filter(c => c.id !== cardId) } } };
+
+  // ---- 追加分: 自動最善で即時解決（保留状態を作らない＝ソフトロックなし） ----
+  switch (card.type) {
+    case 'printer': case 'constitution':
+      return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, progressVP: (removed.players[pid]!.progressVP ?? 0) + 1 } } };
+    case 'alchemist':
+      return { ...removed, alchemistForcedDice: chooseAlchemistDice(removed, pid) };
+    case 'road_building_progress':
+      return { ...removed, roadBuildingRoadsRemaining: Math.min(2, removed.players[pid]!.remainingRoads) };
+    case 'crane': {
+      const track = craneTrack(removed, pid);
+      return track ? buildImprovement(removed, pid, track, 1) : removed;
+    }
+    case 'medicine':         return playMedicine(removed, pid);
+    case 'inventor':         return playInventor(removed, pid);
+    case 'merchant':         return playMerchant(removed, pid);
+    case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: chooseFleetType(removed, pid) } } };
+    case 'commercial_harbor': return playCommercialHarbor(removed, pid);
+    case 'bishop':           return playBishop(removed, pid, rng);
+    case 'deserter':         return playDeserter(removed, pid);
+    case 'diplomat':         return playDiplomat(removed, pid);
+    case 'intrigue':         return playIntrigue(removed, pid);
+    case 'spy':              return playSpy(removed, pid, rng);
+  }
+
+  // ---- 既存10種: locals パターン ----
+  const players: Record<string, Player> = { ...removed.players };
   let vertices = state.vertices;
   let bank = { ...state.bank };
   const opps = state.playerOrder.filter(o => o !== pid);

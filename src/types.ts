@@ -98,14 +98,29 @@ export type ProgressCardType =
   | 'engineer'     // 城壁を1つ無料建設
   | 'irrigation'   // 自分の建物に隣接する畑1つにつき麦2
   | 'mining'       // 自分の建物に隣接する山1つにつき鉱石2
+  | 'alchemist'    // 次のダイスの目を自分で決めてから振る（自動で最良の目）
+  | 'crane'        // 都市改善を商品1個安く即建設
+  | 'inventor'     // 数字トークン2枚を入れ替え（自動で自分に有利に）
+  | 'medicine'     // 麦1鉱石2で開拓地を都市化
+  | 'printer'      // 即時+1勝利点
+  | 'road_building_progress' // 道を2本無料建設
   // 交易(黄/布)
   | 'resource_monopoly' // 各相手から指定資源を2枚（自動で最良資源）
   | 'trade_monopoly'    // 各相手から指定商品を1枚（自動で最良商品）
   | 'master_merchant'   // VP最多の相手から無作為2枚
+  | 'commercial_harbor' // 各相手と 自分の資源1⇄相手の商品1 を交換
+  | 'merchant'          // 商人コマを資源地形に置く（+1VP・その地形2:1）
+  | 'merchant_fleet'    // このターン、指定1種を2:1で交易
   // 政治(青/金貨)
   | 'warlord'      // 自分の騎士を全て無料で起動
   | 'saboteur'     // 自分以上のVPの全員が資源を半数捨てる
-  | 'wedding';     // 自分よりVPが高い各相手から2枚もらう
+  | 'wedding'      // 自分よりVPが高い各相手から2枚もらう
+  | 'bishop'       // 盗賊を移動し移動先隣接の全相手から各1枚
+  | 'constitution' // 即時+1勝利点
+  | 'deserter'     // 相手の騎士を1体消し、自分は同強度の非起動騎士を得る
+  | 'diplomat'     // 端の道1本を撤去（自分の道なら再建設）
+  | 'intrigue'     // 自分の道に隣接する敵騎士を1体退去
+  | 'spy';         // 相手の進歩カードを1枚奪う
 
 export interface ProgressCard {
   readonly id: string;
@@ -166,6 +181,10 @@ export interface Player {
   improvements?: Record<CkTrack, number>;
   // 騎士と商人: 蛮族撃退で得た「カタンの守護者」勝利点。
   defenderVP?: number;
+  // 騎士と商人: 進歩カード(印刷/立憲)で得た恒久勝利点。
+  progressVP?: number;
+  // 騎士と商人: 商船隊(merchant_fleet)で「このターン2:1で交易できる」種別。END_TURN でクリア。
+  merchantFleetType?: TradeKind | null;
   // 騎士と商人: 手札の進歩カード（最大4枚）。
   progressCards?: ProgressCard[];
   // LANマスク用: 相手の進歩カード枚数（中身は隠す）。
@@ -273,6 +292,10 @@ export interface GameState {
   metropolis?: Partial<Record<CkTrack, { playerId: PlayerId; vertexId: VertexId }>>;
   // 騎士と商人: 進歩カードの山札（ツリー別）。
   progressDecks?: Record<CkTrack, ProgressCard[]>;
+  // 騎士と商人: 商人(merchant)コマの保持者と所在タイル（盤面で一意・移動式・+1VP/2:1）。
+  merchant?: { playerId: PlayerId; tileId: TileId } | null;
+  // 騎士と商人: 錬金術師(alchemist)で事前指定した次ROLL_DICEの目。消費したら null。
+  alchemistForcedDice?: [number, number] | null;
 
   devDeck: DevCard[];
   devDiscardPile: DevCard[];

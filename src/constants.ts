@@ -98,28 +98,58 @@ export function improvementCost(currentLevel: number): number {
 
 // ---- 進歩カード ----
 export const PROGRESS_HAND_LIMIT = 4;
-// 各ツリーのデッキに含めるカード種別（buildProgressDecks で各種3枚ずつ等に展開）。
+// 各ツリーのデッキに含めるカード種別（公式の3デッキ。枚数は PROGRESS_DECK_COUNTS）。
 export const PROGRESS_DECK_CARDS: Record<CkTrack, ProgressCardType[]> = {
-  science:  ['smith', 'engineer', 'irrigation', 'mining'],
-  trade:    ['resource_monopoly', 'trade_monopoly', 'master_merchant'],
-  politics: ['warlord', 'saboteur', 'wedding'],
+  science:  ['alchemist', 'crane', 'engineer', 'inventor', 'irrigation', 'medicine', 'mining', 'printer', 'road_building_progress', 'smith'],
+  trade:    ['commercial_harbor', 'master_merchant', 'merchant', 'merchant_fleet', 'resource_monopoly', 'trade_monopoly'],
+  politics: ['bishop', 'constitution', 'deserter', 'diplomat', 'intrigue', 'saboteur', 'spy', 'warlord', 'wedding'],
+};
+// 各種別のデッキ内枚数（公式の枚数配分。各デッキ計18枚）。
+export const PROGRESS_DECK_COUNTS: Record<ProgressCardType, number> = {
+  // science（計18）
+  alchemist: 2, crane: 2, engineer: 1, inventor: 2, irrigation: 2,
+  medicine: 2, mining: 2, printer: 1, road_building_progress: 2, smith: 2,
+  // trade（計18）
+  commercial_harbor: 2, master_merchant: 2, merchant: 6,
+  merchant_fleet: 2, resource_monopoly: 4, trade_monopoly: 2,
+  // politics（計18）
+  bishop: 2, constitution: 1, deserter: 2, diplomat: 2, intrigue: 2,
+  saboteur: 2, spy: 3, warlord: 2, wedding: 2,
 };
 export const PROGRESS_CARD_NAME: Record<ProgressCardType, string> = {
   smith: '鍛冶屋', engineer: '技師', irrigation: '灌漑', mining: '採掘',
+  alchemist: '錬金術師', crane: 'クレーン', inventor: '発明家', medicine: '医術', printer: '印刷', road_building_progress: '道路建設',
   resource_monopoly: '資源独占', trade_monopoly: '商品独占', master_merchant: '大商人',
+  commercial_harbor: '商業港', merchant: '商人', merchant_fleet: '商船隊',
   warlord: '将軍', saboteur: '破壊工作', wedding: '婚礼',
+  bishop: '僧正', constitution: '立憲', deserter: '脱走兵', diplomat: '外交官', intrigue: '陰謀', spy: 'スパイ',
 };
 export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   smith: '騎士を最大2体まで無料で1段昇格',
   engineer: '城壁を1つ無料で建設',
   irrigation: '建物に隣接する畑1つにつき麦2',
   mining: '建物に隣接する山1つにつき鉱石2',
+  alchemist: '次のダイスの目を自分で決めてから振る',
+  crane: '都市改善を商品1個安く即建設',
+  inventor: '数字トークン2枚を入れ替え（自分に有利に）',
+  medicine: '麦1鉱石2で開拓地を都市化',
+  printer: '即座に+1勝利点',
+  road_building_progress: '道を2本まで無料で建設',
   resource_monopoly: '各相手から最良の資源を2枚ずつ',
   trade_monopoly: '各相手から最良の商品を1枚ずつ',
   master_merchant: 'VP最多の相手から無作為に2枚',
+  commercial_harbor: '各相手と 自分の資源1⇄相手の商品1 を交換',
+  merchant: '資源地形に商人を置く（+1VP・その資源2:1）',
+  merchant_fleet: 'このターン、指定1種を2:1で交易',
   warlord: '自分の騎士を全て無料で起動',
   saboteur: '自分以上のVPの全員が資源を半数捨てる',
   wedding: '自分よりVPが高い各相手から2枚もらう',
+  bishop: '盗賊を移動し移動先隣接の全相手から各1枚',
+  constitution: '即座に+1勝利点',
+  deserter: '相手の騎士を1体消し、自分は同強度の騎士を得る',
+  diplomat: '端の道1本を撤去（自分の道なら再建設）',
+  intrigue: '自分の道に隣接する敵騎士を1体退去',
+  spy: '相手の進歩カードを1枚奪う',
 };
 
 // ---- バンク初期値 ----

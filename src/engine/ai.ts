@@ -532,6 +532,12 @@ function choosePreRollAction(state: GameState, pid: PlayerId): Action {
   const player = state.players[pid]!;
   const difficulty = getDifficulty(state, pid);
 
+  // 騎士と商人: 錬金術師(alchemist)は振る前に使う。使える状況なら振る前に使用。
+  if (difficulty !== 'weak' && isCk(state)) {
+    const alch = (player.progressCards ?? []).find(c => c.type === 'alchemist' && canPlayProgress(state, pid, c.id));
+    if (alch) return { type: 'PLAY_PROGRESS', cardId: alch.id };
+  }
+
   // 1ターン1枚制限を尊重（devCardPlayedThisTurn を見ないと2枚目で例外→停止する）
   if (difficulty !== 'weak' && !state.devCardPlayedThisTurn) {
     const knight = player.devCards.find(

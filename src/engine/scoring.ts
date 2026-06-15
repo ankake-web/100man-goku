@@ -29,7 +29,16 @@ export function calcVP(state: GameState, playerId: PlayerId): number {
   vp += player.devCards.filter(c => c.type === 'victory_point').length * VP_TABLE.victoryPoint;
   vp += islandBonusVP(state, playerId);
   vp += player.defenderVP ?? 0; // 騎士と商人: 蛮族撃退の守護者VP
+  vp += ckProgressVP(state, playerId); // 進歩カード(印刷/立憲)＋商人コマ
 
+  return vp;
+}
+
+/** 騎士と商人の公開VP: 進歩カード恒久VP(印刷/立憲)＋商人(merchant)コマ保持で+1。 */
+function ckProgressVP(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  let vp = player?.progressVP ?? 0;
+  if (state.merchant?.playerId === playerId) vp += 1;
   return vp;
 }
 
@@ -66,6 +75,7 @@ export function calcPublicVP(state: GameState, playerId: PlayerId): number {
   // 新島入植ボーナスは盤面で見える公開情報なので公開VPにも算入する。
   vp += islandBonusVP(state, playerId);
   vp += player.defenderVP ?? 0; // 守護者VPも公開情報
+  vp += ckProgressVP(state, playerId); // 進歩カード恒久VP・商人コマも公開
 
   return vp;
 }

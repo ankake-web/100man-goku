@@ -497,3 +497,99 @@ describe('C&K 騎士の移動', () => {
     expect(next.vertices[v2]!.knight!.playerId).toBe('player1');
   });
 });
+
+describe('C&K 追加進歩カード', () => {
+  function ck2(p1: Partial<import('../src/types').Player> = {}, p2: Partial<import('../src/types').Player> = {}): GameState {
+    return makeGameState({
+      expansion: 'cities_knights',
+      commodityBank: { coin: 19, cloth: 19, paper: 19 },
+      players: { player1: makePlayer('player1', p1), player2: makePlayer('player2', p2) },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+  }
+
+  it('buildProgressDecks: 各デッキ18枚・枚数表どおり（merchantは6枚）', async () => {
+    const { buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const d = buildProgressDecks(createRng(1));
+    expect(d.science.length).toBe(18);
+    expect(d.trade.length).toBe(18);
+    expect(d.politics.length).toBe(18);
+    expect(d.trade.filter(c => c.type === 'merchant').length).toBe(6);
+  });
+
+  it('printer/constitution: 即時+1勝利点（progressVP・calcVP）', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { calcVP } = await import('../src/engine/scoring');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck2({ progressCards: [{ id: 'pr', type: 'printer', deck: 'science' }] });
+    const before = calcVP(s, 'player1');
+    const r = playProgress(s, 'player1', 'pr', createRng(1));
+    expect(r.players.player1!.progressVP).toBe(1);
+    expect(calcVP(r, 'player1')).toBe(before + 1);
+  });
+
+  it('merchant: 商人コマで+1VPかつその地形資源を2:1で交易', async () => {
+    const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
+    const { getEffectiveTradeRate } = await import('../src/engine/trade');
+    const { calcVP } = await import('../src/engine/scoring');
+    const { createRng } = await import('../src/engine/setup');
+    const base = oneTile('forest', [[0, 'settlement', 'player1']]); // forest=木
+    const s = { ...base, expansion: 'cities_knights' as const,
+      players: { ...base.players, player1: makePlayer('player1', { progressCards: [{ id: 'm', type: 'merchant', deck: 'trade' }] }) } } as GameState;
+    expect(canPlayProgress(s, 'player1', 'm')).toBe(true);
+    const r = playProgress(s, 'player1', 'm', createRng(1));
+    expect(r.merchant?.playerId).toBe('player1');
+    expect(calcVP(r, 'player1')).toBe(calcVP(s, 'player1') + 1);
+    expect(getEffectiveTradeRate(r, 'player1', 'wood')).toBe(2);
+  });
+
+  it('merchant_fleet: 指定種別を2:1で交易できる', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { getEffectiveTradeRate } = await import('../src/engine/trade');
+    const { createRng } = await import('../src/engine/setup');
+    const { makeHand } = await import('../src/constants');
+    const s = ck2({ hand: makeHand({ ore: 5 }), progressCards: [{ id: 'mf', type: 'merchant_fleet', deck: 'trade' }] });
+    const r = playProgress(s, 'player1', 'mf', createRng(1));
+    expect(r.players.player1!.merchantFleetType).toBe('ore'); // 最多の手札種
+    expect(getEffectiveTradeRate(r, 'player1', 'ore')).toBe(2);
+  });
+
+  it('spy: 相手の進歩カードを1枚奪う', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck2(
+      { progressCards: [{ id: 'sp', type: 'spy', deck: 'politics' }] },
+      { progressCards: [{ id: 'v', type: 'warlord', deck: 'politics' }] },
+    );
+    const r = playProgress(s, 'player1', 'sp', createRng(1));
+    expect((r.players.player2!.progressCards ?? []).length).toBe(0);
+    expect((r.players.player1!.progressCards ?? []).map(c => c.id)).toContain('v');
+  });
+
+  it('road_building_progress: 無料道2本(roadBuildingRoadsRemaining=2)', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck2({ progressCards: [{ id: 'rb', type: 'road_building_progress', deck: 'science' }] });
+    const r = playProgress(s, 'player1', 'rb', createRng(1));
+    expect(r.roadBuildingRoadsRemaining).toBe(2);
+  });
+
+  it('alchemist: PRE_ROLLで使うと次のROLL_DICEの目が固定され消費される', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const g = makeGameState({
+      expansion: 'cities_knights', phase: 'MAIN', turnPhase: 'PRE_ROLL', diceRolledThisTurn: false, currentPlayerIndex: 0,
+      commodityBank: { coin: 19, cloth: 19, paper: 19 },
+      players: { player1: makePlayer('player1', { progressCards: [{ id: 'al', type: 'alchemist', deck: 'science' }] }), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const rng = createRng(5);
+    const a1 = applyAction(g, { type: 'PLAY_PROGRESS', cardId: 'al' }, rng);
+    expect(a1.alchemistForcedDice).not.toBeNull();
+    const forced = a1.alchemistForcedDice!;
+    const a2 = applyAction(a1, { type: 'ROLL_DICE' }, rng);
+    expect(a2.lastDiceRoll).toEqual(forced);            // 指定の目で振られる
+    expect(a2.alchemistForcedDice ?? null).toBeNull();  // 消費済み
+  });
+});
