@@ -1146,10 +1146,13 @@ function appendCkBuildSection(
   const player = state.players[pid]!;
   const sec = el('div', 'ck-build');
   const title = el('div', 'ck-build-title');
-  title.textContent = '⚔ 騎士と商人';
+  title.textContent = '⚔ 騎士と商人 アクション';
   sec.appendChild(title);
 
   // 都市改善（3ツリー）
+  const impLabel = el('div', 'ck-sub-label');
+  impLabel.textContent = '🏛 都市の発展（商品で強化・Lv4でメトロポリス+4点）';
+  sec.appendChild(impLabel);
   const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
   const impRow = el('div', 'ck-imp-row');
   for (const track of ['trade', 'politics', 'science'] as CkTrack[]) {
@@ -1165,6 +1168,9 @@ function appendCkBuildSection(
   sec.appendChild(impRow);
 
   // 騎士・城壁
+  const knLabel = el('div', 'ck-sub-label');
+  knLabel.textContent = '🛡 騎士・防衛（建設→麦で起動して使える）';
+  sec.appendChild(knLabel);
   const knightRow = el('div', 'ck-knight-row');
   const firstV = (pred: (vid: string) => boolean): string | undefined => Object.keys(state.vertices).find(pred);
   const buildVid = firstV(v => canBuildKnight(state, pid, v));

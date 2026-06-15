@@ -1746,21 +1746,29 @@ h1 {
 
 /* ---- 騎士と商人(Cities & Knights) ---- */
 .ck-build {
-  width: 100%; margin: 6px 0; padding: 6px 7px;
-  border: 1px solid rgba(208,168,108,0.35); border-radius: 9px;
-  background: rgba(208,168,108,0.06);
+  width: 100%; margin: 8px 0; padding: 12px 12px 13px;
+  border: 1px solid rgba(208,168,108,0.45); border-radius: 12px;
+  background: rgba(208,168,108,0.09);
 }
-.ck-build-title { font-size: 0.76rem; color: #ffcf4d; font-weight: 700; margin-bottom: 5px; }
-.ck-imp-row, .ck-knight-row { display: flex; flex-wrap: wrap; gap: 4px; }
-.ck-imp-row { margin-bottom: 5px; }
-.ck-imp-row .action-btn, .ck-knight-row .action-btn { font-size: 0.7rem; padding: 5px 6px; flex: 1 1 30%; min-width: 0; }
-.ck-comm-row { display: flex; gap: 5px; margin: 5px 0 1px; }
-.ck-comm { font-size: 0.82rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: rgba(255,255,255,0.1); }
+.ck-build-title { font-size: 0.98rem; color: #ffcf4d; font-weight: 800; margin-bottom: 4px; letter-spacing: .02em; }
+/* 各グループの小見出し（何のボタン群か分かるように） */
+.ck-sub-label { font-size: 0.75rem; color: rgba(255,255,255,0.66); font-weight: 700; margin: 11px 0 6px; }
+.ck-imp-row, .ck-knight-row, .ck-pc-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* C&K の操作ボタンは指で押しやすく・ラベルを折り返して読めるように十分広く取る */
+.ck-imp-row .action-btn, .ck-knight-row .action-btn, .ck-pc-row .action-btn {
+  font-size: 0.86rem; padding: 12px 10px; min-width: 0; min-height: 48px;
+  white-space: normal; line-height: 1.25; border-radius: 10px; text-align: center;
+}
+.ck-imp-row .action-btn { flex: 1 1 100%; }                 /* 都市の発展は1行1ボタンで明快に */
+.ck-knight-row .action-btn, .ck-pc-row .action-btn { flex: 1 1 46%; } /* 騎士・進歩カードは2列（奇数は伸びて1行を埋める） */
+.ck-pc-title { font-size: 0.75rem; color: rgba(255,255,255,0.66); font-weight: 700; margin: 11px 0 6px; }
+.ck-comm-row { display: flex; gap: 7px; margin: 6px 0 2px; flex-wrap: wrap; }
+.ck-comm { font-size: 0.92rem; font-weight: 700; padding: 4px 11px; border-radius: 11px; background: rgba(255,255,255,0.1); }
 .ck-comm.zero { opacity: 0.4; }
 .ck-comm-coin  { background: rgba(255,205,70,0.22); }
 .ck-comm-cloth { background: rgba(110,200,240,0.2); }
 .ck-comm-paper { background: rgba(220,220,220,0.2); }
-.ck-status { font-size: 0.71rem; color: rgba(255,255,255,0.68); margin-top: 4px; }
+.ck-status { font-size: 0.78rem; color: rgba(255,255,255,0.74); margin-top: 7px; }
 .turn-title-item.ck-barb-danger { color: #ff6b6b; font-weight: 700; }
 .metropolis-mark, .knight-piece { pointer-events: none; }
 .lan-leave { margin-top: 2px; }
