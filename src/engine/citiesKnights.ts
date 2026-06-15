@@ -189,6 +189,50 @@ export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, t
   return { ...state, knightMovedThisTurn: true, vertices };
 }
 
+// ============================================================
+// 騎士で強盗を追い払う（chase away the robber）
+// ============================================================
+
+/**
+ * 強盗の現在ヘクスに隣接する、自分のアクティブ騎士がいる頂点の一覧（UI/AI用）。
+ * 1ターン1回（knightChasedThisTurn）。本実装は陸の強盗のみ対象（海賊は対象外）。
+ */
+export function robberAdjacentChasableVertexIds(state: GameState, pid: PlayerId): VertexId[] {
+  if (!isCk(state) || state.knightChasedThisTurn) return [];
+  const robberTid = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
+  if (!robberTid) return [];
+  const out: VertexId[] = [];
+  for (const vid of state.tileToVertices[robberTid] ?? []) {
+    const k = state.vertices[vid]?.knight;
+    if (k && k.playerId === pid && k.active) out.push(vid);
+  }
+  return out;
+}
+
+/** 指定頂点のアクティブ騎士で強盗を追い払えるか（強盗ヘクスに隣接・1ターン1回）。 */
+export function canChaseRobber(state: GameState, pid: PlayerId, vid: VertexId): boolean {
+  if (!isCk(state) || state.knightChasedThisTurn) return false;
+  const k = state.vertices[vid]?.knight;
+  if (!k || k.playerId !== pid || !k.active) return false;
+  const adjTiles = state.vertices[vid]?.adjacentTileIds ?? [];
+  return adjTiles.some(t => state.tiles[t]?.hasRobber);
+}
+
+export function playerHasChasableKnight(state: GameState, pid: PlayerId): boolean {
+  return robberAdjacentChasableVertexIds(state, pid).length > 0;
+}
+
+/** 騎士で強盗を追い払う（バリデーション済み前提）。当該騎士を非アクティブ化し ROBBER フェーズへ。 */
+export function chaseRobber(state: GameState, pid: PlayerId, vid: VertexId): GameState {
+  const v = state.vertices[vid]!; const k = v.knight!;
+  return {
+    ...state,
+    turnPhase: 'ROBBER',
+    knightChasedThisTurn: true,
+    vertices: { ...state.vertices, [vid]: { ...v, knight: { ...k, active: false } } }, // 非アクティブ化（再起動は麦1）
+  };
+}
+
 function addRes(bank: ResourceHand, cost: ResourceHand): ResourceHand {
   const b = { ...bank };
   for (const r of RESOURCE_TYPES) b[r] += cost[r];

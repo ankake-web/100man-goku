@@ -23,7 +23,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds } from './engine/citiesKnights';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
@@ -612,6 +612,9 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
         opts.validVertexIds = moveKnightFrom == null
           ? new Set(Object.keys(state.vertices).filter(vid => isKnightMovable(state, pid, vid)))
           : new Set(Object.keys(state.vertices).filter(vid => canMoveKnight(state, pid, moveKnightFrom!, vid)));
+      } else if (mode === 'chaseRobber') {
+        // 騎士と商人・強盗追い払い: 強盗に隣接した自分のアクティブ騎士頂点を光らせる。
+        opts.validVertexIds = new Set(robberAdjacentChasableVertexIds(state, pid));
       }
     }
   }
@@ -843,6 +846,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'ship')       return { text: '🚢 船を配置', alert: false };
       if (buildMode === 'moveShip')   return { text: moveShipFrom ? '⛵ 移動先をタップ' : '⛵ 動かす船を選択', alert: false };
       if (buildMode === 'moveKnight') return { text: moveKnightFrom ? '🛡 移動先をタップ' : '🛡 動かす騎士を選択', alert: false };
+      if (buildMode === 'chaseRobber') return { text: '🦹 追い払う騎士を選択', alert: false };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -2306,6 +2310,9 @@ function dispatch(action: Action): void {
     } else if (action.type === 'MOVE_KNIGHT') {
       if (buildMode === 'moveKnight') buildMode = 'idle';
       moveKnightFrom = null;
+    } else if (action.type === 'CHASE_ROBBER') {
+      // 追い払い後は ROBBER フェーズになる。モードを解除して既存のタイルクリックで移動先を選ばせる。
+      buildMode = 'idle';
     }
 
     // ログ追記（公開情報のみ）。直近 MAX_LOG_ENTRIES 件に制限。

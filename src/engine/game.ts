@@ -21,7 +21,7 @@ import {
   isCk, applyEventDie, distributeCkProduction,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
-  canPlayProgress, playProgress, canMoveKnight, moveKnight,
+  canPlayProgress, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
@@ -683,6 +683,15 @@ export function applyAction(
       if (!canMoveKnight(state, pid, action.fromVertexId, action.toVertexId)) throw new Error('MOVE_KNIGHT: invalid');
       return moveKnight(state, pid, action.fromVertexId, action.toVertexId);
     }
+    case 'CHASE_ROBBER': {
+      // 騎士で強盗を追い払う。ダイス後(TRADE_BUILD・diceRolledThisTurn=true)のみ。
+      // chaseRobber が ROBBER フェーズへ遷移し、続く MOVE_ROBBER で移動・強奪、
+      // diceRolledThisTurn=true により自動的に TRADE_BUILD へ戻る（robberSource不要）。
+      if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('CHASE_ROBBER: must be in TRADE_BUILD');
+      if (!isCk(state)) throw new Error('CHASE_ROBBER: cities & knights only');
+      if (!canChaseRobber(state, pid, action.vertexId)) throw new Error('CHASE_ROBBER: invalid');
+      return chaseRobber(state, pid, action.vertexId);
+    }
 
     // ----------------------------------------------------------
     // BANK_TRADE
@@ -781,6 +790,7 @@ export function applyAction(
         shipMovedThisTurn: false,
         shipsBuiltThisTurn: [],
         knightMovedThisTurn: false,
+        knightChasedThisTurn: false,
         pendingTrade: null,
       };
     }

@@ -8,6 +8,7 @@ import { discardCount, robbableCardCount } from './robber';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
   isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight, canPlayProgress,
+  robberAdjacentChasableVertexIds,
 } from './citiesKnights';
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
@@ -782,12 +783,27 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
     return { type: 'BUILD_IMPROVEMENT', track: pick };
   }
 
-  // 2) 防衛: 蛮族が近い or 都市数に対し騎士力が足りないなら騎士を用意。
   const myCities = Object.values(state.vertices).filter(v => v.building?.playerId === pid && v.building.type === 'city').length;
   const myKnightStr = Object.values(state.vertices)
     .filter(v => v.knight?.playerId === pid && v.knight.active)
     .reduce((s, v) => s + v.knight!.strength, 0);
   const barb = state.barbarianPosition ?? 0;
+
+  // 1.5) 騎士で強盗を追い払う: 強盗が自分の生産を止めていて、騎士1体を非アクティブ化しても
+  //      防衛余力がある（or 蛮族が遠い）なら追い払う。続く ROBBER フェーズは chooseRobberAction が解決。
+  const chasable = robberAdjacentChasableVertexIds(state, pid);
+  if (chasable.length > 0) {
+    const robberTid = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
+    const robberHurtsMe = robberTid != null
+      && (state.tileToVertices[robberTid] ?? []).some(v => state.vertices[v]?.building?.playerId === pid);
+    const chaserStr = state.vertices[chasable[0]!]?.knight?.strength ?? 1;
+    const defenseSlack = myKnightStr - chaserStr >= myCities; // その騎士が抜けても都市数を守れる
+    if (robberHurtsMe && (defenseSlack || barb <= 2)) {
+      return { type: 'CHASE_ROBBER', vertexId: chasable[0]! };
+    }
+  }
+
+  // 2) 防衛: 蛮族が近い or 都市数に対し騎士力が足りないなら騎士を用意。
   if (myCities > 0 && (barb >= 3 || myKnightStr < myCities)) {
     // 既存の非起動騎士を起動（麦1で防衛力UP）。
     const toActivate = Object.keys(state.vertices).find(vid => canActivateKnight(state, pid, vid));

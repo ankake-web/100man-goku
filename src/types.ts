@@ -303,6 +303,8 @@ export interface GameState {
   shipsBuiltThisTurn?: EdgeId[];
   // 騎士と商人: このターンに騎士を移動したか（移動は1ターン1回）。END_TURN でリセット。
   knightMovedThisTurn?: boolean;
+  // 騎士と商人: このターンに騎士で強盗を追い払ったか（1ターン1回）。END_TURN でリセット。
+  knightChasedThisTurn?: boolean;
   // 航海者: 海賊コマの現在地（海タイルID）。未配置は undefined。盗賊の海版で、隣接する
   // 自分の船建設を封じ、隣接船の所有者から1枚奪える。基本ゲームでは未使用。
   piratePosition?: TileId;
@@ -372,6 +374,7 @@ export type Action =
   | { type: 'BUILD_IMPROVEMENT';   track: CkTrack }
   | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
   | { type: 'MOVE_KNIGHT';         fromVertexId: VertexId; toVertexId: VertexId }
+  | { type: 'CHASE_ROBBER';        vertexId: VertexId } // 騎士で強盗を追い払う（ROBBERフェーズへ遷移）
   | { type: 'PLAY_PROGRESS';       cardId: string }
   | { type: 'OFFER_TRADE';         offer: TradeOffer; targetPlayerIds: PlayerId[] }
   | { type: 'RESPOND_TRADE';       response: PlayerResponse }

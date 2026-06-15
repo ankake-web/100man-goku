@@ -291,6 +291,60 @@ describe('C&K 強盗・海賊', () => {
   });
 });
 
+describe('C&K 騎士で強盗を追い払う', () => {
+  function chaseState(): { s: GameState; robberTid: string; knightVid: string } {
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', diceRolledThisTurn: true, currentPlayerIndex: 0,
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const tid = Object.keys(g.tileToVertices).find(t => (g.tileToVertices[t]?.length ?? 0) >= 3 && g.tiles[t]!.type !== 'sea')!;
+    const kv = g.tileToVertices[tid]![0]!;
+    const s: GameState = {
+      ...g,
+      tiles: Object.fromEntries(Object.entries(g.tiles).map(([id, t]) => [id, { ...t, hasRobber: id === tid }])) as GameState['tiles'],
+      vertices: { ...g.vertices, [kv]: { ...g.vertices[kv]!, knight: { playerId: 'player1', strength: 2, active: true } } },
+    };
+    return { s, robberTid: tid, knightVid: kv };
+  }
+
+  it('canChaseRobber: 強盗隣接のアクティブ騎士は true、非起動/敵騎士/追い払い済は false', async () => {
+    const { canChaseRobber } = await import('../src/engine/citiesKnights');
+    const { s, knightVid } = chaseState();
+    expect(canChaseRobber(s, 'player1', knightVid)).toBe(true);
+    const inactive = { ...s, vertices: { ...s.vertices, [knightVid]: { ...s.vertices[knightVid]!, knight: { playerId: 'player1' as const, strength: 2 as const, active: false } } } };
+    expect(canChaseRobber(inactive, 'player1', knightVid)).toBe(false);
+    const enemy = { ...s, vertices: { ...s.vertices, [knightVid]: { ...s.vertices[knightVid]!, knight: { playerId: 'player2' as const, strength: 2 as const, active: true } } } };
+    expect(canChaseRobber(enemy, 'player1', knightVid)).toBe(false);
+    expect(canChaseRobber({ ...s, knightChasedThisTurn: true }, 'player1', knightVid)).toBe(false);
+  });
+
+  it('CHASE_ROBBER→MOVE_ROBBER でROBBER遷移→TRADE_BUILDへ戻り、騎士は非起動になる', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const { s, robberTid, knightVid } = chaseState();
+    const rng = createRng(1);
+    const a1 = applyAction(s, { type: 'CHASE_ROBBER', vertexId: knightVid }, rng);
+    expect(a1.turnPhase).toBe('ROBBER');
+    expect(a1.knightChasedThisTurn).toBe(true);
+    expect(a1.vertices[knightVid]!.knight!.active).toBe(false);
+    const destTid = Object.keys(a1.tiles).find(t => t !== robberTid && a1.tiles[t]!.type !== 'sea')!;
+    const a2 = applyAction(a1, { type: 'MOVE_ROBBER', tileId: destTid, stealFromPlayerId: null }, rng);
+    expect(a2.turnPhase).toBe('TRADE_BUILD'); // END_TURN/PRE_ROLL ではなく建設へ戻る
+    // 同一ターンで再度の追い払いは不可（1ターン1回）。
+    const { canChaseRobber } = await import('../src/engine/citiesKnights');
+    expect(canChaseRobber(a2, 'player1', knightVid)).toBe(false);
+  });
+
+  it('CHASE_ROBBER は TRADE_BUILD 以外では不可', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { s, knightVid } = chaseState();
+    const preRoll = { ...s, turnPhase: 'PRE_ROLL' as const, diceRolledThisTurn: false };
+    expect(() => applyAction(preRoll, { type: 'CHASE_ROBBER', vertexId: knightVid })).toThrow();
+  });
+});
+
 describe('C&K 進歩カード', () => {
   it('buildProgressDecks: 3ツリーの山札が生成される', async () => {
     const { buildProgressDecks } = await import('../src/engine/citiesKnights');

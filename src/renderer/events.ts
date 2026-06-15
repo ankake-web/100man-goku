@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -144,6 +144,23 @@ export function nearestMoveKnightVertexId(
   return best;
 }
 
+/** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
+export function nearestChaseRobberVertexId(
+  state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
+): string | null {
+  const chasable = new Set(robberAdjacentChasableVertexIds(state, pid));
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const vid of chasable) {
+    const v = state.vertices[vid];
+    if (!v) continue;
+    const dx = v.pixel.x - x, dy = v.pixel.y - y;
+    const d = dx * dx + dy * dy;
+    if (d <= bestD) { bestD = d; best = vid; }
+  }
+  return best;
+}
+
 /** 点(x,y)に最も近い合法な船の辺IDを maxDist 内で返す（航海者）。なければ null。 */
 export function nearestValidShipEdgeId(
   state: GameState, pid: PlayerId, mode: BuildMode, x: number, y: number, maxDist = EDGE_TAP_RADIUS,
@@ -244,6 +261,14 @@ export function attachBoardEvents(
         dispatch({ type: 'MOVE_KNIGHT', fromVertexId: from, toVertexId: vid });
         setMoveKnightFrom(null);
       }
+      return;
+    }
+
+    // ---- 騎士と商人: 強盗を追い払うモード（追い払える騎士頂点をタップ → 即 CHASE_ROBBER）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'chaseRobber') {
+      const ptc = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = ptc ? nearestChaseRobberVertexId(state, pid, ptc.x, ptc.y) : null;
+      if (vid) dispatch({ type: 'CHASE_ROBBER', vertexId: vid });
       return;
     }
 

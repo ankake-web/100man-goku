@@ -11,7 +11,7 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
-  playerHasMovableKnight,
+  playerHasMovableKnight, playerHasChasableKnight,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind } from '../types';
@@ -1179,6 +1179,10 @@ function appendCkBuildSection(
   // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
     knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
+  }
+  // 強盗を追い払う（強盗に隣接した自分のアクティブ騎士で。1ターン1回・騎士は非起動になる）。
+  if (playerHasChasableKnight(state, pid)) {
+    knightRow.appendChild(modeBtn('🦹 強盗を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
   }
   const wallVid = firstV(v => canBuildCityWall(state, pid, v));
   knightRow.appendChild(makeBtn('🧱 城壁', wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
