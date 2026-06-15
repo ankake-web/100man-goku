@@ -403,15 +403,24 @@ function buildTileLegend(): HTMLDivElement {
   sec.appendChild(h);
   const grid = document.createElement('div');
   grid.className = 'rule-legend';
-  const entries: [string, string][] = [
-    ['forest', '🌲 木材'], ['hill', '🧱 レンガ'], ['pasture', '🐑 羊毛'],
-    ['field', '🌾 麦'], ['mountain', '⛰ 鉱石'], ['desert', '🏜 砂漠（資源なし）'],
-    ['gold', '🪙 金＝好きな資源'], ['sea', '🌊 海（航海者）'],
+  // 資源タイルは盤面と同じアイコン画像を表示。金/砂漠/海は資源ではないので画像も絵文字も付けない（六角の色見本で示す）。
+  const entries: [string, ResourceType | null, string][] = [
+    ['forest', 'wood', '木材'], ['hill', 'brick', 'レンガ'], ['pasture', 'wool', '羊毛'],
+    ['field', 'grain', '麦'], ['mountain', 'ore', '鉱石'], ['desert', null, '砂漠（資源なし）'],
+    ['gold', null, '金＝好きな資源'], ['sea', null, '海（航海者）'],
   ];
-  for (const [type, label] of entries) {
+  for (const [type, res, label] of entries) {
     const cell = document.createElement('div');
     cell.className = 'rule-legend-cell';
     cell.appendChild(legendHex(type));
+    if (res) {
+      const img = document.createElement('img');
+      img.className = 'legend-res-img';
+      img.src = RES_FLY_IMG[res];
+      img.alt = label;
+      img.draggable = false;
+      cell.appendChild(img);
+    }
     const lbl = document.createElement('span');
     lbl.className = 'rule-legend-label';
     lbl.textContent = label;
@@ -480,10 +489,19 @@ function buildRulePanel(): HTMLDetailsElement {
   body.appendChild(ruleSection('⛵ 航海者（航海者・群島の盤面）', [
     '盤面が海で島に分かれている。新しい島へは「船」で渡る。',
     '船：木＋羊。海に面した辺に置く。道と船は自分の建物でつながる。「⛵船を移動」で行き止まりの船を1ターン1回動かせる。',
-    '🪙 金タイル：数字が出ると、木・レンガ・羊・麦・鉱石から好きな資源を選べる（開拓地1・都市2）。麦（黄土色）と違い金色＋コインが目印。',
+    '金タイル：数字が出ると、木・レンガ・羊・麦・鉱石から好きな資源を選べる（開拓地1・都市2）。麦（黄土色）と違い、明るい金色が目印。',
     '新しい島に最初に開拓地を建てると +2点（島ボーナス）。',
-    '7のとき、陸タイルをタップ＝盗賊、🌊海タイルをタップ＝🏴‍☠️海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
+    '7のとき、陸タイルをタップ＝盗賊、海タイルをタップ＝海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
     '海岸の港（3:1 / 2:1）も使える。航海者の盤面は 13点で勝ち。',
+  ]));
+  body.appendChild(ruleSection('⚔ 騎士と商人（上級者向け・13点で勝ち）', [
+    '基本ルールに「商品・都市の発展・騎士・蛮族の襲来」が加わる拡張。',
+    '商品：都市が建つ地形のうち 森＝紙・牧草＝布・山＝金貨 を1個ずつ追加で産む（資源とは別の手札）。',
+    '都市の発展（交易・政治・科学の3系統）：商品を払ってレベルアップ。Lv3で特典、Lv4で都市が「メトロポリス」になり +4点。',
+    '騎士：兵士のコマ。建てて麦で起動し、移動・敵騎士の押し出し・強盗の追い払いに使える。',
+    '蛮族の襲来：船のイベントで蛮族が近づき、満タンで攻めてくる。起動した騎士の合計が盤上の都市数以上なら防衛成功。足りないと都市が1つ開拓地に格下げ。',
+    '進歩カード：交易・政治・科学のイベントで引く特殊カード（手札は最大4枚）。発展レベルが高い色ほど引きやすい。',
+    'この盤面では盗賊は資源だけでなく商品も奪い、手札の上限判定（7の捨て札）も資源＋商品の合計で数える。',
   ]));
   body.appendChild(ruleSection('💡 操作のコツ', [
     '最初は資源が多く出そうな数字の近くに開拓地を置く。',

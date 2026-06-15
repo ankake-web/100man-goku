@@ -1419,9 +1419,10 @@ h1 {
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 8px;
 }
-.rule-legend-cell { display: flex; align-items: center; gap: 7px; }
+.rule-legend-cell { display: flex; align-items: center; gap: 6px; }
 .legend-hex { width: 30px; height: 30px; flex: 0 0 auto; }
 .legend-hex .hex-tile { stroke: rgba(0,0,0,0.45); stroke-width: 1.5; }
+.legend-res-img { width: 20px; height: 20px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
 .rule-legend-label { font-size: 0.82rem; color: rgba(255,255,255,0.88); }
 @media (min-width: 480px) { .rule-legend { grid-template-columns: repeat(4, 1fr); } }
 
