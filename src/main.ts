@@ -27,7 +27,7 @@ import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk }
 import type { CkTrack } from './types';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
-import { renderUI, syncBoardDrawWidth } from './renderer/ui';
+import { renderUI, syncBoardDrawWidth, showAssetGallery } from './renderer/ui';
 import type { UIPhase } from './renderer/ui';
 import { attachBoardEvents, attachBoardGestures, resolvePlacePreviewAction, centeredZoom, ZOOM_LIMITS } from './renderer/events';
 import { buildScenarioSelect, getScenarioSelectValue } from './renderer/scenarioSelect';
@@ -302,6 +302,13 @@ function renderHome(
 
   // ---- ルール説明（折りたたみ。開始ボタンの下に置き、邪魔しない） ----
   screen.appendChild(buildRulePanel());
+
+  // ---- コマ・カード図鑑（騎士と商人の全画像を名前・説明つきで一覧） ----
+  const galleryBtn = document.createElement('button');
+  galleryBtn.className = 'gallery-open-btn';
+  galleryBtn.textContent = '🖼 コマ・カード図鑑を見る';
+  galleryBtn.addEventListener('click', () => showAssetGallery());
+  screen.appendChild(galleryBtn);
 
   container.appendChild(screen);
 
@@ -2166,6 +2173,12 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'dice-event-panel';
   if (info.eventDie === 'ship') {
+    // 蛮族船コマの画像を見せる。
+    if (ASSETS.piece.barbarianShip) {
+      const ship = document.createElement('img');
+      ship.className = 'dep-ship'; ship.src = ASSETS.piece.barbarianShip; ship.alt = '蛮族船'; ship.draggable = false;
+      panel.appendChild(ship);
+    }
     const title = document.createElement('div');
     title.className = 'dep-title';
     title.textContent = info.attacked ? '⚔ 蛮族 襲来！' : '🛶 蛮族船が前進';

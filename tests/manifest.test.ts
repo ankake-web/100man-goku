@@ -45,10 +45,11 @@ describe('資産マニフェスト', () => {
     expect(houseImg('green')).toBe(houseImg('red'));
   });
 
-  it('未作成(蛮族船)は null だが、assetImg はプレースホルダで壊れ画像を出さない', () => {
-    expect(ASSETS.piece.barbarianShip).toBeNull();
-    const img = assetImg(ASSETS.piece.barbarianShip, 'x', '蛮族船', '蛮族');
-    expect(img.src.startsWith('data:image/svg+xml')).toBe(true); // プレースホルダ
+  it('蛮族船コマが解決する。欠損(null)時も assetImg はプレースホルダで壊れ画像を出さない', () => {
+    expect(truthy(ASSETS.piece.barbarianShip!)).toBe(true); // 取り込み済み
+    // null を渡した場合のフォールバックも担保（欠損でも404/壊れ画像を出さない）。
+    const img = assetImg(null, 'x', 'なし', '?');
+    expect(img.src.startsWith('data:image/svg+xml')).toBe(true);
     expect(placeholder('test').startsWith('data:image/svg+xml')).toBe(true);
   });
 });

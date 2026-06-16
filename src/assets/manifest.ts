@@ -9,22 +9,23 @@
 // 命名規約（正規ファイル名）に合わせて src/assets/ 配下へ配置済み。
 
 // ---- コマ・盤面（プレイヤー色つき） ----
-import houseRed from './house_red.png';
-import houseBlue from './house_blue.png';
-import housePurple from './house_purple.png';
-import houseOrange from './house_orange.png';
-import cityRed from './city_red.png';
-import cityBlue from './city_blue.png';
-import cityPurple from './city_purple.png';
-import cityOrange from './city_orange.png';
-import shipRed from './ship_red.png';
-import shipBlue from './ship_blue.png';
-import shipPurple from './ship_purple.png';
-import shipOrange from './ship_orange.png';
+import houseRed from './settlement-red.png';
+import houseBlue from './settlement-blue.png';
+import housePurple from './settlement-purple.png';
+import houseOrange from './settlement-orange.png';
+import cityRed from './city-red.png';
+import cityBlue from './city-blue.png';
+import cityPurple from './city-purple.png';
+import cityOrange from './city-orange.png';
+import shipRed from './ship-red.png';
+import shipBlue from './ship-blue.png';
+import shipPurple from './ship-purple.png';
+import shipOrange from './ship-orange.png';
 import settlementGeneric from './settlement.png';
 import cityGeneric from './city.png';
 import robber from './robber.png';
 import pirate from './pirate.png';
+import barbarianShip from './barbarian-ship.png';
 
 // ---- 騎士（基本/強い/最強。盤面はプレイヤー色の土台ディスクで所有者を示す中立コマ） ----
 import knightBasic from './knight-basic.png';
@@ -58,9 +59,9 @@ import bldAqueduct from './bld-aqueduct.png';          // 科学L3
 import bldTheater from './bld-theater.png';            // 科学L4
 
 // ---- 改良トラックのアイコン（ボタン用、Lv1–2/5 など建築が無いレベルで使用） ----
-import impTrade from './imp_trade.png';
-import impPolitics from './imp_politics.png';
-import impScience from './imp_science.png';
+import impTrade from './track-trade.png';
+import impPolitics from './track-politics.png';
+import impScience from './track-science.png';
 
 // ---- 進歩カードの裏（トラック色） ----
 import cardBackTrade from './card-back-trade.png';
@@ -104,7 +105,7 @@ export const ASSETS = {
     metropolisGate,
     defenderBadge,
     cityWall,
-    barbarianShip: null as string | null, // 未作成（蛮族船の単体コマ）→プレースホルダ
+    barbarianShip: barbarianShip as string | null, // 蛮族船コマ
   },
   knight: { basic: knightBasic, strong: knightStrong, mighty: knightMighty } as Record<'basic' | 'strong' | 'mighty', string>,
   resource: { lumber: resLumber, brick: resBrick, wool: resWool, grain: resGrain, ore: resOre } as Record<'lumber' | 'brick' | 'wool' | 'grain' | 'ore', string>,

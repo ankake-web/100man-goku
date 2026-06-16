@@ -13,13 +13,13 @@ import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
   playerHasMovableKnight, playerHasChasableKnight,
 } from '../engine/citiesKnights';
-import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC } from '../constants';
-import type { CkTrack, CommodityType, CommodityHand, TradeKind } from '../types';
+import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS } from '../constants';
+import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard } from '../types';
 import type { BuildMode } from './events';
 
 const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
 // 画像参照は中央マニフェスト経由（単一の真実）。
-import { ASSETS } from '../assets/manifest';
+import { ASSETS, assetImg } from '../assets/manifest';
 
 const knightImg = ASSETS.knight.basic;
 // 騎士と商人: 商品アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
@@ -1154,6 +1154,118 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
   document.body.appendChild(overlay);
 }
 
+// 騎士と商人: 進歩カードの「効果説明＋使う/やめる」モーダル（使用前に効果が分かるように）。
+function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a: Action) => void): void {
+  document.querySelector('.help-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'help-overlay';
+  const box = document.createElement('div');
+  box.className = 'help-card pc-info-card';
+
+  const img = assetImg(ASSETS.politicsCard[card.type] ?? ASSETS.cardBack[card.deck], 'pc-info-img', PROGRESS_CARD_NAME[card.type], PROGRESS_CARD_NAME[card.type]);
+  box.appendChild(img);
+  const title = el('div', 'pc-info-title');
+  title.textContent = `📜 ${PROGRESS_CARD_NAME[card.type]}`;
+  box.appendChild(title);
+  const deck = el('div', `pc-info-deck pc-deck-${card.deck}`);
+  deck.textContent = `${CK_TRACK_NAME[card.deck]}デッキ`;
+  box.appendChild(deck);
+  const desc = el('div', 'pc-info-desc');
+  desc.textContent = PROGRESS_CARD_DESC[card.type];
+  box.appendChild(desc);
+
+  const actions = el('div', 'pc-info-actions');
+  const useBtn = document.createElement('button');
+  useBtn.className = `action-btn ${canPlay ? 'btn-primary' : 'btn-disabled'}`;
+  useBtn.textContent = canPlay ? '▶ 使う' : '今は使えません';
+  useBtn.disabled = !canPlay;
+  if (canPlay) useBtn.addEventListener('click', () => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id }); });
+  actions.appendChild(useBtn);
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'action-btn btn-end';
+  closeBtn.textContent = canPlay ? 'やめる' : '閉じる';
+  closeBtn.addEventListener('click', () => overlay.remove());
+  actions.appendChild(closeBtn);
+  box.appendChild(actions);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// コマ・カードの図鑑（全画像を名前・説明つきで一覧）。TOP/ゲーム中から開ける。
+export function showAssetGallery(): void {
+  document.querySelector('.gallery-overlay')?.remove();
+  const overlay = el('div', 'gallery-overlay');
+  const modal = el('div', 'gallery-modal');
+  const header = el('div', 'gallery-header');
+  header.textContent = '🖼 コマ・カード図鑑（騎士と商人）';
+  modal.appendChild(header);
+  const body = el('div', 'gallery-body');
+
+  const section = (titleTxt: string): HTMLDivElement => {
+    const s = el('div', 'gallery-section-title'); s.textContent = titleTxt; body.appendChild(s);
+    const grid = el('div', 'gallery-grid'); body.appendChild(grid); return grid;
+  };
+  const item = (grid: HTMLElement, src: string | null, name: string, desc?: string): void => {
+    const cell = el('div', 'gallery-cell');
+    cell.appendChild(assetImg(src, 'gallery-img', name, name));
+    const n = el('div', 'gallery-name'); n.textContent = name; cell.appendChild(n);
+    if (desc) { const d = el('div', 'gallery-desc'); d.textContent = desc; cell.appendChild(d); }
+    grid.appendChild(cell);
+  };
+
+  let g = section('🧩 コマ');
+  item(g, ASSETS.piece.settlement, '開拓地', '1点。資源を1個産む');
+  item(g, ASSETS.piece.city, '都市', '2点。資源2 か 資源1+商品1 を産む');
+  item(g, ASSETS.knight.basic, '騎士（基本）', '強さ1。建設→麦で起動して防衛・行動');
+  item(g, ASSETS.knight.strong, '騎士（強い）', '強さ2。鉱石+羊で昇格');
+  item(g, ASSETS.knight.mighty, '騎士（最強）', '強さ3。要塞(政治Lv3)で昇格可');
+  item(g, ASSETS.piece.metropolisGate, 'メトロポリス門', '改善Lv4で都市に。4点・略奪されない');
+  item(g, ASSETS.piece.cityWall, '城壁', 'レンガ2。7の手札上限+2（最大3）');
+  item(g, ASSETS.piece.merchant, '商人コマ', '隣接地形を2:1で交易・保持中+1点');
+  item(g, ASSETS.piece.defenderBadge, '守護者VP', '蛮族撃退の最大貢献者が+1点');
+  item(g, ASSETS.piece.robber, '盗賊', '7で移動し隣接から1枚奪う（初回襲来後）');
+  item(g, ASSETS.piece.barbarianShip, '蛮族船', '船イベントで前進。満タンで襲来');
+
+  g = section('🌲 資源（5種）');
+  item(g, ASSETS.resource.lumber, '木材', '森から産出');
+  item(g, ASSETS.resource.brick, 'レンガ', '丘から産出');
+  item(g, ASSETS.resource.wool, '羊毛', '牧草地から産出');
+  item(g, ASSETS.resource.grain, '小麦', '畑から産出');
+  item(g, ASSETS.resource.ore, '鉱石', '山から産出');
+
+  g = section('💰 商品（3種・都市が産出）');
+  item(g, ASSETS.commodity.paper, '紙', '森の都市から（科学トラック）');
+  item(g, ASSETS.commodity.cloth, '布', '牧草地の都市から（商業トラック）');
+  item(g, ASSETS.commodity.coin, '金貨', '山の都市から（政治トラック）');
+
+  g = section('🏛 都市の発展（建築）');
+  item(g, ASSETS.building.trade[3], '交易所（商業Lv3）', '商品を銀行と2:1で交易');
+  item(g, ASSETS.building.trade[4], '銀行（商業Lv4）', 'メトロポリス（商業）');
+  item(g, ASSETS.building.politics[3], '要塞（政治Lv3）', '最強騎士への昇格を解禁');
+  item(g, ASSETS.building.politics[4], '大聖堂（政治Lv4）', 'メトロポリス（政治）');
+  item(g, ASSETS.building.science[3], '水道橋（科学Lv3）', '無産出のターンに資源1枚');
+  item(g, ASSETS.building.science[4], '劇場（科学Lv4）', 'メトロポリス（科学）');
+
+  for (const [deck, label] of [['politics', '政治'], ['science', '科学'], ['trade', '商業']] as [CkTrack, string][]) {
+    g = section(`📜 進歩カード（${label}デッキ）`);
+    for (const type of PROGRESS_DECK_CARDS[deck]) {
+      const art = ASSETS.politicsCard[type] ?? ASSETS.cardBack[deck];
+      item(g, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type]);
+    }
+  }
+
+  modal.appendChild(body);
+  const close = el('button', 'gallery-close');
+  close.textContent = '閉じる';
+  close.addEventListener('click', () => overlay.remove());
+  modal.appendChild(close);
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 // 騎士と商人: 都市改善・騎士・城壁の操作セクション（騎士の建設は最初の有効頂点へ自動配置・移動は盤面で選択）。
 function appendCkBuildSection(
   div: HTMLElement, state: GameState, pid: PlayerId, dispatch: (a: Action) => void,
@@ -1225,8 +1337,10 @@ function appendCkBuildSection(
       const can = canPlayProgress(state, pid, c.id);
       // 政治カードは専用アート、それ以外はトラック色のカード裏（科学=緑/商業=黄/政治=青）。
       const icon = ASSETS.politicsCard[c.type] ?? ASSETS.cardBack[c.deck];
-      const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', !can,
-        () => dispatch({ type: 'PLAY_PROGRESS', cardId: c.id }));
+      // タップで「効果説明＋使う/やめる」のカード詳細を表示（使用前に効果が分かるように）。
+      // 使えないカードも閲覧可能（disabled=false）。実際の使用可否はモーダルの「使う」で制御。
+      const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', false,
+        () => showProgressCardInfo(c, can, dispatch));
       btn.title = PROGRESS_CARD_DESC[c.type];
       pcRow.appendChild(btn);
     }
