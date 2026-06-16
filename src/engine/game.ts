@@ -21,7 +21,7 @@ import {
   isCk, applyEventDie, distributeCkProduction,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
-  canPlayProgress, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber,
+  canPlayProgress, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber, ckSetupSecondCity,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
@@ -129,7 +129,10 @@ export function applyAction(
         next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で進歩カード抽選
         if (total === 7) {
           const needsDiscard = state.playerOrder.some(p => discardCount(next, p) > 0); // 資源＋商品で判定
-          return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : 'ROBBER' };
+          // 初回の蛮族襲来までは盗賊が凍結＝7は手札破棄のみ（盗賊移動・盗みなし）。
+          const robberActive = (next.barbarianAttacks ?? 0) >= 1;
+          const afterDiscard = robberActive ? 'ROBBER' : 'TRADE_BUILD';
+          return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : afterDiscard };
         }
         return distributeCkProduction({ ...next, turnPhase: 'TRADE_BUILD' }, total);
       }
@@ -232,7 +235,11 @@ export function applyAction(
       next = { ...next, discardedThisRound };
 
       // まだ捨てが必要なプレイヤーがいるか（資源＋商品で判定・既に捨てた人は除外）。
-      if (!findPendingDiscarder(next)) next = { ...next, turnPhase: 'ROBBER', discardedThisRound: [] };
+      // 騎士と商人で初回襲来前は盗賊が凍結＝捨て後は ROBBER ではなく TRADE_BUILD へ。
+      if (!findPendingDiscarder(next)) {
+        const robberFrozen = isCk(next) && (next.barbarianAttacks ?? 0) < 1;
+        next = { ...next, turnPhase: robberFrozen ? 'TRADE_BUILD' : 'ROBBER', discardedThisRound: [] };
+      }
 
       return next;
     }
@@ -382,9 +389,13 @@ export function applyAction(
 
       let next = buildSettlement(state, pid, vertexId);
 
-      // SETUP 後半: 2個目開拓地の隣接タイルから初期資源を配布。
-      // 導出は setupGainFor に一本化（資源アニメと同じロジック）。bank は付与“時点”の値を渡す。
-      if (state.phase === 'SETUP_BACKWARD' && state.setupSubPhase === 'PLACE_SETTLEMENT') {
+      // SETUP 後半: 2個目の配置。
+      const isSecondPlacement = state.phase === 'SETUP_BACKWARD' && state.setupSubPhase === 'PLACE_SETTLEMENT';
+      if (isSecondPlacement && isCk(state)) {
+        // 騎士と商人: 2個目は「都市」。開拓地→都市へ昇格し、都市の初期産出(資源+商品)を配る。
+        next = ckSetupSecondCity(next, pid, vertexId);
+      } else if (isSecondPlacement) {
+        // 基本/航海者: 2個目開拓地の隣接タイルから初期資源を配布（setupGainFor に一本化）。
         for (const resource of setupGainFor(next, vertexId, next.bank)) {
           next = {
             ...next,
@@ -790,9 +801,21 @@ export function applyAction(
       const playersAfter = isCk(state) && endingPlayer.merchantFleetType != null
         ? { ...state.players, [pid]: { ...endingPlayer, merchantFleetType: null } }
         : state.players;
+      // 騎士と商人: 「起動したターン」フラグを手番終了でクリア（翌手番から行動可能に）。
+      let verticesAfter = state.vertices;
+      if (isCk(state)) {
+        let touched = false;
+        const vs = { ...state.vertices };
+        for (const id of Object.keys(vs)) {
+          const k = vs[id]!.knight;
+          if (k?.activatedThisTurn) { vs[id] = { ...vs[id]!, knight: { ...k, activatedThisTurn: false } }; touched = true; }
+        }
+        if (touched) verticesAfter = vs;
+      }
       return {
         ...state,
         players: playersAfter,
+        vertices: verticesAfter,
         currentPlayerIndex: nextIndex,
         globalTurnNumber: nextGlobalTurn,
         turnPhase: 'PRE_ROLL',

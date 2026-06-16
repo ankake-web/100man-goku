@@ -29,8 +29,9 @@ export function discardHandSize(state: GameState, playerId: PlayerId): number {
 /** 7で捨てが始まる手札枚数。騎士と商人では城壁/メトロポリス1つにつき+2。 */
 export function discardThreshold(state: GameState, playerId: PlayerId): number {
   if (state.expansion !== 'cities_knights') return ROBBER_HAND_DISCARD_MIN;
+  // 公式: 手札上限+2 は「城壁」のみ（メトロポリスは別。城壁は最大3＝上限13）。
   const walls = Object.values(state.vertices).filter(v =>
-    v.building?.playerId === playerId && (v.building.wall || v.building.metropolis)).length;
+    v.building?.playerId === playerId && v.building.wall).length;
   return ROBBER_HAND_DISCARD_MIN + CK_WALL_DISCARD_BONUS * walls;
 }
 

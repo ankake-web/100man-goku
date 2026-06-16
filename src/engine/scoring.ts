@@ -108,9 +108,12 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
   if (myEdges.size === 0) return 0;
 
   // 相手の建物がある頂点は通過不可（交易路が切断される）。自分の建物は通過可＆道↔船の切替点。
+  // 騎士と商人: 相手の騎士コマも頂点を塞ぎ交易路を分断する（建物と同様）。
   const isBlocked = (vid: VertexId): boolean => {
     const v = state.vertices[vid];
-    return v?.building != null && v.building.playerId !== playerId;
+    if (v?.building != null && v.building.playerId !== playerId) return true;
+    if (v?.knight != null && v.knight.playerId !== playerId) return true;
+    return false;
   };
   const isOwnBuilding = (vid: VertexId): boolean =>
     state.vertices[vid]?.building?.playerId === playerId;

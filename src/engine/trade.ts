@@ -47,10 +47,11 @@ export function getEffectiveTradeRate(
   const fleet2to1 = ck && state.players[playerId]?.merchantFleetType === give;
 
   if (isCommodity(give)) {
-    // 商品は港レートを持たない。トレーディングハウス or 商船隊で2:1、無ければ4:1。
+    // 商品は港レートを持たない。交易所(商業Lv3)=同種商品2:1、商船隊=指定商品2:1、無ければ4:1。
     return (tradeLv3 || fleet2to1) ? 2 : 4;
   }
 
+  // 資源: 交易所(商業Lv3)は資源レートに影響しない（公式: 交易所は商品のみ2:1）。
   let rate = 4;
   for (const vertex of Object.values(state.vertices)) {
     if (vertex.building?.playerId !== playerId) continue;
@@ -59,7 +60,7 @@ export function getEffectiveTradeRate(
     if (harbor === 'generic') rate = Math.min(rate, 3);
     if (harbor === give) rate = Math.min(rate, 2);
   }
-  if (tradeLv3 || fleet2to1) rate = Math.min(rate, 2);
+  if (fleet2to1) rate = Math.min(rate, 2); // 商船隊で指定した資源は2:1
   // 商人(merchant)コマを置いた地形の資源は、保持者は2:1で交易できる。
   if (ck && state.merchant?.playerId === playerId) {
     const mtile = state.tiles[state.merchant.tileId];

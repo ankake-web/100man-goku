@@ -296,6 +296,7 @@ describe('C&K 騎士で強盗を追い払う', () => {
     const g = makeGameState({
       expansion: 'cities_knights',
       phase: 'MAIN', turnPhase: 'TRADE_BUILD', diceRolledThisTurn: true, currentPlayerIndex: 0,
+      barbarianAttacks: 1, // 初回襲来後＝盗賊が解凍され追い払い可能
       players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
       playerOrder: ['player1', 'player2'],
     } as Partial<GameState>);
@@ -406,7 +407,7 @@ describe('C&K 騎士の移動', () => {
       playerOrder: ['player1', 'player2'],
     } as Partial<GameState>);
   }
-  it('自分の道沿いの隣接空き頂点へ起動騎士を移動でき、1ターン1回', async () => {
+  it('自分の道沿いの隣接空き頂点へ起動騎士を移動でき、行動後は非起動になる（再行動不可）', async () => {
     const { canMoveKnight, moveKnight } = await import('../src/engine/citiesKnights');
     const g = ckBoard();
     const eid = Object.keys(g.edges)[0]!;
@@ -420,8 +421,8 @@ describe('C&K 騎士の移動', () => {
     const next = moveKnight(s, 'player1', v1, v2);
     expect(next.vertices[v1]!.knight).toBeNull();
     expect(next.vertices[v2]!.knight!.playerId).toBe('player1');
-    expect(next.knightMovedThisTurn).toBe(true);
-    expect(canMoveKnight(next, 'player1', v2, v1)).toBe(false); // 1ターン1回
+    expect(next.vertices[v2]!.knight!.active).toBe(false);       // 行動後は非起動
+    expect(canMoveKnight(next, 'player1', v2, v1)).toBe(false);  // 非起動なので再行動不可
   });
   it('弱い敵騎士は押し出せるが、同等以上は不可。非起動・道なしも不可', async () => {
     const { canMoveKnight } = await import('../src/engine/citiesKnights');
@@ -609,14 +610,197 @@ describe('C&K 追加進歩カード', () => {
     expect((r.players.player2!.progressCards ?? []).length).toBe(0);
   });
 
-  it('bishop: 通常盤では使用可、移動先(現在地以外の陸)が無ければ不可', async () => {
+  it('bishop: 初回襲来前は不可、襲来後は使用可、移動先(現在地以外の陸)が無ければ不可', async () => {
     const { canPlayProgress } = await import('../src/engine/citiesKnights');
-    const s = ck2({ progressCards: [{ id: 'bi', type: 'bishop', deck: 'politics' }] });
+    const base = ck2({ progressCards: [{ id: 'bi', type: 'bishop', deck: 'politics' }] });
+    expect(canPlayProgress(base, 'player1', 'bi')).toBe(false); // 盗賊凍結中（初回襲来前）
+    const s = { ...base, barbarianAttacks: 1 } as GameState;
     expect(canPlayProgress(s, 'player1', 'bi')).toBe(true);
     const tids = Object.keys(s.tiles);
     const land = tids[0]!;
     const tiles = Object.fromEntries(tids.map(t => [t, { ...s.tiles[t]!, type: (t === land ? 'forest' : 'sea') as TileType, hasRobber: t === land }]));
     const s2 = { ...s, tiles } as GameState;
     expect(canPlayProgress(s2, 'player1', 'bi')).toBe(false); // 現在地以外の陸が無い
+  });
+});
+
+describe('C&K ルール監査の修正', () => {
+  function ck(extra: Partial<GameState> = {}): GameState {
+    return makeGameState({
+      expansion: 'cities_knights',
+      commodityBank: { coin: 19, cloth: 19, paper: 19 },
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+      ...extra,
+    } as Partial<GameState>);
+  }
+
+  it('A: 進歩カード抽選は 赤ダイス ≦ Lv+1（Lv1は赤2でも引ける、Lv0は赤2で引けない）', async () => {
+    const { applyEventDie, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    // applyEventDie はイベントダイス自体を rng で振るため、ここでは drawProgressCards を直接検証する。
+    const mod = await import('../src/engine/citiesKnights') as { default?: unknown };
+    void mod; void applyEventDie;
+    const base = ck({ progressDecks: buildProgressDecks(createRng(1)) });
+    // drawProgressCards は非公開のため applyEventDie 経由ではなく、改善Lvを変えて挙動確認する代替として
+    // canPlayProgress ではなく、公開 API の applyEventDie をイベント面固定で使えないため、ここでは
+    // 改善Lv1のプレイヤーが赤2で引け、Lv0は引けないことを「条件式」で確認する近似テスト。
+    const lv1 = { ...base, players: { ...base.players, player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 1 } }) } } as GameState;
+    // 直接 drawProgressCards は export していないので、applyEventDie を使って色イベントを強制するため rng を仕込む。
+    // rng が 'science'(緑) を返し redDie=2 のとき Lv1 は引ける。複数 seed で science 面を探す。
+    let drewAtLv1Red2 = false, drewAtLv0Red2 = false;
+    for (let seed = 1; seed <= 200 && !(drewAtLv1Red2 && drewAtLv0Red2); seed++) {
+      const r1 = applyEventDie(lv1, createRng(seed), 2);
+      if (r1.lastEventDie === 'science') {
+        const got = ((r1.players.player1!.progressCards ?? []).length) > 0;
+        if (got) drewAtLv1Red2 = true;
+        const lv0 = { ...base } as GameState; // science Lv0
+        const r0 = applyEventDie(lv0, createRng(seed), 2);
+        if (r0.lastEventDie === 'science') drewAtLv0Red2 = ((r0.players.player1!.progressCards ?? []).length) > 0;
+      }
+    }
+    expect(drewAtLv1Red2).toBe(true);   // Lv1 は赤2で引ける
+    expect(drewAtLv0Red2).toBe(false);  // Lv0 は赤2で引けない
+  });
+
+  it('B: 交易所(商業Lv3)は商品のみ2:1、資源は据え置き', async () => {
+    const { getEffectiveTradeRate } = await import('../src/engine/trade');
+    const s = ck({ players: { ...ck().players, player1: makePlayer('player1', { improvements: { trade: 3, politics: 0, science: 0 }, commodities: { coin: 3, cloth: 0, paper: 0 } }) } }) as GameState;
+    expect(getEffectiveTradeRate(s, 'player1', 'coin')).toBe(2); // 商品=2:1
+    expect(getEffectiveTradeRate(s, 'player1', 'wood')).toBe(4); // 資源=据え置き4:1
+  });
+
+  it('E: 7の手札上限は城壁のみ+2（メトロポリスは加算しない）', async () => {
+    const { discardThreshold } = await import('../src/engine/robber');
+    const base = ck();
+    const vids = Object.keys(base.vertices);
+    const wall = { ...base, vertices: { ...base.vertices, [vids[0]!]: { ...base.vertices[vids[0]!]!, building: { type: 'city' as const, playerId: 'player1', wall: true } } } } as GameState;
+    expect(discardThreshold(wall, 'player1')).toBe(10); // 8 + 2
+    const metro = { ...base, vertices: { ...base.vertices, [vids[1]!]: { ...base.vertices[vids[1]!]!, building: { type: 'city' as const, playerId: 'player1', metropolis: true } } } } as GameState;
+    expect(discardThreshold(metro, 'player1')).toBe(8); // メトロポリスは+2しない
+  });
+
+  it('C: 7は初回襲来前なら盗賊を動かさず TRADE_BUILD（捨て無し時）', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    // 7を強制するため、forced dice をセット（alchemist）。barbarianAttacks=0 で凍結。
+    const base = ck({ phase: 'MAIN', turnPhase: 'PRE_ROLL', diceRolledThisTurn: false, currentPlayerIndex: 0, barbarianAttacks: 0, alchemistForcedDice: [3, 4], barbarianPosition: 0 }) as GameState;
+    const r = applyAction(base, { type: 'ROLL_DICE' }, createRng(1));
+    expect(r.lastDiceRoll).toEqual([3, 4]);
+    // 手札0枚で捨て無し → 盗賊凍結中は TRADE_BUILD（ROBBER にならない）。
+    expect(r.turnPhase).toBe('TRADE_BUILD');
+  });
+
+  it('D: 別々の起動騎士はそれぞれ1回ずつ移動できる（per-knight）', async () => {
+    const { canMoveKnight, moveKnight } = await import('../src/engine/citiesKnights');
+    const g = ck();
+    // 2本の辺それぞれに player1 の道＋起動騎士を置く。
+    const eids = Object.keys(g.edges).slice(0, 2);
+    const [e1, e2] = eids;
+    const [a1, a2] = g.edges[e1!]!.vertexIds;
+    const [b1, b2] = g.edges[e2!]!.vertexIds;
+    // a1,b1 が別頂点になるよう、重複しない辺を選ぶ
+    if (a1 === b1 || a1 === b2 || a2 === b1 || a2 === b2) return; // まれな重複ケースはスキップ
+    const s: GameState = {
+      ...g,
+      edges: { ...g.edges, [e1!]: { ...g.edges[e1!]!, road: { playerId: 'player1' } }, [e2!]: { ...g.edges[e2!]!, road: { playerId: 'player1' } } },
+      vertices: {
+        ...g.vertices,
+        [a1!]: { ...g.vertices[a1!]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [b1!]: { ...g.vertices[b1!]!, knight: { playerId: 'player1', strength: 2, active: true } },
+      },
+    };
+    const s1 = moveKnight(s, 'player1', a1!, a2!);           // 1体目移動（非起動化）
+    expect(s1.vertices[a2!]!.knight!.active).toBe(false);
+    expect(canMoveKnight(s1, 'player1', b1!, b2!)).toBe(true); // 2体目はまだ移動できる（per-knight）
+  });
+
+  it('D: 起動したターンの騎士は移動できない（activatedThisTurn）', async () => {
+    const { canMoveKnight, activateKnight } = await import('../src/engine/citiesKnights');
+    const { makeHand } = await import('../src/constants');
+    const g = ck({ players: { ...ck().players, player1: makePlayer('player1', { hand: makeHand({ grain: 1 }) }) } });
+    const eid = Object.keys(g.edges)[0]!;
+    const [v1, v2] = g.edges[eid]!.vertexIds;
+    const s: GameState = {
+      ...g,
+      edges: { ...g.edges, [eid]: { ...g.edges[eid]!, road: { playerId: 'player1' } } },
+      vertices: { ...g.vertices, [v1]: { ...g.vertices[v1]!, knight: { playerId: 'player1', strength: 1, active: false } } },
+    };
+    const act = activateKnight(s, 'player1', v1);            // 起動
+    expect(act.vertices[v1]!.knight!.activatedThisTurn).toBe(true);
+    expect(canMoveKnight(act, 'player1', v1, v2)).toBe(false); // 起動ターンは行動不可
+  });
+
+  it('G: メトロポリス化できる都市が無いとLv4を買えない', async () => {
+    const { canBuildImprovement } = await import('../src/engine/citiesKnights');
+    const vids = Object.keys(ck().vertices);
+    // 都市はあるが、それが既に他ツリーのメトロポリス（平の都市なし）。science Lv3→4 を買えない。
+    const s = ck({
+      metropolis: { trade: { playerId: 'player1', vertexId: vids[0]! } },
+      vertices: { ...ck().vertices, [vids[0]!]: { ...ck().vertices[vids[0]!]!, building: { type: 'city' as const, playerId: 'player1', metropolis: true } } },
+      players: { ...ck().players, player1: makePlayer('player1', { improvements: { trade: 4, politics: 0, science: 3 }, commodities: { coin: 0, cloth: 0, paper: 9 } }) },
+    }) as GameState;
+    expect(canBuildImprovement(s, 'player1', 'science')).toBe(false); // 平の都市が無い
+  });
+
+  it('I: 相手の騎士は最長交易路を分断する', async () => {
+    const { calcLongestRoad } = await import('../src/engine/scoring');
+    const g = ck();
+    // 連続する3頂点 v1-v2-v3 を結ぶ2辺に player1 の道を敷く。
+    const e1 = Object.keys(g.edges)[0]!;
+    const [v1, v2] = g.edges[e1]!.vertexIds;
+    const e2 = g.vertices[v2]!.adjacentEdgeIds.find(e => e !== e1 && (g.edges[e]!.vertexIds.includes(v2)))!;
+    const v3 = g.edges[e2]!.vertexIds[0] === v2 ? g.edges[e2]!.vertexIds[1] : g.edges[e2]!.vertexIds[0];
+    const base: GameState = {
+      ...g,
+      edges: { ...g.edges, [e1]: { ...g.edges[e1]!, road: { playerId: 'player1' } }, [e2]: { ...g.edges[e2]!, road: { playerId: 'player1' } } },
+    };
+    expect(calcLongestRoad(base, 'player1')).toBe(2); // 2本つながる
+    // v2 に相手の騎士 → 分断され最長1。
+    const blocked = { ...base, vertices: { ...base.vertices, [v2]: { ...base.vertices[v2]!, knight: { playerId: 'player2', strength: 1, active: false } } } } as GameState;
+    expect(calcLongestRoad(blocked, 'player1')).toBe(1);
+  });
+
+  it('H: 勝利点カード(印刷機/憲法)は手札上限の対象外で、5枚目を引ける', async () => {
+    const { applyEventDie, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    // VPカード4枚＋非VP0枚の手札 → 非VPは0枚なので、上限(4)未満として引ける。
+    const four = Array.from({ length: 4 }, (_, i) => ({ id: `vp${i}`, type: 'printer' as const, deck: 'science' as const }));
+    let drew = false;
+    for (let seed = 1; seed <= 200 && !drew; seed++) {
+      const s = ck({
+        progressDecks: buildProgressDecks(createRng(seed)),
+        players: { ...ck().players, player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 5 }, progressCards: four }) },
+      }) as GameState;
+      const r = applyEventDie(s, createRng(seed), 1);
+      if (r.lastEventDie === 'science') drew = ((r.players.player1!.progressCards ?? []).length) > 4;
+    }
+    expect(drew).toBe(true); // VPカードは上限に数えないので引ける
+  });
+
+  it('F: セットアップ2個目は都市になり、資源+商品を初期産出する', async () => {
+    const { createInitialGameState } = await import('../src/engine/createState');
+    const { chooseAction } = await import('../src/engine/ai');
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const rng = createRng(42);
+    let s = createInitialGameState(
+      [{ id: 'player1', name: 'A', color: 'red', type: 'ai', aiDifficulty: 'strong' }, { id: 'player2', name: 'B', color: 'blue', type: 'ai', aiDifficulty: 'strong' }],
+      'fixed', ['player1', 'player2'], rng, 'cities_knights',
+    );
+    let g = 0;
+    while ((s.phase === 'SETUP_FORWARD' || s.phase === 'SETUP_BACKWARD') && g < 60) {
+      const pid = s.playerOrder[s.currentPlayerIndex]!;
+      const a = chooseAction(s, pid, { rng });
+      if (!a) break;
+      s = applyAction(s, a, rng);
+      g++;
+    }
+    const cities = Object.values(s.vertices).filter(v => v.building?.type === 'city').length;
+    const setts = Object.values(s.vertices).filter(v => v.building?.type === 'settlement').length;
+    expect(cities).toBe(2);  // 各自 都市1
+    expect(setts).toBe(2);   // 各自 開拓地1
+    expect(s.players.player1!.remainingCities).toBe(3);       // 4-1
+    expect(s.players.player1!.remainingSettlements).toBe(4);  // 5-1
   });
 });
