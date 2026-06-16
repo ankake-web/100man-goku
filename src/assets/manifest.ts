@@ -79,6 +79,26 @@ import polSaboteur from './card-pol-saboteur.png';
 import polWedding from './card-pol-wedding.png';
 import polConstitution from './card-pol-constitution.png';
 
+// ---- 科学カード10種（緑） ----
+import sciAlchemist from './card-sci-alchemist.png';
+import sciCrane from './card-sci-crane.png';
+import sciEngineer from './card-sci-engineer.png';
+import sciInventor from './card-sci-inventor.png';
+import sciIrrigation from './card-sci-irrigation.png';
+import sciMedicine from './card-sci-medicine.png';
+import sciMining from './card-sci-mining.png';
+import sciRoadBuilding from './card-sci-road-building.png';
+import sciSmith from './card-sci-smith.png';
+import sciPrinter from './card-sci-printer.png';
+
+// ---- 商業カード6種（黄） ----
+import comMerchant from './card-com-merchant.png';
+import comMerchantFleet from './card-com-merchant-fleet.png';
+import comMasterMerchant from './card-com-master-merchant.png';
+import comCommercialHarbor from './card-com-commercial-harbor.png';
+import comResourceMonopoly from './card-com-resource-monopoly.png';
+import comTradeMonopoly from './card-com-trade-monopoly.png';
+
 // ---- 背景・装飾 ----
 import bgTitle from './bg-title.jpg';
 import bgVictory from './bg-victory.jpg';
@@ -121,6 +141,20 @@ export const ASSETS = {
   politicsCard: {
     bishop: polBishop, diplomat: polDiplomat, intrigue: polIntrigue, deserter: polDeserter,
     warlord: polWarlord, spy: polSpy, saboteur: polSaboteur, wedding: polWedding, constitution: polConstitution,
+  } as Record<string, string>,
+  // 進歩カード25種の個別アート（エンジンの型スラッグ→画像）。政治9＋科学10＋商業6。
+  // 表示側は ASSETS.progressCard[type] ?? ASSETS.cardBack[deck] で参照（未登録のみデッキ裏へ）。
+  progressCard: {
+    // 政治9
+    bishop: polBishop, diplomat: polDiplomat, intrigue: polIntrigue, deserter: polDeserter,
+    warlord: polWarlord, spy: polSpy, saboteur: polSaboteur, wedding: polWedding, constitution: polConstitution,
+    // 科学10
+    alchemist: sciAlchemist, crane: sciCrane, engineer: sciEngineer, inventor: sciInventor,
+    irrigation: sciIrrigation, medicine: sciMedicine, mining: sciMining,
+    road_building_progress: sciRoadBuilding, smith: sciSmith, printer: sciPrinter,
+    // 商業6
+    merchant: comMerchant, merchant_fleet: comMerchantFleet, master_merchant: comMasterMerchant,
+    commercial_harbor: comCommercialHarbor, resource_monopoly: comResourceMonopoly, trade_monopoly: comTradeMonopoly,
   } as Record<string, string>,
   bg: { title: bgTitle, victory: bgVictory, barbarian: bgBarbarian },
   frame: frameDecorative,

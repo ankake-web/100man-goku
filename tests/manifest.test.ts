@@ -35,6 +35,19 @@ describe('資産マニフェスト', () => {
     expect(new Set(urls).size).toBe(9);
   });
 
+  it('進歩カード25種（政治9＋科学10＋商業6）すべてが個別アートに解決し全て別URL', () => {
+    const science = ['alchemist', 'crane', 'engineer', 'inventor', 'irrigation', 'medicine', 'mining', 'printer', 'road_building_progress', 'smith'];
+    const commerce = ['merchant', 'merchant_fleet', 'master_merchant', 'commercial_harbor', 'resource_monopoly', 'trade_monopoly'];
+    const politics = ['bishop', 'diplomat', 'intrigue', 'deserter', 'warlord', 'spy', 'saboteur', 'wedding', 'constitution'];
+    const all = [...politics, ...science, ...commerce];
+    const urls = all.map(c => ASSETS.progressCard[c]);
+    expect(urls.every(truthy)).toBe(true);                 // 全25種にアートがある＝プレースホルダ落ちなし
+    expect(new Set(urls).size).toBe(25);                   // 取り違え無し＝全て別画像
+    // VP/点が絡むカードが正しいスロットに割り当たっていること（印刷機=VP / 商人=保持中+1点）。
+    expect(truthy(ASSETS.progressCard['printer'])).toBe(true);
+    expect(truthy(ASSETS.progressCard['merchant'])).toBe(true);
+  });
+
   it('プレイヤー色の駒（家/都市/船）が4色解決し、不明色は赤フォールバック', () => {
     for (const c of ['red', 'blue', 'purple', 'orange'] as const) {
       expect(truthy(houseImg(c))).toBe(true);

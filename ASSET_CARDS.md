@@ -1,76 +1,68 @@
-# 進歩カード素材 監査（科学10・商業6の本アート差し替え）
+# 進歩カード素材 監査（科学10・商業6 本アート差し替え）— 完了
 
-結論を先に: **`asset/` フォルダには「科学カード10種・商業カード6種の個別アート」は存在しない。**
-中にあるのは、すでにゲームへ統合済みの コマ／改良建築／バナー／商品 の生成元レンダ画像（生データ）であり、
-進歩カードの単独イラストではない。したがって 16 枚の本アート差し替えは **実施できない（素材未提供）**。
-誤って建物/コマ画像をカードのスロットへ割り当てることはしない（例: 水道橋の建物を「灌漑」カードにする等は誤り）。
+科学10・商業6の個別アートが `asset/` に再提供され、**全16枚を本アートへ差し替え済み**。
+これで進歩カード25種（政治9＋科学10＋商業6）すべてが個別アートで表示される（プレースホルダ落ちなし）。
 
-科学・商業カードは現状どおり **デッキ裏のプレースホルダ表示**（科学=緑／商業=黄）を維持する。
-政治9種は従来どおり個別アート（`card-pol-*`）で表示される。
+## ステップ1: 実ファイル（再提供分）
+`asset/ChatGPT Image 2026年6月17日 06_50_*〜06_52_*`（計16枚、各 1254×1254・透過化前は near-white 背景）。
+DLし直しでファイル名は連番のみ。作業用に new-01〜new-16 と採番して1枚ずつ画像を開いて同定した。
 
----
+## ステップ2: リネーム対応表（作業名 → 正規名）と同定
+背景（near-white）を edge flood-fill で除去 → bbox トリム → 正方パディング → 256×256 へ統一（既存 card-pol-* と同形式）。
 
-## ステップ1: `asset/` 実ファイルの棚卸し
-
-ChatGPT 生成画像 25 枚（2026-06-16 21:47–22:33 生成）。解像度はカード型 1254×1254、横長バナー 1672×941。
-1枚ずつ画像を開いて内容を同定した（25体並列の鑑定＋疑わしい数枚は手元で再確認）。
-
-| 連番(作業名) | 解像度 | 実際に描かれているもの | 対応する“既存”アセット |
+| 正規ファイル名 | 元(作業名) | カード | デッキ |
 |---|---|---|---|
-| img-01 | 1254² | 政治コマ9体の 3×3 モンタージュシート | `card-pol-*` の生成元 |
-| img-02 | 1254² | 市場/交易所の建物 | bld-trading-house（交易所・商Lv3） |
-| img-03 | 1254² | 金ドーム＋天秤紋の建物 | bld-bank（銀行・商Lv4） |
-| img-04 | 1254² | 城/要塞の建物 | bld-fortress（要塞・政Lv3） |
-| img-05 | 1254² | ゴシック大聖堂の建物 | bld-cathedral（大聖堂・政Lv4） |
-| img-06 | 1254² | **水道橋**（水路を渡す石アーチ） | bld-aqueduct（水道橋・科Lv3）※カード「灌漑」ではない |
-| img-07 | 1254² | 望遠鏡/原子紋の学術建物 | bld-theater（劇場・科Lv4） |
-| img-08 | 1672×941 | ヴァイキング上陸の戦闘バナー | bg-barbarian（蛮族襲来背景） |
-| img-09 | 1672×941 | 島全体の俯瞰パノラマ | bg-title（タイトル背景） |
-| img-10 | 1672×941 | 島＋花火の祝祭パノラマ | bg-victory（勝利背景） |
-| img-11 | 1254² | 中空の装飾フレーム | frame-decorative（装飾フレーム） |
-| img-12 | 1254² | 緑リボンで束ねた書類＋巻物 | card-back-science / com-paper（紙） |
-| img-13 | 1254² | 金リボンの青い布の束 | com-cloth（布）/ card-back-politics |
-| img-14 | 1254² | 金貨の山（歯車紋） | com-coin（金貨）/ card-back-trade |
-| img-15,16,17 | 1254² | 鎧の騎士フィギュア（青羽飾り） | knight-basic/strong/mighty の生成元 |
-| img-18 | 1254² | 鞄を提げたフード姿の小コマ | merchant（商人コマ） |
-| img-19 | 1254² | 城門（青円錐屋根の塔＋扉） | metropolis-gate（メトロポリス門） |
-| img-20 | 1254² | 月桂樹に囲まれた盾エンブレム | defender-badge（守護者バッジ） |
-| img-21 | 1254² | **城壁**セクション（青盾2枚） | city-wall（城壁コマ）※カード「技師」ではない |
-| img-22,23,24 | 1254² | 鎧の騎士フィギュア | knight-* の生成元 |
-| img-25 | 1254² | ヴァイキング軍船（竜頭・髑髏帆） | barbarian-ship（蛮族船） |
+| card-sci-alchemist.png | new-07 | 錬金術師 | 科学 |
+| card-sci-crane.png | new-08 | クレーン | 科学 |
+| card-sci-engineer.png | new-16 ※ | 技師 | 科学 |
+| card-sci-inventor.png | new-09 | 発明家 | 科学 |
+| card-sci-irrigation.png | new-10 | 灌漑 | 科学 |
+| card-sci-medicine.png | new-11 | 医術 | 科学 |
+| card-sci-mining.png | new-12 | 鉱業 | 科学 |
+| card-sci-road-building.png | new-13 | 街道建設 | 科学 |
+| card-sci-smith.png | new-15 | 鍛冶 | 科学 |
+| card-sci-printer.png | new-14 | 印刷機（VP） | 科学 |
+| card-com-merchant.png | new-01 | 商人（保持中+1点） | 商業 |
+| card-com-merchant-fleet.png | new-02 | 商船隊 | 商業 |
+| card-com-master-merchant.png | new-03 | 大商人 | 商業 |
+| card-com-commercial-harbor.png | new-04 | 商業港 | 商業 |
+| card-com-resource-monopoly.png | new-05 | 資源独占 | 商業 |
+| card-com-trade-monopoly.png | new-06 | 交易独占 | 商業 |
 
-## ステップ2: 正規名への照合と差し替え
-**該当なし。** 16枚の個別カードアート（`card-sci-*` / `card-com-*`）に相当する画像が存在しないため、
-リネーム対応表・マニフェスト差し替えは作成していない（捏造割当を避ける）。中央マニフェストは無変更。
+※ new-16 = 技師。当初 `asset/` に入っていたのは15枚で、16枚目（技師）だけ
+`~/Desktop/image_download/ChatGPT Image 2026年6月17日 06_52_04 (3).png` に取り残されていた。
+これを `asset/` へ取り込んで全16枚を揃えた。
 
-## ステップ3: 取り違えペアの重点確認（❓要確認＝今回はすべて「カードではない」と判明）
-鑑定で science/commerce に寄った“候補”は、画像を開いて確認した結果すべて建物/コマ/商品だった:
+## ステップ3: ★最重要・取り違えペアの重点確認（実画像で判別、自動鑑定の誤りを訂正）
+自動鑑定が誤割当した2枚を、画像を開いて訂正した（決め手を明記）:
 
-- ❓ img-06 → 鑑定は「灌漑(irrigation)」候補(0.92)。**実体は水道橋の建物**（bld-aqueduct）。カードではない。
-- ❓ img-21 → 鑑定は「技師(engineer)」候補(0.78)。**実体は城壁コマ**（city-wall）。カードではない。
-- ❓ img-02 → 鑑定は「商業港(commercial-harbor)」候補(0.45)。**実体は交易所の建物**（bld-trading-house）。カードではない。
-- ❓ img-13/14 → 「交易独占(trade-monopoly)」候補(0.40/0.50)。**実体は商品コマ**（布／金貨）。カードではない。
+- **new-11**: 自動鑑定は「錬金術師」候補(0.72)。→ **実体は医術(medicine)**。胸の医療十字(✚)＋薬草・乳鉢・治療用の小瓶。
+  錬金術師(new-07)は宙に浮く2サイコロ＋紫の魔術エフェクトが決め手で別物。
+- **new-06**: 自動鑑定は「大商人」候補(0.88)。→ **実体は交易独占(trade_monopoly)**。紙/布/金貨（＝3商品）の山＋金庫＋そろばん。
+  大商人(new-03)は紫の宝石を掲げる富豪＋宝石/真珠/金延べ棒（＝汎用の富）で別物。
 
-→ ★最重要の取り違えペア（錬金術師↔医術・クレーン↔技師↔街道建設・鉱業↔鍛冶・商人↔大商人・
-資源独占↔交易独占・商船隊↔商業港）は、そもそも**いずれの単独カード絵も asset/ に存在しない**ため判別対象なし。
+その他のペアも実画像で確認:
+- 錬金術師(new-07 サイコロ＋魔術) ↔ 医術(new-11 医療十字＋薬草) … 区別OK
+- クレーン(new-08 吊り上げ機構) ↔ 技師(new-16 設計図＋城壁) ↔ 街道建設(new-13 石畳敷設) … 区別OK
+- 鉱業(new-12 つるはし＋鉱脈) ↔ 鍛冶(new-15 炉＋金床＋武具) … 区別OK
+- 商人(new-01 荷車の行商人) ↔ 大商人(new-03 宝石/金貨の富豪) … 区別OK
+- 資源独占(new-05 木/レンガ/羊毛/小麦/鉱石) ↔ 交易独占(new-06 紙/布/金貨) … 区別OK
+- 商船隊(new-02 海上の複数船) ↔ 商業港(new-04 陸の桟橋＋荷揚げクレーン) … 区別OK
+
+→ ❓要確認の積み残しなし（16枚すべて確信度高で確定）。
 
 ## ステップ4: 紐づけ検証
-- 政治9＝個別アート表示（OK）。科学10＋商業6＝デッキ裏プレースホルダ表示（緑/黄）のまま（変更なし）。
-- VP/点が絡むカード（印刷機=VP / 商人=保持中+1点）は、エンジン側スロット（`printer` / `merchant`）が
-  正しく定義済み（[`src/constants.ts`](src/constants.ts)）。アート未提供のため表示は当該デッキ裏のまま。
+- 中央マニフェスト [`src/assets/manifest.ts`](src/assets/manifest.ts) に16 import＋`progressCard`（25種＝政治9＋科学10＋商業6）を追加。
+- 表示4箇所（効果モーダル・図鑑・手札ボタンのアイコン/参照）を
+  `ASSETS.politicsCard[type] ?? cardBack` → `ASSETS.progressCard[type] ?? cardBack` に変更（[`src/renderer/ui.ts`](src/renderer/ui.ts)）。
+- VP/点カード: 印刷機=`printer`→card-sci-printer（活版印刷機の絵）、商人=`merchant`→card-com-merchant（荷車の行商人）に正しく割り当て。
+- テスト追加: 25種すべてが個別URLに解決＝プレースホルダ落ち無し・全て別画像（[`tests/manifest.test.ts`](tests/manifest.test.ts)）。全681＋1テスト緑・ビルドOK・404なし。
 
-## ステップ5: 残課題 / まだプレースホルダのままの素材
-- **未提供（本対応に必要）**: 科学10・商業6の個別カードイラスト 計16枚。
-  正規名で `src/assets/` に置けば即結線できる（下記）:
-  - 科学(緑): card-sci-alchemist / -crane / -engineer / -inventor / -irrigation / -medicine /
-    -mining / -road-building / -smith / -printer
-  - 商業(黄): card-com-merchant / -merchant-fleet / -master-merchant / -commercial-harbor /
-    -resource-monopoly / -trade-monopoly
-  - エンジンの型スラッグ対応（結線キー）: `alchemist, crane, engineer, inventor, irrigation, medicine,
-    mining, printer, road_building_progress, smith` ／ `commercial_harbor, master_merchant, merchant,
-    merchant_fleet, resource_monopoly, trade_monopoly`。
-  - 結線箇所（提供されれば数行）: [`src/assets/manifest.ts`](src/assets/manifest.ts) に16 import＋
-    `progressCard` マップ追加、[`src/renderer/ui.ts`](src/renderer/ui.ts) のカード絵参照4箇所
-    （`ASSETS.politicsCard[type] ?? ASSETS.cardBack[deck]` → `ASSETS.progressCard[type] ?? ASSETS.cardBack[deck]`）。
-- 既定どおりプレースホルダ継続（非カード素材・対象外）: 蛮族襲来バナー / タイトル背景 / 勝利背景 / 装飾フレーム。
+## ステップ5: 重複コピーの捜索 / 残課題
+- **重複捜索**: `$HOME` 全体（Library/リポジトリ/node_modules を除く）を **内容ハッシュ(md5)** で走査。
+  16枚と同一内容の重複コピーは **どこにも存在しなかった**。
+  唯一の“別フォルダの該当画像”は上記の技師(new-16)で、これは重複ではなく `asset/` から欠けていた16枚目だった
+  （取り込み済み）。`~/Desktop/image_download/` に残っていた技師の元ファイルは、本取り込み後は冗長のため削除した
+  （同フォルダ内の無関係な旧画像2枚＝6月7日生成 は対象外として温存）。
+- まだプレースホルダのままの素材（非カード・対象外）: 蛮族襲来バナー / タイトル背景 / 勝利背景 / 装飾フレーム。
 </content>

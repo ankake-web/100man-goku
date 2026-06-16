@@ -1164,7 +1164,7 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
 
   // カード絵を装飾フレームで囲み「カード」らしく見せる（フレーム＋名前＋効果が分かるUI）。
   const frameWrap = el('div', 'pc-info-frame');
-  const art = assetImg(ASSETS.politicsCard[card.type] ?? ASSETS.cardBack[card.deck], 'pc-info-art', PROGRESS_CARD_NAME[card.type], PROGRESS_CARD_NAME[card.type]);
+  const art = assetImg(ASSETS.progressCard[card.type] ?? ASSETS.cardBack[card.deck], 'pc-info-art', PROGRESS_CARD_NAME[card.type], PROGRESS_CARD_NAME[card.type]);
   frameWrap.appendChild(art);
   const frameBorder = document.createElement('img');
   frameBorder.className = 'pc-info-frame-border'; frameBorder.src = ASSETS.frame; frameBorder.alt = ''; frameBorder.draggable = false;
@@ -1275,7 +1275,7 @@ export function showAssetGallery(): void {
   for (const [deck, label] of [['politics', '政治'], ['science', '科学'], ['trade', '商業']] as [CkTrack, string][]) {
     const cg = cardSection(`📜 進歩カード（${label}デッキ）`);
     for (const type of PROGRESS_DECK_CARDS[deck]) {
-      const art = ASSETS.politicsCard[type] ?? ASSETS.cardBack[deck];
+      const art = ASSETS.progressCard[type] ?? ASSETS.cardBack[deck];
       cardItem(cg, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type]);
     }
   }
@@ -1359,8 +1359,8 @@ function appendCkBuildSection(
     const pcRow = el('div', 'ck-pc-row');
     for (const c of cards) {
       const can = canPlayProgress(state, pid, c.id);
-      // 政治カードは専用アート、それ以外はトラック色のカード裏（科学=緑/商業=黄/政治=青）。
-      const icon = ASSETS.politicsCard[c.type] ?? ASSETS.cardBack[c.deck];
+      // 進歩カードは25種すべて専用アート。未登録のみトラック色のカード裏（科学=緑/商業=黄/政治=青）。
+      const icon = ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck];
       // タップで「効果説明＋使う/やめる」のカード詳細を表示（使用前に効果が分かるように）。
       // 使えないカードも閲覧可能（disabled=false）。実際の使用可否はモーダルの「使う」で制御。
       const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', false,
