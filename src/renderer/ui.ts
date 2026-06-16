@@ -1616,13 +1616,16 @@ export function renderUI(
     if (isCk(state)) {
       // 騎士と商人: 赤(生産d1・抽選しきい値)／黄(生産d2)／イベントダイスを色チップで常時表示。
       const chip = (cls: string, txt: string): HTMLSpanElement => { const s = el('span', cls); s.textContent = txt; return s; };
-      diceEl.appendChild(chip('dice-chip dice-chip-red', String(d1)));
+      const ev = state.lastEventDie;
+      // 色ゲートのターンは「赤単体＝進歩カード抽選のしきい値」を強調表示する。
+      const gateTurn = ev != null && ev !== 'ship';
+      diceEl.appendChild(chip(`dice-chip dice-chip-red${gateTurn ? ' dice-chip-red-emph' : ''}`, String(d1)));
       diceEl.appendChild(chip('dice-chip dice-chip-yellow', String(d2)));
       diceEl.appendChild(chip('dice-chip-sum', `＝生産${d1 + d2}`));
-      const ev = state.lastEventDie;
       if (ev) {
         const evTxt = ev === 'ship' ? '🛶' : ev === 'trade' ? '商' : ev === 'politics' ? '政' : '科';
         diceEl.appendChild(chip(`dice-chip dice-chip-ev ev-${ev}`, evTxt));
+        if (gateTurn) diceEl.appendChild(chip('dice-chip-gate-note', `赤${d1}＝抽選値`));
       }
     } else {
       diceEl.textContent = `🎲 ${d1}+${d2}=${d1 + d2}`;
