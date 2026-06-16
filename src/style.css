@@ -1981,6 +1981,14 @@ h1 {
 .gallery-img { width: 62px; height: 62px; object-fit: contain; display: block; margin: 0 auto 5px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4)); }
 .gallery-name { font-size: 0.82rem; font-weight: 700; margin-bottom: 3px; }
 .gallery-desc { font-size: 0.7rem; line-height: 1.35; color: rgba(255,255,255,0.66); }
+/* 進歩カードは装飾フレームで囲んで「カード」らしく表示（絵＋名前＋効果） */
+.gallery-grid-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.gallery-card-cell { background: rgba(255,255,255,0.04); padding: 10px 8px; }
+.gallery-card-frame { position: relative; width: 122px; height: 122px; margin: 0 auto 6px; }
+.gallery-card-art { position: absolute; inset: 16%; width: 68%; height: 68%; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.42)); }
+.gallery-card-frame-border { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.gallery-card-cell .gallery-name { font-size: 0.86rem; }
+.gallery-card-cell .gallery-desc { font-size: 0.74rem; }
 .gallery-close { margin: 10px 16px 16px; padding: 11px; border: none; border-radius: 9px; background: rgba(208,168,108,0.92); color: #1b1206; font-weight: 800; cursor: pointer; }
 .gallery-close:hover { background: #d0a86c; }
 /* 図鑑を開くボタン（TOP） */
