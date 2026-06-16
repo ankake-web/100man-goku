@@ -350,7 +350,8 @@ h1 {
 /* アニメ抑制時はパルスを止め、産出ヘックスを静的に明るく示す（どこから出たか分かる）。 */
 @media (prefers-reduced-motion: reduce) {
   .hex-tile.producing { animation: none; filter: brightness(1.5) drop-shadow(0 0 6px rgba(255,240,150,0.85)); }
-  .dice-die.settled { animation: none; }
+  .dice-slot.settled .dice-cube-wrap, .dice-slot.settled .dice-cube-wrap::after { animation: none; }
+  .board-shake, .board-shake-danger { animation: none; }
 }
 
 .hex-tile.forest   { fill: #2d6a2d; }
@@ -2314,47 +2315,128 @@ h1 {
   pointer-events: none;
   perspective: 700px;            /* 立体的に見せる */
 }
-.dice-row {
+/* ===== 3Dダイス（本物の6面立方体・preserve-3d）===== */
+.dice-stage {
   display: flex;
   justify-content: center;
-  align-items: center;
-  gap: 18px;
+  align-items: flex-end;
+  gap: clamp(14px, 5vw, 30px);
+  perspective: 760px;            /* 立体的に見せる遠近 */
+  padding-bottom: 6px;
 }
-.dice-die {
-  width: 76px;
-  height: 76px;
-  box-sizing: border-box;
-  background: linear-gradient(145deg, #ffffff, #d4d7df);
+.dice-slot {
+  --cube: clamp(54px, 16vw, 74px);
+  --h: calc(var(--cube) / 2);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.dice-cube-wrap {
+  position: relative;
+  width: var(--cube);
+  height: var(--cube);
+  transform-style: preserve-3d;
+}
+.dice-cube {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(-24deg) rotateY(20deg);  /* 静止時の見栄え（JSが上書き） */
+  will-change: transform;
+}
+.dice-slot.rolling .dice-cube { filter: blur(0.5px); }       /* 回転中はややぼかす */
+.dice-slot.settled .dice-cube { filter: none; }              /* 着地で輪郭シャープ */
+.dice-slot.settled .dice-cube-wrap { animation: cubeLand 0.34s cubic-bezier(0.2,1.4,0.4,1); }
+/* 着地リング（赤/黄は自色、イベントは結果色） */
+.dice-slot.settled .dice-cube-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
   border-radius: 16px;
-  padding: 9px;
+  border: 3px solid var(--ring, #ffd76a);
+  opacity: 0;
+  pointer-events: none;
+  animation: diceRing 0.62s ease-out;
+}
+.dice-slot.slot-event.settled .dice-cube-wrap::after { border-width: 4px; inset: -9px; }  /* イベントは強め */
+.cube-face {
+  position: absolute;
+  inset: 0;
+  width: var(--cube);
+  height: var(--cube);
+  box-sizing: border-box;
+  backface-visibility: hidden;
+  border-radius: 11px;
+}
+.dice-cube .face-front  { transform: translateZ(var(--h)); }
+.dice-cube .face-back   { transform: rotateY(180deg) translateZ(var(--h)); }
+.dice-cube .face-right  { transform: rotateY(90deg)  translateZ(var(--h)); }
+.dice-cube .face-left   { transform: rotateY(-90deg) translateZ(var(--h)); }
+.dice-cube .face-top    { transform: rotateX(90deg)  translateZ(var(--h)); }
+.dice-cube .face-bottom { transform: rotateX(-90deg) translateZ(var(--h)); }
+
+/* 生産ダイス: 象牙/骨色マテリアル。赤/黄はピップ色＋縁で識別。 */
+.pip-face {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 2px;
-  transform-style: preserve-3d;
-  box-shadow:
-    0 12px 22px rgba(0,0,0,0.55),
-    inset 0 3px 5px rgba(255,255,255,0.95),
-    inset 0 -5px 7px rgba(0,0,0,0.18);
+  padding: 11%;
+  background: linear-gradient(150deg, #fffaf0, #ece0cc);
+  box-shadow: inset 0 0 9px rgba(120,90,50,0.16);
 }
+.prod-cube.red .pip-face    { border: 1px solid rgba(170,60,40,0.4); }
+.prod-cube.yellow .pip-face { border: 1px solid rgba(180,130,30,0.4); }
 .pip-cell { display: flex; align-items: center; justify-content: center; }
 .pip-cell.on::after {
   content: '';
-  width: 13px;
-  height: 13px;
+  width: 72%;
+  height: 72%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #4a4a4a, #0e0e0e);
-  box-shadow: inset 0 1px 1px rgba(0,0,0,0.55);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.4);
 }
-.dice-die.rolling  { animation: diceTumble  1.7s ease-out forwards; }
-.dice-die.d2.rolling { animation: diceTumble2 1.7s ease-out forwards; }
-.dice-die.settled {
-  animation: dicePop 0.42s cubic-bezier(0.2,1.5,0.5,1);
-  box-shadow:
-    0 12px 22px rgba(0,0,0,0.55),
-    0 0 20px rgba(255,221,110,0.9),
-    inset 0 3px 5px rgba(255,255,255,0.95);
+.prod-cube.red    .pip-cell.on::after { background: radial-gradient(circle at 35% 30%, #e2604f, #9c1d12); }
+.prod-cube.yellow .pip-cell.on::after { background: radial-gradient(circle at 35% 30%, #e0a32a, #966408); }
+
+/* イベントダイス: 濃い石/木マテリアル。船×3＋色ゲート×3。 */
+.event-cube .cube-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(150deg, #3c4753, #232b34);
+  border: 1px solid rgba(0,0,0,0.5);
+  box-shadow: inset 0 0 12px rgba(0,0,0,0.55);
 }
+.event-cube .ef-ship-img { width: 80%; height: 80%; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
+.event-face.ef-trade    { background: linear-gradient(150deg, #d3a838, #8a6510); }
+.event-face.ef-politics { background: linear-gradient(150deg, #3f74d8, #21356f); }
+.event-face.ef-science  { background: linear-gradient(150deg, #3fae62, #1d6b3a); }
+.ef-gate {
+  position: relative;
+  font-size: calc(var(--cube) * 0.46);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 5px rgba(0,0,0,0.7);
+  /* ゲート(門)らしい縦長アーチの内枠 */
+  padding: 4% 16% 0;
+  border-radius: 46% 46% 12% 12% / 56% 56% 12% 12%;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.45);
+}
+
+/* ダイスの影（着地で締まる＝重さの表現） */
+.dice-shadow {
+  width: calc(var(--cube) * 0.92);
+  height: 11px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(0,0,0,0.5), rgba(0,0,0,0) 70%);
+  transform: scale(1.5);
+  opacity: 0.45;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.dice-slot.rolling .dice-shadow { transform: scale(1.75); opacity: 0.3; }   /* 投げ上げで広がる */
+.dice-slot.settled .dice-shadow { transform: scale(1);    opacity: 0.6; }   /* 着地で締まる */
 .dice-sum {
   display: inline-flex;
   align-items: center;
@@ -2380,24 +2462,16 @@ h1 {
 }
 .dice-sum.show { animation: dicePop 0.45s cubic-bezier(0.2,1.5,0.5,1); }
 
-/* ===== 騎士と商人: 3個ダイス（赤=生産d1／黄=生産d2／イベント）を色と形で区別 ===== */
-.dice-die.dice-red { background: linear-gradient(145deg, #ff7676, #c62828); }
-.dice-die.dice-red .pip-cell.on::after { background: radial-gradient(circle at 35% 30%, #ffffff, #ffd9d9); }
-.dice-die.dice-yellow { background: linear-gradient(145deg, #ffe066, #f0a020); }
-.dice-die.d3.rolling { animation: diceTumble 1.7s ease-out forwards; }
-/* イベントダイスは「円形」で生産ダイス（角丸四角）と形でも区別。ピップでなく記号を表示。 */
-.dice-die.dice-event {
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  font-size: 2.2rem; font-weight: 900; color: #fff;
-  background: linear-gradient(145deg, #5a6b7a, #2b3540);
-  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-}
-.dice-die.dice-event.ev-ship     { background: linear-gradient(145deg, #6b7d8c, #2b3540); }
-.dice-die.dice-event.ev-trade    { background: linear-gradient(145deg, #ffd24d, #cf9018); color: #3a2b00; text-shadow: none; }
-.dice-die.dice-event.ev-politics { background: linear-gradient(145deg, #5b8def, #2853b8); }
-.dice-die.dice-event.ev-science  { background: linear-gradient(145deg, #5fc77a, #2e8b48); }
 .dice-prod { white-space: nowrap; }
+
+/* 色ゲートが出た瞬間の画面カラーウォッシュ（その色が画面に広がる） */
+.dice-color-wash {
+  position: absolute; inset: 0; z-index: 48; pointer-events: none; opacity: 0;
+  animation: colorWash 0.92s ease-out forwards;
+}
+.dice-color-wash.ev-trade    { background: radial-gradient(circle, rgba(230,180,40,0.34), rgba(230,180,40,0) 72%); }
+.dice-color-wash.ev-politics { background: radial-gradient(circle, rgba(70,120,230,0.34), rgba(70,120,230,0) 72%); }
+.dice-color-wash.ev-science  { background: radial-gradient(circle, rgba(50,180,90,0.34), rgba(50,180,90,0) 72%); }
 
 /* イベント結果パネル（蛮族前進 / 色別抽選の照合） */
 .dice-event-panel {
@@ -2423,6 +2497,9 @@ h1 {
 /* ターンパネルの常時ダイス読み取り（赤/黄/イベントの小チップ） */
 .dice-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 6px; font-weight: 900; font-size: 0.95rem; margin: 0 2px; vertical-align: middle; }
 .dice-chip-red { background: linear-gradient(145deg, #ff7676, #c62828); color: #fff; }
+/* 色ゲートのターン: 赤チップ＝抽選しきい値を強調 */
+.dice-chip-red-emph { box-shadow: 0 0 0 2px #fff, 0 0 8px 2px rgba(255,120,90,0.9); transform: scale(1.12); }
+.dice-chip-gate-note { font-size: 0.72rem; font-weight: 800; color: #ffd0c4; margin-left: 4px; vertical-align: middle; }
 .dice-chip-yellow { background: linear-gradient(145deg, #ffe066, #f0a020); color: #3a2b00; }
 .dice-chip-sum { font-weight: 800; color: #ffe34d; margin: 0 5px; font-size: 0.9rem; vertical-align: middle; }
 .dice-chip-ev { border-radius: 50%; width: 24px; height: 24px; min-width: 24px; color: #fff; font-size: 0.8rem; }
@@ -2431,20 +2508,33 @@ h1 {
 .dice-chip-ev.ev-politics { background: linear-gradient(145deg, #5b8def, #2853b8); }
 .dice-chip-ev.ev-science { background: linear-gradient(145deg, #5fc77a, #2e8b48); }
 
-@keyframes diceTumble {
-  0%   { transform: rotateZ(0)      rotateX(0)     scale(1.18); }
-  25%  { transform: rotateZ(230deg) rotateX(20deg) scale(1.12); }
-  50%  { transform: rotateZ(450deg) rotateX(-16deg) scale(1.2); }
-  75%  { transform: rotateZ(620deg) rotateX(12deg) scale(1.07); }
-  100% { transform: rotateZ(720deg) rotateX(0)     scale(1); }
+/* 着地の微バウンド（1〜2px の重さ表現） */
+@keyframes cubeLand {
+  0%   { transform: translateY(-3px); }
+  55%  { transform: translateY(2px); }
+  100% { transform: translateY(0); }
 }
-@keyframes diceTumble2 {
-  0%   { transform: rotateZ(0)       rotateY(0)     scale(1.16); }
-  25%  { transform: rotateZ(-205deg) rotateY(18deg) scale(1.2); }
-  50%  { transform: rotateZ(-430deg) rotateY(-14deg) scale(1.1); }
-  75%  { transform: rotateZ(-615deg) rotateY(10deg) scale(1.18); }
-  100% { transform: rotateZ(-720deg) rotateY(0)     scale(1); }
+/* 着地リング（出目を強調するパルス） */
+@keyframes diceRing {
+  0%   { opacity: 0.9; transform: scale(0.82); }
+  100% { opacity: 0;   transform: scale(1.28); }
 }
+/* 色ゲートの画面カラーウォッシュ */
+@keyframes colorWash {
+  0%   { opacity: 0; }
+  28%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* 蛮族前進時の画面の揺れ（残り少ない/襲来は danger で強め） */
+@keyframes boardShake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, 1px); }
+  80% { transform: translate(3px, -1px); }
+}
+.board-shake { animation: boardShake 0.5s ease-in-out; }
+.board-shake-danger { animation: boardShake 0.62s ease-in-out; box-shadow: inset 0 0 70px rgba(255,40,40,0.4); }
 @keyframes dicePop {
   0%   { transform: scale(1.45); }
   55%  { transform: scale(0.9); }

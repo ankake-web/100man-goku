@@ -295,7 +295,7 @@ const SE_MIN_INTERVAL: Record<string, number> = {
   default:  200,
 };
 
-export type SEType = 'click'|'dice'|'resource'|'build'|'tradeOk'|'tradeNg'|'devCard'|'robber'|'turnStart'|'victory'
+export type SEType = 'click'|'dice'|'diceLandHeavy'|'resource'|'build'|'tradeOk'|'tradeNg'|'devCard'|'robber'|'turnStart'|'victory'
   |'sevenRoll'|'discardWarn'|'discardLose'|'vpGain'|'bonusGain'|'yourTurn';
 
 function playSE(type: SEType): void {
@@ -405,6 +405,12 @@ function playSE(type: SEType): void {
         // 自分の手番開始: やわらかい2音チャイム（他人の手番開始と区別）
         note(660, 0.10, 'sine', 0.4, 0.00);
         note(990, 0.16, 'sine', 0.36, 0.08);
+        break;
+      case 'diceLandHeavy':
+        // イベントダイスの着地: 生産ダイスより一段重い低音の「ドスッ」
+        note(150, 0.18, 'sine', 0.6, 0.00);
+        note(92,  0.24, 'sine', 0.5, 0.02);
+        note(220, 0.06, 'triangle', 0.3, 0.00);
         break;
     }
   } catch { /* ignore */ }

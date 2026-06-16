@@ -2100,23 +2100,103 @@ function showTurnToast(pid: string, isMe: boolean): void {
 const DICE_PIPS: Record<number, number[]> = {
   1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
 };
-function setDiePips(face: HTMLElement, value: number): void {
-  face.textContent = ''; // 生成したピップ要素のみで構成（外部入力なし）
+// 立方体の6面（向かい合う面の和=7）。面は固定割当なので、目のすり替え（スロット表現）は起きない。
+type CubeFaceKey = 'front' | 'back' | 'right' | 'left' | 'top' | 'bottom';
+const CUBE_FACE_KEYS: CubeFaceKey[] = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+// 生産ダイス: 面→目（front=1,back=6,right=3,left=4,top=5,bottom=2）。
+const PROD_FACE_VALUE: Record<CubeFaceKey, number> = {
+  front: 1, back: 6, right: 3, left: 4, top: 5, bottom: 2,
+};
+// 目→「その面を正面に出す」最終回転 [rotX, rotY]（度）。単軸のみ＝満回転を足しても着地面が厳密。
+const PROD_SHOW_ROT: Record<number, [number, number]> = {
+  1: [0, 0], 2: [90, 0], 3: [0, -90], 4: [0, 90], 5: [-90, 0], 6: [0, 180],
+};
+// イベントダイス: 船×3面＋色ゲート×3面（青=政治/緑=科学/黄=商業）。
+const EVENT_FACE_RESULT: Record<CubeFaceKey, 'ship' | CkTrack> = {
+  front: 'ship', back: 'ship', right: 'ship', left: 'trade', top: 'politics', bottom: 'science',
+};
+// 結果→その面を正面に出す最終回転。
+const EVENT_SHOW_ROT: Record<'ship' | CkTrack, [number, number]> = {
+  ship: [0, 0], trade: [0, 90], politics: [-90, 0], science: [90, 0],
+};
+
+/** 生産ダイスの1面（3x3 ピップ）。 */
+function buildPipFace(value: number): HTMLElement {
+  const f = document.createElement('div');
+  f.className = 'cube-face pip-face';
   const on = DICE_PIPS[value] ?? [];
   for (let i = 0; i < 9; i++) {
     const cell = document.createElement('span');
     cell.className = on.includes(i) ? 'pip-cell on' : 'pip-cell';
-    face.appendChild(cell);
+    f.appendChild(cell);
   }
+  return f;
 }
-// ロール演出の長さ（ms）。速度設定に連動。
-function diceRollMs(): number {
-  switch (fxSpeed()) {
-    case 'instant': return 0;
-    case 'fast':    return 750;
-    case 'slow':    return 2150;
-    default:        return 1700; // normal: しっかり「振っている感」を出す
+/** 生産ダイスの立方体（赤/黄・象牙色）。6面に目を固定配置。 */
+function buildProdCube(color: 'red' | 'yellow'): HTMLElement {
+  const cube = document.createElement('div');
+  cube.className = `dice-cube prod-cube ${color}`;
+  for (const key of CUBE_FACE_KEYS) {
+    const face = buildPipFace(PROD_FACE_VALUE[key]);
+    face.classList.add(`face-${key}`);
+    cube.appendChild(face);
   }
+  return cube;
+}
+/** イベントダイスの1面（船アート or 色ゲート記号）。 */
+function buildEventFace(result: 'ship' | CkTrack): HTMLElement {
+  const f = document.createElement('div');
+  f.className = `cube-face event-face ef-${result}`;
+  if (result === 'ship') {
+    if (ASSETS.piece.barbarianShip) {
+      const img = document.createElement('img');
+      img.className = 'ef-ship-img'; img.src = ASSETS.piece.barbarianShip; img.alt = '蛮族船'; img.draggable = false;
+      f.appendChild(img);
+    } else {
+      f.textContent = '🛶';
+    }
+  } else {
+    const gate = document.createElement('span');
+    gate.className = 'ef-gate';
+    gate.textContent = result === 'trade' ? '商' : result === 'politics' ? '政' : '科';
+    f.appendChild(gate);
+  }
+  return f;
+}
+/** イベントダイスの立方体（濃い石/木）。船×3＋色ゲート×3。 */
+function buildEventCube(): HTMLElement {
+  const cube = document.createElement('div');
+  cube.className = 'dice-cube event-cube';
+  for (const key of CUBE_FACE_KEYS) {
+    const face = buildEventFace(EVENT_FACE_RESULT[key]);
+    face.classList.add(`face-${key}`);
+    cube.appendChild(face);
+  }
+  return cube;
+}
+// 静止時のわずかな傾き。目的面を正面に保ったまま立体感を出す（隣接面の縁が少し見える）。
+// 45°未満なら目的面が支配的なまま＝出目の誤読は起きない。
+const REST_TILT: [number, number] = [-14, 15];
+/** show回転に静止傾きを足した着地姿勢。 */
+function restPose(show: [number, number]): [number, number] {
+  return [show[0] + REST_TILT[0], show[1] + REST_TILT[1]];
+}
+/** 回転なしで目的の面を正面に固定（reduced-motion / instant 用）。 */
+function setCubeStatic(cube: HTMLElement, show: [number, number]): void {
+  const [fx, fy] = restPose(show);
+  cube.style.transition = 'none';
+  cube.style.transform = `rotateX(${fx}deg) rotateY(${fy}deg)`;
+}
+/** 着地姿勢へ転がす。開始は数回転ぶん戻した位置＝角度のついたタンブル→目的面へスナップ。 */
+function spinCube(cube: HTMLElement, show: [number, number], spinsX: number, spinsY: number, durMs: number): void {
+  const [fx, fy] = restPose(show);
+  const startX = fx + 360 * spinsX;   // 満回転は恒等変換＝着地面は厳密に一致
+  const startY = fy + 360 * spinsY;
+  cube.style.transition = 'none';
+  cube.style.transform = `rotateX(${startX}deg) rotateY(${startY}deg)`;
+  void cube.offsetWidth;              // reflow を挟んで適用順を確定
+  cube.style.transition = `transform ${durMs}ms cubic-bezier(0.16, 0.74, 0.18, 1.04)`;
+  cube.style.transform = `rotateX(${fx}deg) rotateY(${fy}deg)`;
 }
 // 騎士と商人: ロール時に見せるイベントダイス情報（生産2ダイス＝赤+黄／イベントダイス／抽選・蛮族）。
 interface DiceEventInfo {
@@ -2129,7 +2209,6 @@ interface DiceEventInfo {
   draws: Array<{ name: string; level: number; threshold: number; eligible: boolean; drew: boolean }> | null;
 }
 
-const EVENT_FACES: ('ship' | CkTrack)[] = ['ship', 'ship', 'ship', 'trade', 'politics', 'science'];
 const EVENT_LABEL: Record<string, string> = { ship: '🛶', trade: '商', politics: '政', science: '科' };
 
 /** ロール前後のstateからイベントダイスの可視化情報を導出。非CK or 情報なしは null。 */
@@ -2160,12 +2239,6 @@ function buildDiceEventInfo(prev: GameState, next: GameState): DiceEventInfo | n
     info.draws = rows;
   }
   return info;
-}
-
-function setEventDieFace(el: HTMLElement, face: 'ship' | CkTrack): void {
-  el.textContent = EVENT_LABEL[face] ?? '?';
-  el.classList.remove('ev-ship', 'ev-trade', 'ev-politics', 'ev-science');
-  el.classList.add(`ev-${face}`);
 }
 
 /** イベント結果パネル（船＝蛮族トラック前進 / 色ゲート＝赤としきい値の照合・抽選）。 */
@@ -2217,75 +2290,126 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
   return panel;
 }
 
-// 3個のダイス（赤=生産d1／黄=生産d2／イベント）を振る演出。CK では結果に応じた
-// 「蛮族前進」「色別抽選の照合」パネルも見せる。eventInfo が null なら従来の2個演出。
+/** 生産合計（赤+黄）のポップ表示。赤は抽選しきい値にも使うことが伝わる表記。 */
+function showDiceSum(sum: HTMLElement, d1: number, d2: number): void {
+  sum.innerHTML = '';
+  const prod = document.createElement('span'); prod.className = 'dice-prod';
+  prod.textContent = `赤${d1} ＋ 黄${d2} ＝ 生産 ${d1 + d2}`;
+  sum.appendChild(prod);
+  sum.classList.add('show');
+}
+
+/** イベント結果を演出へ接続: 船=蛮族前進で画面を軽く揺らす / 色ゲート=その色が画面に広がる。 */
+function applyEventFlourish(info: DiceEventInfo): void {
+  if (prefersReducedMotion() || fxSpeed() === 'instant') return;
+  const board = document.getElementById('board-area');
+  if (info.eventDie === 'ship') {
+    if (info.advanced && board) {
+      // 残り1〜2マス or 襲来は警告色＋強めの揺れ。パン/ズーム変換は内側 g にあり競合しない。
+      const danger = info.barbPos >= CK_BARBARIAN_MAX - 2 || info.attacked;
+      const cls = danger ? 'board-shake-danger' : 'board-shake';
+      board.classList.add(cls);
+      setTimeout(() => board.classList.remove(cls), 700);
+    }
+  } else {
+    const wash = document.createElement('div');
+    wash.className = `dice-color-wash ev-${info.eventDie}`;
+    (board ?? document.body).appendChild(wash);
+    setTimeout(() => wash.remove(), 950);
+  }
+}
+
+// 3Dダイス演出: 赤=生産d1／黄=生産d2／イベント(CK)を本物の立方体として転がし、
+// 決定済みの出目の面を正面で静止させる。着地は時間差（赤→黄→イベント）。
+// eventInfo が null なら生産2個のみ。出目の再抽選は一切しない（値を見せるだけ）。
 function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, onDone: () => void): void {
   if (d1 < 1 || d2 < 1) { onDone(); return; }
-  // モーション抑制設定ではタンブル(回転)を省くが、出目のダイスは静的に見せる
-  // （演出が「全員の画面に」出るよう、モーション無しでも結果を視認できるようにする）。
   const reduced = prefersReducedMotion();
   if (!reduced && fxSpeed() === 'instant') { onDone(); return; }
-  const dur = reduced ? 0 : diceRollMs();
 
   const host = document.getElementById('board-area') ?? document.body;
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
-  const row = document.createElement('div'); row.className = 'dice-row';
-  const die1 = document.createElement('div'); die1.className = `${dur > 0 ? 'dice-die rolling' : 'dice-die'} dice-red`;
-  const die2 = document.createElement('div'); die2.className = `${dur > 0 ? 'dice-die rolling d2' : 'dice-die'} dice-yellow`;
-  setDiePips(die1, d1); setDiePips(die2, d2);
-  row.append(die1, die2);
-  // 第3のイベントダイス（CK のみ。色と形＝円で生産ダイスと区別）。
-  let dieE: HTMLElement | null = null;
+  const stage = document.createElement('div'); stage.className = 'dice-stage';
+
+  // 1スロット = 立方体 + 影。slot に出目リング色(--ring)を持たせる。
+  interface Slot { slot: HTMLElement; cube: HTMLElement; }
+  const mkSlot = (cube: HTMLElement, extra: string, ring: string): Slot => {
+    const slot = document.createElement('div'); slot.className = `dice-slot ${extra}`;
+    slot.style.setProperty('--ring', ring);
+    const wrap = document.createElement('div'); wrap.className = 'dice-cube-wrap';
+    wrap.appendChild(cube);
+    const shadow = document.createElement('div'); shadow.className = 'dice-shadow';
+    slot.append(wrap, shadow);
+    return { slot, cube };
+  };
+
+  const red = mkSlot(buildProdCube('red'), 'slot-red', '#ff6a5a');
+  const yellow = mkSlot(buildProdCube('yellow'), 'slot-yellow', '#ffce4a');
+  stage.append(red.slot, yellow.slot);
+  let eventSlot: Slot | null = null;
   if (eventInfo) {
-    dieE = document.createElement('div');
-    dieE.className = `${dur > 0 ? 'dice-die rolling d3' : 'dice-die'} dice-event`;
-    setEventDieFace(dieE, eventInfo.eventDie);
-    row.append(dieE);
+    const ring = eventInfo.eventDie === 'ship' ? '#8fa6bb'
+      : eventInfo.eventDie === 'politics' ? '#5b8def'
+      : eventInfo.eventDie === 'science' ? '#5fc77a' : '#ffd24d';
+    eventSlot = mkSlot(buildEventCube(), 'slot-event', ring);
+    stage.append(eventSlot.slot);
   }
   const sum = document.createElement('div'); sum.className = 'dice-sum';
-  overlay.append(row, sum);
+  overlay.append(stage, sum);
   host.appendChild(overlay);
 
-  let stopped = false;
-  const settle = (): void => {
-    if (stopped) return;
-    stopped = true;
-    setDiePips(die1, d1); setDiePips(die2, d2);
-    die1.classList.remove('rolling'); die2.classList.remove('rolling', 'd2');
-    die1.classList.add('settled');    die2.classList.add('settled');
-    if (dieE && eventInfo) { dieE.classList.remove('rolling', 'd3'); dieE.classList.add('settled'); setEventDieFace(dieE, eventInfo.eventDie); }
-    // 赤+黄=生産。赤は抽選のしきい値にも使うことが伝わる表記。
-    sum.innerHTML = '';
-    const prod = document.createElement('span'); prod.className = 'dice-prod';
-    prod.textContent = `赤${d1} ＋ 黄${d2} ＝ 生産 ${d1 + d2}`;
-    sum.appendChild(prod);
-    sum.classList.add('show');
-    if (eventInfo) {
+  const redShow = PROD_SHOW_ROT[d1] ?? [0, 0];
+  const yellowShow = PROD_SHOW_ROT[d2] ?? [0, 0];
+  const eventShow = eventInfo ? EVENT_SHOW_ROT[eventInfo.eventDie] : [0, 0] as [number, number];
+
+  // reduced-motion: 回転を省き即着地（出目の正しさは維持）。
+  if (reduced) {
+    setCubeStatic(red.cube, redShow); setCubeStatic(yellow.cube, yellowShow);
+    red.slot.classList.add('settled'); yellow.slot.classList.add('settled');
+    showDiceSum(sum, d1, d2);
+    if (eventSlot && eventInfo) {
+      setCubeStatic(eventSlot.cube, eventShow); eventSlot.slot.classList.add('settled');
       overlay.appendChild(buildEventResolutionPanel(eventInfo));
-      setTimeout(() => { overlay.remove(); onDone(); }, reduced ? 1500 : 1600); // 抽選/蛮族の照合を見せる
-    } else {
-      setTimeout(() => { overlay.remove(); onDone(); }, reduced ? 900 : 480);
+      applyEventFlourish(eventInfo);
     }
+    setTimeout(() => { overlay.remove(); onDone(); }, eventInfo ? 1500 : 900);
+    return;
+  }
+
+  // 着地時刻（normal を基準に速度設定で伸縮）。赤→黄→イベントの順に時間差。
+  const k = fxSpeed() === 'fast' ? 0.62 : fxSpeed() === 'slow' ? 1.4 : 1;
+  const tRed = Math.round(1000 * k);
+  const tYellow = Math.round(1150 * k);   // 赤＋約150ms
+  const tEvent = Math.round(1380 * k);    // さらに遅れて最後・持続も長い＝見せ場
+
+  red.slot.classList.add('rolling'); yellow.slot.classList.add('rolling');
+  eventSlot?.slot.classList.add('rolling');
+  spinCube(red.cube, redShow, 2, 3, tRed);
+  spinCube(yellow.cube, yellowShow, 3, 2, tYellow);
+  if (eventSlot) spinCube(eventSlot.cube, eventShow, 3, 4, tEvent);
+
+  const land = (s: Slot, heavy: boolean): void => {
+    s.slot.classList.remove('rolling');
+    s.slot.classList.add('settled');
+    playSE(heavy ? 'diceLandHeavy' : 'dice');
   };
 
-  if (dur <= 0) { settle(); return; }
+  let done = false;
+  const finishAll = (): void => { if (done) return; done = true; overlay.remove(); onDone(); };
 
-  die1.style.animationDuration = `${dur}ms`;
-  die2.style.animationDuration = `${dur}ms`;
-  const start = Date.now();
-  const cycle = (): void => {
-    if (stopped) return;
-    const elapsed = Date.now() - start;
-    if (elapsed >= dur) { settle(); return; }
-    setDiePips(die1, 1 + Math.floor(Math.random() * 6));
-    setDiePips(die2, 1 + Math.floor(Math.random() * 6));
-    if (dieE) setEventDieFace(dieE, EVENT_FACES[Math.floor(Math.random() * 6)]!);
-    const p = elapsed / dur;
-    const interval = 55 + p * p * 300; // 55ms → ~355ms（後半ほどゆっくり）
-    setTimeout(cycle, interval);
-  };
-  cycle();
+  setTimeout(() => land(red, false), tRed);
+  setTimeout(() => { land(yellow, false); showDiceSum(sum, d1, d2); }, tYellow); // 赤＋黄が揃って合計ポップ
+  if (eventInfo && eventSlot) {
+    setTimeout(() => {
+      land(eventSlot!, true);
+      overlay.appendChild(buildEventResolutionPanel(eventInfo));
+      applyEventFlourish(eventInfo);
+      setTimeout(finishAll, Math.round(1700 * k));
+    }, tEvent);
+  } else {
+    setTimeout(finishAll, tYellow + Math.round(700 * k));
+  }
 }
 
 // ============================================================
