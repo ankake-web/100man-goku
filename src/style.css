@@ -2497,6 +2497,21 @@ h1 {
   animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
 }
 .dep-ship { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+/* 蛮族襲来バナー（横長16:9の帯。襲来テキストを下部スクリムに重ねて可読に） */
+.dep-banner {
+  width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; margin-bottom: 8px;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  position: relative; overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.55); border: 1px solid rgba(255,120,90,0.35);
+  animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
+}
+.dep-banner-title {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 22px 10px 9px; text-align: center;
+  font-size: 1.3rem; font-weight: 900; color: #fff; letter-spacing: 0.04em;
+  text-shadow: 0 2px 7px rgba(0,0,0,0.95);
+  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(120,12,12,0.82));
+}
 .dep-title { font-size: 1.05rem; font-weight: 800; text-align: center; margin-bottom: 6px; }
 .dep-title.ev-trade { color: #ffd24d; } .dep-title.ev-politics { color: #7fa9ff; } .dep-title.ev-science { color: #7fe0a0; }
 .dep-track { display: flex; gap: 5px; justify-content: center; margin: 6px 0; }
