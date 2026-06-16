@@ -56,7 +56,28 @@ export function buildActionLog(
   switch (action.type) {
     case 'ROLL_DICE': {
       const [d1, d2] = next.lastDiceRoll ?? [0, 0];
-      push(actor, 'DICE_ROLL', `🎲 ${nm(actor)} がダイス ${d1}+${d2}=${d1 + d2}`);
+      const evMsg = next.lastEventDie === 'ship' ? '🛶蛮族前進'
+        : next.lastEventDie === 'trade' ? '🟡商業' : next.lastEventDie === 'politics' ? '🔵政治'
+        : next.lastEventDie === 'science' ? '🟢科学' : '';
+      push(actor, 'DICE_ROLL', `🎲 ${nm(actor)} がダイス ${d1}+${d2}=${d1 + d2}${evMsg ? `（${evMsg}）` : ''}`);
+      // 騎士と商人: 蛮族襲来が起きたら結果を記録（誰が守護VPを得た/都市を失ったか）。
+      if ((next.barbarianAttacks ?? 0) > (prev.barbarianAttacks ?? 0)) {
+        const losers: string[] = [];
+        const defenders: string[] = [];
+        for (const pid of next.playerOrder) {
+          const dv = (next.players[pid]?.defenderVP ?? 0) - (prev.players[pid]?.defenderVP ?? 0);
+          if (dv > 0) defenders.push(nm(pid));
+          const cityCount = (st: GameState): number => Object.values(st.vertices).filter(v => v.building?.playerId === pid && v.building.type === 'city').length;
+          if (cityCount(next) < cityCount(prev)) losers.push(nm(pid));
+        }
+        if (losers.length > 0) {
+          push(actor, 'ROBBER', `⚔ 蛮族襲来！防衛失敗 — ${losers.join('・')} の都市が略奪され開拓地に格下げ`);
+        } else if (defenders.length > 0) {
+          push(actor, 'DEV_CARD', `🛡 蛮族を撃退！ ${defenders.join('・')} が「カタンの守護者」VP+1`);
+        } else {
+          push(actor, 'DEV_CARD', '🛡 蛮族を撃退！（最大貢献が同点 — 各自が進歩カードを1枚獲得）');
+        }
+      }
       // ダイス生産は「盤面＋出目」から誰でも導出できる公開情報。全プレイヤーの
       // 「このロールで得た分」を1行にまとめて出す（自分は「あなた」表記）。
       // ※ 公開するのは“このロールの増加分”だけ。手札の既存ストックや内訳、

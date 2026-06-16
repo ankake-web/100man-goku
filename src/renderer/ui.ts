@@ -1480,6 +1480,15 @@ export function renderUI(
     const [d1, d2] = state.lastDiceRoll;
     const diceEl = el('div', 'dice-result');
     diceEl.textContent = `🎲 ${d1}+${d2}=${d1 + d2}`;
+    // 騎士と商人: イベントダイスの結果（船=蛮族前進 / 色ゲート=進歩カード抽選）も表示。
+    if (isCk(state) && state.lastEventDie) {
+      const ev = state.lastEventDie;
+      const evLabel = ev === 'ship' ? '🛶 蛮族前進'
+        : ev === 'trade' ? '🟡 商業' : ev === 'politics' ? '🔵 政治' : '🟢 科学';
+      const evEl = el('span', 'dice-event');
+      evEl.textContent = `／ ${evLabel}`;
+      diceEl.appendChild(evEl);
+    }
     turnPanel.appendChild(diceEl);
   }
 
@@ -1495,10 +1504,12 @@ export function renderUI(
     : '🛤最長 未獲得';
   const t3 = el('span', 'turn-title-item');
   if (isCk(state)) {
-    // 騎士と商人: 最大騎士の代わりに蛮族の進行度を表示。
+    // 騎士と商人: 最大騎士の代わりに蛮族トラックを表示（残り1–2マスで警告色＋ピップ）。
     const pos = state.barbarianPosition ?? 0;
-    const t2 = el('span', `turn-title-item${pos >= CK_BARBARIAN_MAX - 1 ? ' ck-barb-danger' : ''}`);
-    t2.textContent = `🛶蛮族 ${pos}/${CK_BARBARIAN_MAX}（襲来${state.barbarianAttacks ?? 0}回）`;
+    const danger = pos >= CK_BARBARIAN_MAX - 2;
+    const t2 = el('span', `turn-title-item${danger ? ' ck-barb-danger' : ''}`);
+    const pips = '●'.repeat(pos) + '○'.repeat(Math.max(0, CK_BARBARIAN_MAX - pos));
+    t2.textContent = `🛶蛮族 ${pips} ${pos}/${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来！）' : ''}（襲来${state.barbarianAttacks ?? 0}回）`;
     t3.textContent = '';
     titles.append(t1, t2);
   } else {
