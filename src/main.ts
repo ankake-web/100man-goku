@@ -2174,9 +2174,10 @@ function buildEventCube(): HTMLElement {
   }
   return cube;
 }
-// 静止時のわずかな傾き。目的面を正面に保ったまま立体感を出す（隣接面の縁が少し見える）。
-// 45°未満なら目的面が支配的なまま＝出目の誤読は起きない。
-const REST_TILT: [number, number] = [-14, 15];
+// 静止時の傾き。目的面を支配的に保ったまま、上面＋側面も見える等角寄りの姿勢にして
+// 「平面ではなく立方体が止まっている」ように見せる。45°未満＝目的面が支配的で誤読なし
+// （行列検証済み: この傾きでも全6面＋イベント4結果で支配面=出目が一致）。
+const REST_TILT: [number, number] = [-24, 28];
 /** show回転に静止傾きを足した着地姿勢。 */
 function restPose(show: [number, number]): [number, number] {
   return [show[0] + REST_TILT[0], show[1] + REST_TILT[1]];
@@ -2378,16 +2379,18 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   }
 
   // 着地時刻（normal を基準に速度設定で伸縮）。赤→黄→イベントの順に時間差。
-  const k = fxSpeed() === 'fast' ? 0.62 : fxSpeed() === 'slow' ? 1.4 : 1;
-  const tRed = Math.round(1000 * k);
-  const tYellow = Math.round(1150 * k);   // 赤＋約150ms
-  const tEvent = Math.round(1380 * k);    // さらに遅れて最後・持続も長い＝見せ場
+  // 全体をゆっくり・長めに見せる（転がりを目で追えるように）。
+  const k = fxSpeed() === 'fast' ? 0.6 : fxSpeed() === 'slow' ? 1.5 : 1;
+  const tRed = Math.round(1550 * k);
+  const tYellow = Math.round(1850 * k);   // 赤＋約300ms
+  const tEvent = Math.round(2350 * k);    // さらに遅れて最後・持続も長い＝見せ場
 
   red.slot.classList.add('rolling'); yellow.slot.classList.add('rolling');
   eventSlot?.slot.classList.add('rolling');
-  spinCube(red.cube, redShow, 2, 3, tRed);
-  spinCube(yellow.cube, yellowShow, 3, 2, tYellow);
-  if (eventSlot) spinCube(eventSlot.cube, eventShow, 3, 4, tEvent);
+  // 回転数は控えめ（長い時間×少なめの回転＝ゆっくり転がって見える）。
+  spinCube(red.cube, redShow, 2, 2, tRed);
+  spinCube(yellow.cube, yellowShow, 2, 3, tYellow);
+  if (eventSlot) spinCube(eventSlot.cube, eventShow, 3, 3, tEvent);
 
   const land = (s: Slot, heavy: boolean): void => {
     s.slot.classList.remove('rolling');
@@ -2405,10 +2408,10 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
       land(eventSlot!, true);
       overlay.appendChild(buildEventResolutionPanel(eventInfo));
       applyEventFlourish(eventInfo);
-      setTimeout(finishAll, Math.round(1700 * k));
+      setTimeout(finishAll, Math.round(2300 * k));   // 抽選/蛮族の照合をしっかり見せる
     }, tEvent);
   } else {
-    setTimeout(finishAll, tYellow + Math.round(700 * k));
+    setTimeout(finishAll, tYellow + Math.round(1000 * k));
   }
 }
 
