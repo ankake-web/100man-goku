@@ -82,6 +82,11 @@ function renderHome(
 
   const screen = document.createElement('div');
   screen.className = 'home-screen';
+  // タイトル全面背景（島のパノラマ）＋可読性スクリム。cover/中央で縦横どの画面でも歪まず敷く。
+  if (ASSETS.bg.title) {
+    screen.style.background =
+      `linear-gradient(180deg, rgba(8,12,20,0.42), rgba(8,12,20,0.74)), url("${ASSETS.bg.title}") center/cover no-repeat`;
+  }
 
   const title = document.createElement('h1');
   title.className = 'home-title';
@@ -1639,6 +1644,11 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   const overlay = document.createElement('div');
   overlay.className = 'victory-overlay';
   overlay.style.setProperty('--win-color', color);
+  // 勝利全面背景（祝祭の島）＋可読性スクリム。スクリムを画像の上に重ねてモーダル文字を読みやすく。
+  if (ASSETS.bg.victory) {
+    overlay.style.background =
+      `radial-gradient(120% 100% at 50% 0%, rgba(8,28,32,0.5), rgba(2,8,10,0.82)), url("${ASSETS.bg.victory}") center/cover no-repeat`;
+  }
 
   // 紙吹雪（アニメ抑制時は省略。勝者発表モーダルは静的に表示する）。
   if (!prefersReducedMotion()) {
@@ -2247,16 +2257,28 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'dice-event-panel';
   if (info.eventDie === 'ship') {
-    // 蛮族船コマの画像を見せる。
-    if (ASSETS.piece.barbarianShip) {
-      const ship = document.createElement('img');
-      ship.className = 'dep-ship'; ship.src = ASSETS.piece.barbarianShip; ship.alt = '蛮族船'; ship.draggable = false;
-      panel.appendChild(ship);
+    if (info.attacked && ASSETS.bg.barbarian) {
+      // 襲来: 横長の蛮族襲来バナーを帯として見せる（タイトルを重ねて可読に）。
+      const banner = document.createElement('div');
+      banner.className = 'dep-banner';
+      banner.style.backgroundImage = `url("${ASSETS.bg.barbarian}")`;
+      const bt = document.createElement('div');
+      bt.className = 'dep-banner-title';
+      bt.textContent = '⚔ 蛮族 襲来！';
+      banner.appendChild(bt);
+      panel.appendChild(banner);
+    } else {
+      // 前進: 蛮族船コマの画像＋見出し。
+      if (ASSETS.piece.barbarianShip) {
+        const ship = document.createElement('img');
+        ship.className = 'dep-ship'; ship.src = ASSETS.piece.barbarianShip; ship.alt = '蛮族船'; ship.draggable = false;
+        panel.appendChild(ship);
+      }
+      const title = document.createElement('div');
+      title.className = 'dep-title';
+      title.textContent = '🛶 蛮族船が前進';
+      panel.appendChild(title);
     }
-    const title = document.createElement('div');
-    title.className = 'dep-title';
-    title.textContent = info.attacked ? '⚔ 蛮族 襲来！' : '🛶 蛮族船が前進';
-    panel.appendChild(title);
     const danger = info.barbPos >= CK_BARBARIAN_MAX - 2;
     const track = document.createElement('div');
     track.className = `dep-track${danger ? ' danger' : ''}`;
