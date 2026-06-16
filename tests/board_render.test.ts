@@ -59,6 +59,10 @@ describe('盤面描画（jsdom）: 騎士と商人のコマ', () => {
     const kimg = kp?.querySelector('image');
     expect(kimg).not.toBeNull();
     expect(kimg?.getAttribute('href')).toBeTruthy();
-    expect(svg.querySelector('.metropolis-mark')).not.toBeNull();
+    // メトロポリスは絵文字→門コマ画像(<image>)に変更済み。href が設定されていることを確認。
+    const metro = svg.querySelector('.metropolis-mark');
+    expect(metro).not.toBeNull();
+    expect(metro?.tagName.toLowerCase()).toBe('image');
+    expect(metro?.getAttribute('href')).toBeTruthy();
   });
 });

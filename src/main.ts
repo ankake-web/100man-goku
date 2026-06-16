@@ -37,15 +37,11 @@ import { buildActionLog, MAX_LOG_ENTRIES } from './engine/log';
 import { calcVP, calcPublicVP, victoryTarget } from './engine/scoring';
 import { buildPlayerRecap } from './engine/recap';
 import { computeDiceProduction } from './engine/dice';
-import resWoodImg from './assets/res_wood.png';
-import resBrickImg from './assets/res_brick.png';
-import resSheepImg from './assets/res_sheep.png';
-import resWheatImg from './assets/res_wheat.png';
-import resOreImg from './assets/res_ore.png';
+import { ASSETS } from './assets/manifest'; // 画像参照は中央マニフェスト経由
 
 // 資源取得アニメ用の画像（手札カードと同じ。既に読込済み＝追加負荷なし）。
 const RES_FLY_IMG: Record<ResourceType, string> = {
-  wood: resWoodImg, brick: resBrickImg, wool: resSheepImg, grain: resWheatImg, ore: resOreImg,
+  wood: ASSETS.resource.lumber, brick: ASSETS.resource.brick, wool: ASSETS.resource.wool, grain: ASSETS.resource.grain, ore: ASSETS.resource.ore,
 };
 
 // ============================================================

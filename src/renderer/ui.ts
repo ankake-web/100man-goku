@@ -18,23 +18,14 @@ import type { CkTrack, CommodityType, CommodityHand, TradeKind } from '../types'
 import type { BuildMode } from './events';
 
 const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
-import resWoodImg from '../assets/res_wood.png';
-import resBrickImg from '../assets/res_brick.png';
-import resSheepImg from '../assets/res_sheep.png';
-import resWheatImg from '../assets/res_wheat.png';
-import resOreImg from '../assets/res_ore.png';
-import knightImg from '../assets/knight.png';
-import commCoinImg from '../assets/comm_coin.png';
-import commClothImg from '../assets/comm_cloth.png';
-import commPaperImg from '../assets/comm_paper.png';
-import impTradeImg from '../assets/imp_trade.png';
-import impPoliticsImg from '../assets/imp_politics.png';
-import impScienceImg from '../assets/imp_science.png';
+// 画像参照は中央マニフェスト経由（単一の真実）。
+import { ASSETS } from '../assets/manifest';
 
+const knightImg = ASSETS.knight.basic;
 // 騎士と商人: 商品アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
-const COMMODITY_IMG: Record<CommodityType, string> = { coin: commCoinImg, cloth: commClothImg, paper: commPaperImg };
+const COMMODITY_IMG: Record<CommodityType, string> = ASSETS.commodity;
 // 騎士と商人: 都市改善トラックのアイコン画像。
-const IMP_IMG: Record<CkTrack, string> = { trade: impTradeImg, politics: impPoliticsImg, science: impScienceImg };
+const IMP_IMG: Record<CkTrack, string> = ASSETS.trackIcon;
 // 商品アイコンの <img>。
 function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
   const img = document.createElement('img');
@@ -93,7 +84,7 @@ const RESOURCE_EMOJI: Record<ResourceType, string> = {
 
 // 資源アイコン画像（手札カード・交易チップ用）。テキスト埋め込み箇所は絵文字のまま。
 const RESOURCE_IMG: Record<ResourceType, string> = {
-  wood: resWoodImg, brick: resBrickImg, wool: resSheepImg, grain: resWheatImg, ore: resOreImg,
+  wood: ASSETS.resource.lumber, brick: ASSETS.resource.brick, wool: ASSETS.resource.wool, grain: ASSETS.resource.grain, ore: ASSETS.resource.ore,
 };
 
 // 資源アイコンの <img> 要素を生成。
@@ -1184,10 +1175,13 @@ function appendCkBuildSection(
     const lvl = imp[track];
     const can = canBuildImprovement(state, pid, track);
     const c = CK_TRACK_COMMODITY[track];
+    const nextLvl = lvl + 1;
     const label = lvl >= 5
       ? `${CK_TRACK_NAME[track]} Lv5（最大）`
-      : `${CK_TRACK_NAME[track]} Lv${lvl}→${lvl + 1}（${COMMODITY_EMOJI[c]}${improvementCost(lvl)}）`;
-    impRow.appendChild(makeImgBtn(IMP_IMG[track], label, can ? 'btn-build' : 'btn-disabled', !can,
+      : `${CK_TRACK_NAME[track]} Lv${lvl}→${nextLvl}（${COMMODITY_EMOJI[c]}${improvementCost(lvl)}）`;
+    // 改良建築: Lv3/Lv4 へ進む時はその建築画像（交易所/銀行/要塞/大聖堂/水道橋/劇場）、他はトラックアイコン。
+    const icon = (nextLvl === 3 || nextLvl === 4) ? ASSETS.building[track][nextLvl as 3 | 4] : IMP_IMG[track];
+    impRow.appendChild(makeImgBtn(icon, label, can ? 'btn-build' : 'btn-disabled', !can,
       () => dispatch({ type: 'BUILD_IMPROVEMENT', track })));
   }
   sec.appendChild(impRow);
@@ -1229,7 +1223,9 @@ function appendCkBuildSection(
     const pcRow = el('div', 'ck-pc-row');
     for (const c of cards) {
       const can = canPlayProgress(state, pid, c.id);
-      const btn = makeBtn(PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', !can,
+      // 政治カードは専用アート、それ以外はトラック色のカード裏（科学=緑/商業=黄/政治=青）。
+      const icon = ASSETS.politicsCard[c.type] ?? ASSETS.cardBack[c.deck];
+      const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', !can,
         () => dispatch({ type: 'PLAY_PROGRESS', cardId: c.id }));
       btn.title = PROGRESS_CARD_DESC[c.type];
       pcRow.appendChild(btn);
