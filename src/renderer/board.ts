@@ -5,26 +5,16 @@
 import type { GameState, Tile, HarborType, Harbor } from '../types';
 import { HEX_SIZE } from '../constants';
 import { axialToPixel } from '../engine/board';
-import robberImg from '../assets/robber.png'; // 盗賊コマの画像（Vite が base 付きURLへ解決）
-import pirateImg from '../assets/pirate.png'; // 海賊船コマの画像
-import houseRed from '../assets/house_red.png';
-import houseBlue from '../assets/house_blue.png';
-import housePurple from '../assets/house_purple.png';
-import houseOrange from '../assets/house_orange.png';
-import cityRed from '../assets/city_red.png';
-import cityBlue from '../assets/city_blue.png';
-import cityPurple from '../assets/city_purple.png';
-import cityOrange from '../assets/city_orange.png';
-import shipRed from '../assets/ship_red.png';
-import shipBlue from '../assets/ship_blue.png';
-import shipPurple from '../assets/ship_purple.png';
-import shipOrange from '../assets/ship_orange.png';
-import knight1Img from '../assets/knight1.png';
-import knight2Img from '../assets/knight2.png';
-import knight3Img from '../assets/knight3.png';
+// 画像参照は中央マニフェスト経由（単一の真実）。
+import { ASSETS, houseImg, cityImg, shipImg, type ColorKey } from '../assets/manifest';
+
+const robberImg = ASSETS.piece.robber;
+const pirateImg = ASSETS.piece.pirate;
+const shipRed = shipImg('red');
+const knightBasicImg = ASSETS.knight.basic;
 
 // 騎士と商人: 強さ(1/2/3)→騎士コマ画像。色はプレイヤー色の土台ディスクで示す。
-const KNIGHT_IMG: Record<number, string> = { 1: knight1Img, 2: knight2Img, 3: knight3Img };
+const KNIGHT_IMG: Record<number, string> = { 1: ASSETS.knight.basic, 2: ASSETS.knight.strong, 3: ASSETS.knight.mighty };
 
 // プレイヤーID→色キー。建物画像（屋根/上部をプレイヤー色に着色済み）の選択に使う。
 const BUILDING_COLOR_KEY: Record<string, string> = {
@@ -34,15 +24,12 @@ const BUILDING_COLOR_KEY: Record<string, string> = {
 const PLAYER_HEX_COLOR: Record<string, string> = {
   player1: '#e03030', player2: '#3060e0', player3: '#a855f7', player4: '#f0a020',
 };
-const HOUSE_IMG: Record<string, string> = {
-  red: houseRed, blue: houseBlue, purple: housePurple, orange: houseOrange,
-};
-const CITY_IMG: Record<string, string> = {
-  red: cityRed, blue: cityBlue, purple: cityPurple, orange: cityOrange,
-};
-const SHIP_IMG: Record<string, string> = {
-  red: shipRed, blue: shipBlue, purple: shipPurple, orange: shipOrange,
-};
+const COLORS: ColorKey[] = ['red', 'blue', 'purple', 'orange'];
+const mapByColor = (fn: (c: ColorKey) => string): Record<string, string> =>
+  Object.fromEntries(COLORS.map(c => [c, fn(c)]));
+const HOUSE_IMG: Record<string, string> = mapByColor(houseImg);
+const CITY_IMG: Record<string, string> = mapByColor(cityImg);
+const SHIP_IMG: Record<string, string> = mapByColor(shipImg);
 
 // ============================================================
 // レンダリングオプション（有効配置ハイライト用）
@@ -506,13 +493,15 @@ function renderVertices(
       img.classList.add('building-img');
       if (isValid) img.classList.add('building-valid');   // 都市化など有効ターゲット
       vg.appendChild(img);
-      // 騎士と商人: メトロポリス(勝利点4)は冠マークで強調。
+      // 騎士と商人: メトロポリス(勝利点4)は「門」コマを都市に重ねて表示。
       if (vertex.building.metropolis) {
-        const crown = svgEl('text');
-        crown.classList.add('metropolis-mark');
-        setAttrs(crown, { x: vx, y: vy - w * 0.95, 'text-anchor': 'middle', 'font-size': 14 * bs });
-        crown.textContent = '👑';
-        vg.appendChild(crown);
+        const gw = w * 0.86;
+        const gate = svgEl('image');
+        gate.classList.add('metropolis-mark');
+        setAttrs(gate, { x: vx - gw / 2, y: by - w * 0.9 - gw * 0.4, width: gw, height: gw, preserveAspectRatio: 'xMidYMid meet' });
+        gate.setAttribute('href', ASSETS.piece.metropolisGate);
+        gate.setAttributeNS('http://www.w3.org/1999/xlink', 'href', ASSETS.piece.metropolisGate);
+        vg.appendChild(gate);
       }
     } else if (vertex.knight) {
       // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
@@ -543,7 +532,7 @@ function renderVertices(
       const img = svgEl('image');
       setAttrs(img, { x: vx - kw / 2, y: footY + 1 * bs - kw, width: kw, height: kw,
         preserveAspectRatio: 'xMidYMid meet', opacity: k.active ? 1 : 0.5 });
-      const href = KNIGHT_IMG[k.strength] ?? knight1Img;
+      const href = KNIGHT_IMG[k.strength] ?? knightBasicImg;
       img.setAttribute('href', href);
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
       kg.appendChild(img);
