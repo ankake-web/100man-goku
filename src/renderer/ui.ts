@@ -1162,8 +1162,15 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   const box = document.createElement('div');
   box.className = 'help-card pc-info-card';
 
-  const img = assetImg(ASSETS.politicsCard[card.type] ?? ASSETS.cardBack[card.deck], 'pc-info-img', PROGRESS_CARD_NAME[card.type], PROGRESS_CARD_NAME[card.type]);
-  box.appendChild(img);
+  // カード絵を装飾フレームで囲み「カード」らしく見せる（フレーム＋名前＋効果が分かるUI）。
+  const frameWrap = el('div', 'pc-info-frame');
+  const art = assetImg(ASSETS.politicsCard[card.type] ?? ASSETS.cardBack[card.deck], 'pc-info-art', PROGRESS_CARD_NAME[card.type], PROGRESS_CARD_NAME[card.type]);
+  frameWrap.appendChild(art);
+  const frameBorder = document.createElement('img');
+  frameBorder.className = 'pc-info-frame-border'; frameBorder.src = ASSETS.frame; frameBorder.alt = ''; frameBorder.draggable = false;
+  frameWrap.appendChild(frameBorder);
+  box.appendChild(frameWrap);
+
   const title = el('div', 'pc-info-title');
   title.textContent = `📜 ${PROGRESS_CARD_NAME[card.type]}`;
   box.appendChild(title);
