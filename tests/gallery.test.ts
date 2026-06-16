@@ -13,9 +13,14 @@ describe('コマ・カード図鑑', () => {
     const cells = overlay!.querySelectorAll('.gallery-cell');
     // コマ11 + 資源5 + 商品3 + 建築6 + 進歩カード(政治9+科学10+商業6=25) = 50
     expect(cells.length).toBeGreaterThanOrEqual(48);
-    const imgs = overlay!.querySelectorAll('.gallery-img');
-    expect(imgs.length).toBe(cells.length);
-    imgs.forEach(img => expect((img as HTMLImageElement).getAttribute('src')).toBeTruthy());
+    // 各セルに図柄画像（コマ=.gallery-img / カード=.gallery-card-art）が1枚ある。
+    cells.forEach(cell => {
+      const art = cell.querySelector('.gallery-img, .gallery-card-art') as HTMLImageElement | null;
+      expect(art).not.toBeNull();
+      expect(art!.getAttribute('src')).toBeTruthy();
+    });
+    // 進歩カードは装飾フレームつき（25枚）。
+    expect(overlay!.querySelectorAll('.gallery-card-cell').length).toBe(25);
     overlay!.querySelectorAll('.gallery-name').forEach(n => expect(n.textContent && n.textContent.length).toBeTruthy());
     // セクション見出しが複数（コマ/資源/商品/建築/進歩カード×3）。
     expect(overlay!.querySelectorAll('.gallery-section-title').length).toBeGreaterThanOrEqual(7);

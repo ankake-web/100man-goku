@@ -1221,6 +1221,23 @@ export function showAssetGallery(): void {
     if (desc) { const d = el('div', 'gallery-desc'); d.textContent = desc; cell.appendChild(d); }
     grid.appendChild(cell);
   };
+  // 進歩カード用: 装飾フレームで囲んだカード絵＋名前＋効果説明。
+  const cardSection = (titleTxt: string): HTMLDivElement => {
+    const s = el('div', 'gallery-section-title'); s.textContent = titleTxt; body.appendChild(s);
+    const grid = el('div', 'gallery-grid gallery-grid-cards'); body.appendChild(grid); return grid;
+  };
+  const cardItem = (grid: HTMLElement, src: string | null, name: string, desc: string): void => {
+    const cell = el('div', 'gallery-cell gallery-card-cell');
+    const fr = el('div', 'gallery-card-frame');
+    fr.appendChild(assetImg(src, 'gallery-card-art', name, name));
+    const fb = document.createElement('img');
+    fb.className = 'gallery-card-frame-border'; fb.src = ASSETS.frame; fb.alt = ''; fb.draggable = false;
+    fr.appendChild(fb);
+    cell.appendChild(fr);
+    const n = el('div', 'gallery-name'); n.textContent = name; cell.appendChild(n);
+    const d = el('div', 'gallery-desc'); d.textContent = desc; cell.appendChild(d);
+    grid.appendChild(cell);
+  };
 
   let g = section('🧩 コマ');
   item(g, ASSETS.piece.settlement, '開拓地', '1点。資源を1個産む');
@@ -1256,10 +1273,10 @@ export function showAssetGallery(): void {
   item(g, ASSETS.building.science[4], '劇場（科学Lv4）', 'メトロポリス（科学）');
 
   for (const [deck, label] of [['politics', '政治'], ['science', '科学'], ['trade', '商業']] as [CkTrack, string][]) {
-    g = section(`📜 進歩カード（${label}デッキ）`);
+    const cg = cardSection(`📜 進歩カード（${label}デッキ）`);
     for (const type of PROGRESS_DECK_CARDS[deck]) {
       const art = ASSETS.politicsCard[type] ?? ASSETS.cardBack[deck];
-      item(g, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type]);
+      cardItem(cg, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type]);
     }
   }
 
