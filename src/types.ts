@@ -89,6 +89,8 @@ export interface Knight {
   readonly playerId: PlayerId;
   readonly strength: KnightStrength;
   readonly active: boolean;
+  // 騎士と商人: このターンに起動したか。起動したターンは行動(移動/押出/追払い)不可。END_TURNでクリア。
+  readonly activatedThisTurn?: boolean;
 }
 
 // 進歩カード（発展カードの置換）。色イベント面で改善レベルに応じて引く。即時効果。

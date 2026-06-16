@@ -13,8 +13,13 @@
 
 import type {
   GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player,
-  ProgressCard, TileType, Knight, TradeKind,
+  ProgressCard, ProgressCardType, TileType, Knight, TradeKind,
 } from '../types';
+
+/** 勝利点の進歩カード（憲法/印刷機）。手札上限の対象外で、即時+1VP。 */
+export function isVpProgress(t: ProgressCardType): boolean {
+  return t === 'constitution' || t === 'printer';
+}
 import {
   RESOURCE_TYPES, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, COMMODITY_TYPES,
   makeCommodities, COMMODITY_BANK_INITIAL, CK_COSTS, CK_TRACK_COMMODITY, CK_MAX_IMPROVEMENT, CK_METROPOLIS_LEVEL,
@@ -93,7 +98,8 @@ export function activateKnight(state: GameState, pid: PlayerId, vid: VertexId): 
   const p = state.players[pid]!; const k = state.vertices[vid]!.knight!;
   return {
     ...state,
-    vertices: { ...state.vertices, [vid]: { ...state.vertices[vid]!, knight: { ...k, active: true } } },
+    // 起動したターンは行動不可（activatedThisTurn）。END_TURN でクリア。
+    vertices: { ...state.vertices, [vid]: { ...state.vertices[vid]!, knight: { ...k, active: true, activatedThisTurn: true } } },
     players: { ...state.players, [pid]: { ...p, hand: payRes(p.hand, CK_COSTS.knightActivate) } },
     bank: addRes(state.bank, CK_COSTS.knightActivate),
   };
@@ -128,11 +134,15 @@ function edgeBetween(state: GameState, fromVid: VertexId, toVid: VertexId): stri
   return null;
 }
 
-/** 騎士を fromVid→toVid へ移動できるか。1ターン1回・隣接1歩・自分の道沿い・空きor弱い敵騎士(押し出し)。 */
+/**
+ * 騎士を fromVid→toVid へ移動できるか。隣接1歩・自分の道沿い・空き or 厳密に弱い敵騎士(押し出し)。
+ * 各騎士は1ターン1アクション（行動後は非起動に戻る＝再行動不可）。起動したターンは行動不可。
+ */
 export function canMoveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, toVid: VertexId): boolean {
-  if (!isCk(state) || state.knightMovedThisTurn) return false;
+  if (!isCk(state)) return false;
   const from = state.vertices[fromVid]; const to = state.vertices[toVid];
   if (!from?.knight || from.knight.playerId !== pid || !from.knight.active) return false;
+  if (from.knight.activatedThisTurn) return false;               // 起動したターンは行動不可
   if (!to || fromVid === toVid) return false;
   if (!from.adjacentVertexIds.includes(toVid)) return false;     // 隣接1歩
   const eid = edgeBetween(state, fromVid, toVid);                 // 自分の道/船沿いに進む
@@ -141,17 +151,17 @@ export function canMoveKnight(state: GameState, pid: PlayerId, fromVid: VertexId
   if (to.building) return false;                                 // 建物の上には行けない
   if (to.knight) {
     if (to.knight.playerId === pid) return false;                // 自分の騎士の上は不可
-    if (to.knight.strength >= from.knight.strength) return false;// 弱い敵騎士のみ押し出せる
+    if (to.knight.strength >= from.knight.strength) return false;// 厳密に弱い敵騎士のみ押し出せる
   }
   return true;
 }
 export function isKnightMovable(state: GameState, pid: PlayerId, fromVid: VertexId): boolean {
   const from = state.vertices[fromVid];
-  if (!from?.knight || from.knight.playerId !== pid || !from.knight.active) return false;
+  if (!from?.knight || from.knight.playerId !== pid || !from.knight.active || from.knight.activatedThisTurn) return false;
   return from.adjacentVertexIds.some(to => canMoveKnight(state, pid, fromVid, to));
 }
 export function playerHasMovableKnight(state: GameState, pid: PlayerId): boolean {
-  if (!isCk(state) || state.knightMovedThisTurn) return false;
+  if (!isCk(state)) return false;
   return Object.keys(state.vertices).some(v => isKnightMovable(state, pid, v));
 }
 /**
@@ -168,7 +178,7 @@ export function findDisplacementTarget(state: GameState, displaced: Knight, occu
 }
 
 /**
- * 騎士を移動（バリデーション済み前提）。1ターン1回。
+ * 騎士を移動（バリデーション済み前提）。各騎士は1ターン1アクションで、行動後は非起動に戻る。
  * 弱い敵騎士を押し出した場合、公式どおりその騎士を所有者の隣接空き頂点（自網接続）へ再配置する。
  * 合法な再配置先が無いときのみ供給へ戻す（盤から除去）。
  */
@@ -178,7 +188,8 @@ export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, t
   let vertices = {
     ...state.vertices,
     [fromVid]: { ...state.vertices[fromVid]!, knight: null },
-    [toVid]: { ...state.vertices[toVid]!, knight: { playerId: pid, strength: k.strength, active: k.active } },
+    // 行動後は非起動に戻る（再行動不可。再び動かすには麦で起動が必要）。
+    [toVid]: { ...state.vertices[toVid]!, knight: { playerId: pid, strength: k.strength, active: false } },
   };
   if (displaced && displaced.playerId !== pid) {
     // 強い騎士を据えた後の盤を基準に再配置先を探す（occupiedVid自身は埋まっており候補から外れる）。
@@ -188,7 +199,7 @@ export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, t
     }
     // dest が null → 再配置先なし＝供給へ戻る（knightCount は頂点走査で動的算出のため別途減算不要）。
   }
-  return { ...state, knightMovedThisTurn: true, vertices };
+  return { ...state, vertices };
 }
 
 // ============================================================
@@ -200,22 +211,23 @@ export function moveKnight(state: GameState, pid: PlayerId, fromVid: VertexId, t
  * 1ターン1回（knightChasedThisTurn）。本実装は陸の強盗のみ対象（海賊は対象外）。
  */
 export function robberAdjacentChasableVertexIds(state: GameState, pid: PlayerId): VertexId[] {
-  if (!isCk(state) || state.knightChasedThisTurn || state.turnPhase !== 'TRADE_BUILD') return [];
+  // 初回の蛮族襲来までは盗賊が凍結＝追い払いも不可。1ターン1回。
+  if (!isCk(state) || state.knightChasedThisTurn || state.turnPhase !== 'TRADE_BUILD' || (state.barbarianAttacks ?? 0) < 1) return [];
   const robberTid = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
   if (!robberTid) return [];
   const out: VertexId[] = [];
   for (const vid of state.tileToVertices[robberTid] ?? []) {
     const k = state.vertices[vid]?.knight;
-    if (k && k.playerId === pid && k.active) out.push(vid);
+    if (k && k.playerId === pid && k.active && !k.activatedThisTurn) out.push(vid);
   }
   return out;
 }
 
-/** 指定頂点のアクティブ騎士で強盗を追い払えるか（強盗ヘクスに隣接・1ターン1回）。 */
+/** 指定頂点のアクティブ騎士で強盗を追い払えるか（強盗ヘクスに隣接・1ターン1回・初回襲来後）。 */
 export function canChaseRobber(state: GameState, pid: PlayerId, vid: VertexId): boolean {
-  if (!isCk(state) || state.knightChasedThisTurn || state.turnPhase !== 'TRADE_BUILD') return false;
+  if (!isCk(state) || state.knightChasedThisTurn || state.turnPhase !== 'TRADE_BUILD' || (state.barbarianAttacks ?? 0) < 1) return false;
   const k = state.vertices[vid]?.knight;
-  if (!k || k.playerId !== pid || !k.active) return false;
+  if (!k || k.playerId !== pid || !k.active || k.activatedThisTurn) return false; // 起動したターンは行動不可
   const adjTiles = state.vertices[vid]?.adjacentTileIds ?? [];
   return adjTiles.some(t => state.tiles[t]?.hasRobber);
 }
@@ -256,6 +268,11 @@ export function canBuildImprovement(state: GameState, pid: PlayerId, track: CkTr
   if (lvl >= CK_MAX_IMPROVEMENT) return false;
   // 都市改善は都市が1つ以上必要。
   if (!Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city')) return false;
+  // Lv4以上(メトロポリス)の購入には、メトロポリス化できる都市が要る（既にこのツリーを保持中なら可）。
+  if (lvl + 1 >= CK_METROPOLIS_LEVEL) {
+    const holdsThis = state.metropolis?.[track]?.playerId === pid;
+    if (!holdsThis && !playerHasPlainCity(state, pid)) return false;
+  }
   const c = CK_TRACK_COMMODITY[track];
   return commodities(p)[c] >= improvementCost(lvl);
 }
@@ -302,9 +319,9 @@ export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack
 // ============================================================
 
 function wallCount(state: GameState, pid: PlayerId): number {
-  // メトロポリスは要塞化済み扱いで城壁1相当。明示的な城壁(building.wall)も数える。
+  // 公式: 城壁は最大3（メトロポリスは別物で城壁には数えない）。
   return Object.values(state.vertices).filter(v =>
-    v.building?.playerId === pid && (v.building.metropolis || (v.building as { wall?: boolean }).wall)).length;
+    v.building?.playerId === pid && (v.building as { wall?: boolean }).wall).length;
 }
 export function canBuildCityWall(state: GameState, pid: PlayerId, vid: VertexId): boolean {
   if (!isCk(state)) return false;
@@ -412,10 +429,10 @@ export function resolveBarbarianAttack(state: GameState): GameState {
     }
   }
 
-  // 全騎士を非起動に戻す。
+  // 全騎士を非起動に戻す（起動フラグもクリア）。
   for (const id of Object.keys(vertices)) {
     const k = vertices[id]!.knight;
-    if (k?.active) vertices[id] = { ...vertices[id]!, knight: { ...k, active: false } };
+    if (k?.active) vertices[id] = { ...vertices[id]!, knight: { ...k, active: false, activatedThisTurn: false } };
   }
 
   return {
@@ -462,9 +479,11 @@ function drawProgressCards(state: GameState, color: CkTrack, redDie: number): Ga
   let changed = false;
   for (const pid of state.playerOrder) {
     const p = players[pid]!;
-    if ((p.improvements?.[color] ?? 0) < redDie) continue;
+    // 公式: 赤ダイス ≦ (そのトラックLv + 1) のとき引ける（Lv1=1–2, …, Lv5=1–6）。
+    if ((p.improvements?.[color] ?? 0) + 1 < redDie) continue;
     const held = p.progressCards ?? [];
-    if (held.length >= PROGRESS_HAND_LIMIT) continue;
+    // 勝利点カード(憲法/印刷機)は手札上限の対象外。
+    if (held.filter(c => !isVpProgress(c.type)).length >= PROGRESS_HAND_LIMIT) continue;
     if (deck.length === 0) break;
     players[pid] = { ...p, progressCards: [...held, deck.shift()!] };
     changed = true;
@@ -786,7 +805,8 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
     case 'commercial_harbor': return RESOURCE_TYPES.some(r => p.hand[r] > 0) && opps.some(o => COMMODITY_TYPES.some(c => commodities(state.players[o]!)[c] > 0));
     case 'merchant':      return bestResourceTileForPlayer(state, pid) != null;
     case 'merchant_fleet': return RESOURCE_TYPES.some(r => p.hand[r] > 0) || COMMODITY_TYPES.some(c => commodities(p)[c] > 0);
-    case 'bishop': { // 移動可能な陸タイル（現在地以外）が1つ以上必要
+    case 'bishop': { // 盗賊は初回の蛮族襲来まで凍結。移動可能な陸タイル（現在地以外）が必要。
+      if ((state.barbarianAttacks ?? 0) < 1) return false;
       const cur = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
       return Object.keys(state.tiles).some(t => state.tiles[t]!.type !== 'sea' && t !== cur);
     }
@@ -952,6 +972,47 @@ export function distributeCkProduction(state: GameState, diceTotal: number): Gam
 export interface CkProduction {
   resources: Record<string, Partial<Record<ResourceType, number>>>;
   commodities: Record<string, Partial<Record<CommodityType, number>>>;
+}
+
+/**
+ * 騎士と商人のセットアップ後半: 2個目の配置は「都市」。
+ * 直前に置いた開拓地を都市へ昇格し、都市の初期産出（隣接地形ごとに 資源1+商品1 / 資源2）を配る。
+ * 純関数。バンク/商品バンク在庫で頭打ち。
+ */
+export function ckSetupSecondCity(state: GameState, pid: PlayerId, vid: VertexId): GameState {
+  const v = state.vertices[vid]!;
+  const p = state.players[pid]!;
+  const hand = { ...p.hand };
+  const newComm = { ...commodities(p) };
+  const bank = { ...state.bank };
+  const commodityBank = { ...(state.commodityBank ?? COMMODITY_BANK_INITIAL) };
+  const seen = new Set<string>();
+  for (const tid of v.adjacentTileIds) {
+    if (seen.has(tid)) continue; seen.add(tid);
+    const t = state.tiles[tid];
+    if (!t || t.hasRobber) continue;
+    const r = TILE_RESOURCE_MAP[t.type];
+    if (r == null) continue; // 砂漠/海/金は産出なし
+    const c = TILE_COMMODITY_MAP[t.type];
+    if (c) { // 都市(森/牧草/山): 資源1+商品1
+      if (bank[r] > 0) { hand[r] += 1; bank[r] -= 1; }
+      if (commodityBank[c] > 0) { newComm[c] += 1; commodityBank[c] -= 1; }
+    } else {  // 都市(丘/畑): 資源2
+      const give = Math.min(2, bank[r]);
+      hand[r] += give; bank[r] -= give;
+    }
+  }
+  return {
+    ...state,
+    bank,
+    commodityBank,
+    vertices: { ...state.vertices, [vid]: { ...v, building: { type: 'city', playerId: pid } } },
+    players: {
+      ...state.players,
+      // 開拓地→都市の振替（開拓地コマを1つ戻し、都市コマを1つ使う）。
+      [pid]: { ...p, hand, commodities: newComm, remainingSettlements: p.remainingSettlements + 1, remainingCities: p.remainingCities - 1 },
+    },
+  };
 }
 
 /**
