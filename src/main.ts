@@ -2193,21 +2193,22 @@ function restPose(show: [number, number]): [number, number] {
   return [show[0] + REST_TILT[0], show[1] + REST_TILT[1]];
 }
 /** 回転なしで目的の面を正面に固定（reduced-motion / instant 用）。 */
-function setCubeStatic(cube: HTMLElement, show: [number, number]): void {
+// zJit = 視軸(Z)回りの微小回転。最外(rotateZ を先頭)に置くため支配面=出目は不変（自然な散らし用）。
+function setCubeStatic(cube: HTMLElement, show: [number, number], zJit = 0): void {
   const [fx, fy] = restPose(show);
   cube.style.transition = 'none';
-  cube.style.transform = `rotateX(${fx}deg) rotateY(${fy}deg)`;
+  cube.style.transform = `rotateZ(${zJit}deg) rotateX(${fx}deg) rotateY(${fy}deg)`;
 }
 /** 着地姿勢へ転がす。開始は数回転ぶん戻した位置＝角度のついたタンブル→目的面へスナップ。 */
-function spinCube(cube: HTMLElement, show: [number, number], spinsX: number, spinsY: number, durMs: number): void {
+function spinCube(cube: HTMLElement, show: [number, number], spinsX: number, spinsY: number, durMs: number, zJit = 0): void {
   const [fx, fy] = restPose(show);
   const startX = fx + 360 * spinsX;   // 満回転は恒等変換＝着地面は厳密に一致
   const startY = fy + 360 * spinsY;
   cube.style.transition = 'none';
-  cube.style.transform = `rotateX(${startX}deg) rotateY(${startY}deg)`;
+  cube.style.transform = `rotateZ(${zJit}deg) rotateX(${startX}deg) rotateY(${startY}deg)`;
   void cube.offsetWidth;              // reflow を挟んで適用順を確定
   cube.style.transition = `transform ${durMs}ms cubic-bezier(0.16, 0.74, 0.18, 1.04)`;
-  cube.style.transform = `rotateX(${fx}deg) rotateY(${fy}deg)`;
+  cube.style.transform = `rotateZ(${zJit}deg) rotateX(${fx}deg) rotateY(${fy}deg)`;
 }
 // 騎士と商人: ロール時に見せるイベントダイス情報（生産2ダイス＝赤+黄／イベントダイス／抽選・蛮族）。
 interface DiceEventInfo {
@@ -2342,6 +2343,32 @@ function applyEventFlourish(info: DiceEventInfo): void {
   }
 }
 
+/** ロール中だけ盤面を沈めるオーバーレイ（背後の盤を blur+減彩+減光、ダイスへスポット）。z50のダイスは前面のまま。 */
+function showBoardDim(reduced: boolean): HTMLElement {
+  const host = document.getElementById('board-area') ?? document.body;
+  host.querySelectorAll('.dice-board-dim').forEach(n => n.remove()); // 残留掃除（連続ロール）
+  const dim = document.createElement('div');
+  dim.className = `dice-board-dim${reduced ? ' reduced' : ''}`;
+  host.appendChild(dim);
+  void dim.offsetWidth;     // reflow を挟んでフェードイン
+  dim.classList.add('on');
+  return dim;
+}
+function hideBoardDim(dim: HTMLElement | null): void {
+  if (!dim) return;
+  dim.classList.remove('on');
+  setTimeout(() => dim.remove(), 360);
+}
+/** イベント着地の軽い画面ヒット（board-shake とは別物の短い"着地の衝撃"）。 */
+function boardHit(): void {
+  if (prefersReducedMotion() || fxSpeed() === 'instant') return;
+  const board = document.getElementById('board-area');
+  if (!board) return;
+  board.classList.remove('board-hit'); void board.offsetWidth;
+  board.classList.add('board-hit');
+  setTimeout(() => board.classList.remove('board-hit'), 220);
+}
+
 // 3Dダイス演出: 赤=生産d1／黄=生産d2／イベント(CK)を本物の立方体として転がし、
 // 決定済みの出目の面を正面で静止させる。着地は時間差（赤→黄→イベント）。
 // eventInfo が null なら生産2個のみ。出目の再抽選は一切しない（値を見せるだけ）。
@@ -2351,11 +2378,15 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   if (!reduced && fxSpeed() === 'instant') { onDone(); return; }
 
   const host = document.getElementById('board-area') ?? document.body;
+  const dim = showBoardDim(reduced);                 // ① ロール中だけ盤を沈める
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
+  // ② 下中央の定位置クラスタ。トレイ(淡い窪み)の上に3個を近接配置。
+  const trayZone = document.createElement('div'); trayZone.className = 'dice-tray-zone';
+  const tray = document.createElement('div'); tray.className = 'dice-tray';
   const stage = document.createElement('div'); stage.className = 'dice-stage';
 
-  // 1スロット = 立方体 + 影。slot に出目リング色(--ring)を持たせる。
+  // 1スロット = 立方体 + 接地影。slot に出目リング色(--ring)を持たせる。
   interface Slot { slot: HTMLElement; cube: HTMLElement; }
   const mkSlot = (cube: HTMLElement, extra: string, ring: string): Slot => {
     const slot = document.createElement('div'); slot.className = `dice-slot ${extra}`;
@@ -2378,25 +2409,28 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
     eventSlot = mkSlot(buildEventCube(), 'slot-event', ring);
     stage.append(eventSlot.slot);
   }
+  trayZone.append(tray, stage);
   const sum = document.createElement('div'); sum.className = 'dice-sum';
-  overlay.append(stage, sum);
+  overlay.append(sum, trayZone);                     // 合計は上・トレイは下
   host.appendChild(overlay);
 
   const redShow = PROD_SHOW_ROT[d1] ?? [0, 0];
   const yellowShow = PROD_SHOW_ROT[d2] ?? [0, 0];
   const eventShow = eventInfo ? EVENT_SHOW_ROT[eventInfo.eventDie] : [0, 0] as [number, number];
+  // 視軸回りの微小回転（自然な散らし。支配面=出目は不変）。
+  const zR = Math.random() * 10 - 5, zY = Math.random() * 10 - 5, zE = Math.random() * 8 - 4;
 
   // reduced-motion: 回転を省き即着地（出目の正しさは維持）。
   if (reduced) {
-    setCubeStatic(red.cube, redShow); setCubeStatic(yellow.cube, yellowShow);
+    setCubeStatic(red.cube, redShow, zR); setCubeStatic(yellow.cube, yellowShow, zY);
     red.slot.classList.add('settled'); yellow.slot.classList.add('settled');
     showDiceSum(sum, d1, d2);
     if (eventSlot && eventInfo) {
-      setCubeStatic(eventSlot.cube, eventShow); eventSlot.slot.classList.add('settled');
-      overlay.appendChild(buildEventResolutionPanel(eventInfo));
+      setCubeStatic(eventSlot.cube, eventShow, zE); eventSlot.slot.classList.add('settled');
+      overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild); // パネルは上に挿入（ダイスを動かさない）
       applyEventFlourish(eventInfo);
     }
-    setTimeout(() => { overlay.remove(); onDone(); }, eventInfo ? 1500 : 900);
+    setTimeout(() => { overlay.remove(); hideBoardDim(dim); onDone(); }, eventInfo ? 1500 : 900);
     return;
   }
 
@@ -2410,9 +2444,9 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   red.slot.classList.add('rolling'); yellow.slot.classList.add('rolling');
   eventSlot?.slot.classList.add('rolling');
   // 回転数は控えめ（長い時間×少なめの回転＝ゆっくり転がって見える）。
-  spinCube(red.cube, redShow, 2, 2, tRed);
-  spinCube(yellow.cube, yellowShow, 2, 3, tYellow);
-  if (eventSlot) spinCube(eventSlot.cube, eventShow, 3, 3, tEvent);
+  spinCube(red.cube, redShow, 2, 2, tRed, zR);
+  spinCube(yellow.cube, yellowShow, 2, 3, tYellow, zY);
+  if (eventSlot) spinCube(eventSlot.cube, eventShow, 3, 3, tEvent, zE);
 
   const land = (s: Slot, heavy: boolean): void => {
     s.slot.classList.remove('rolling');
@@ -2421,16 +2455,18 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   };
 
   let done = false;
-  const finishAll = (): void => { if (done) return; done = true; overlay.remove(); onDone(); };
+  const finishAll = (): void => { if (done) return; done = true; overlay.remove(); hideBoardDim(dim); onDone(); };
 
   setTimeout(() => land(red, false), tRed);
   setTimeout(() => { land(yellow, false); showDiceSum(sum, d1, d2); }, tYellow); // 赤＋黄が揃って合計ポップ
   if (eventInfo && eventSlot) {
     setTimeout(() => {
       land(eventSlot!, true);
-      overlay.appendChild(buildEventResolutionPanel(eventInfo));
-      applyEventFlourish(eventInfo);
-      setTimeout(finishAll, Math.round(2300 * k));   // 抽選/蛮族の照合をしっかり見せる
+      boardHit();                                       // ④ 着地の軽い画面ヒット（diceLandHeavyに同期・~220ms）
+      overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild); // パネルは上に挿入（ダイスを動かさない）
+      // 船=揺れ / 色=wash は board-hit が終わってから（#board-area の transform 競合を回避）。
+      setTimeout(() => applyEventFlourish(eventInfo), 260);
+      setTimeout(finishAll, Math.round(2300 * k));      // 抽選/蛮族の照合をしっかり見せる
     }, tEvent);
   } else {
     setTimeout(finishAll, tYellow + Math.round(1000 * k));
@@ -2881,8 +2917,10 @@ function updateZoomControls(): void {
 // ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
 function clearTransientFx(): void {
   document
-    .querySelectorAll('.dice-roll-overlay, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast')
+    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast')
     .forEach(n => n.remove());
+  // 盤面に残った一時クラス（沈み/ヒット/揺れ）を確実に除去（連続ロールで残留させない）。
+  document.getElementById('board-area')?.classList.remove('board-hit', 'board-shake', 'board-shake-danger');
 }
 
 // ============================================================
