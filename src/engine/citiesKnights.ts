@@ -469,7 +469,11 @@ export function buildProgressDecks(rng: () => number): Record<CkTrack, ProgressC
   return decks;
 }
 
-/** 色イベント面で、改善レベルが redDie 以上のプレイヤーが その色のカードを1枚引く（手札上限4）。 */
+/**
+ * 色イベント面で進歩カードを引く。引ける条件＝公式どおり:
+ *   そのトラックの改善Lvが1以上 かつ 赤ダイス ≦ (Lv+1)（Lv0=引けない / Lv1=1–2 … Lv5=1–6）。
+ * 引くのは条件を満たす全員。現手番プレイヤーから時計回りの順で引く（山札枯渇時の順序を正す）。手札上限4（VPカード除外）。
+ */
 function drawProgressCards(state: GameState, color: CkTrack, redDie: number): GameState {
   const decks = state.progressDecks;
   if (!decks) return state;
@@ -477,10 +481,13 @@ function drawProgressCards(state: GameState, color: CkTrack, redDie: number): Ga
   if (deck.length === 0) return state;
   const players = { ...state.players };
   let changed = false;
-  for (const pid of state.playerOrder) {
+  const n = state.playerOrder.length;
+  const start = state.currentPlayerIndex ?? 0;
+  for (let i = 0; i < n; i++) {
+    const pid = state.playerOrder[(start + i) % n]!;
     const p = players[pid]!;
-    // 公式: 赤ダイス ≦ (そのトラックLv + 1) のとき引ける（Lv1=1–2, …, Lv5=1–6）。
-    if ((p.improvements?.[color] ?? 0) + 1 < redDie) continue;
+    const lvl = p.improvements?.[color] ?? 0;
+    if (lvl < 1 || lvl + 1 < redDie) continue;        // Lv0は不可。赤 ≦ Lv+1 のみ。
     const held = p.progressCards ?? [];
     // 勝利点カード(憲法/印刷機)は手札上限の対象外。
     if (held.filter(c => !isVpProgress(c.type)).length >= PROGRESS_HAND_LIMIT) continue;

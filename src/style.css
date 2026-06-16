@@ -2334,6 +2334,57 @@ h1 {
   padding: 0;
 }
 .dice-sum.show { animation: dicePop 0.45s cubic-bezier(0.2,1.5,0.5,1); }
+
+/* ===== 騎士と商人: 3個ダイス（赤=生産d1／黄=生産d2／イベント）を色と形で区別 ===== */
+.dice-die.dice-red { background: linear-gradient(145deg, #ff7676, #c62828); }
+.dice-die.dice-red .pip-cell.on::after { background: radial-gradient(circle at 35% 30%, #ffffff, #ffd9d9); }
+.dice-die.dice-yellow { background: linear-gradient(145deg, #ffe066, #f0a020); }
+.dice-die.d3.rolling { animation: diceTumble 1.7s ease-out forwards; }
+/* イベントダイスは「円形」で生産ダイス（角丸四角）と形でも区別。ピップでなく記号を表示。 */
+.dice-die.dice-event {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-size: 2.2rem; font-weight: 900; color: #fff;
+  background: linear-gradient(145deg, #5a6b7a, #2b3540);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+.dice-die.dice-event.ev-ship     { background: linear-gradient(145deg, #6b7d8c, #2b3540); }
+.dice-die.dice-event.ev-trade    { background: linear-gradient(145deg, #ffd24d, #cf9018); color: #3a2b00; text-shadow: none; }
+.dice-die.dice-event.ev-politics { background: linear-gradient(145deg, #5b8def, #2853b8); }
+.dice-die.dice-event.ev-science  { background: linear-gradient(145deg, #5fc77a, #2e8b48); }
+.dice-prod { white-space: nowrap; }
+
+/* イベント結果パネル（蛮族前進 / 色別抽選の照合） */
+.dice-event-panel {
+  margin-top: 4px; max-width: min(92vw, 380px);
+  background: rgba(12,14,20,0.96); border: 2px solid rgba(255,255,255,0.18);
+  border-radius: 14px; padding: 10px 14px; color: #fff;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.6);
+  animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
+}
+.dep-title { font-size: 1.05rem; font-weight: 800; text-align: center; margin-bottom: 6px; }
+.dep-title.ev-trade { color: #ffd24d; } .dep-title.ev-politics { color: #7fa9ff; } .dep-title.ev-science { color: #7fe0a0; }
+.dep-track { display: flex; gap: 5px; justify-content: center; margin: 6px 0; }
+.dep-pip { width: 15px; height: 15px; border-radius: 50%; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.3); transition: transform .2s; }
+.dep-pip.on { background: #ffcf4d; }
+.dep-track.danger .dep-pip.on { background: #ff5a5a; box-shadow: 0 0 7px rgba(255,80,80,0.85); }
+.dep-pip.just { transform: scale(1.4); box-shadow: 0 0 9px rgba(255,210,80,0.95); }
+.dep-sub { text-align: center; font-size: 0.85rem; opacity: 0.92; }
+.dep-draws { display: flex; flex-direction: column; gap: 3px; }
+.dep-draw-row { font-size: 0.86rem; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,0.05); opacity: 0.62; }
+.dep-draw-row.ok { background: rgba(110,200,120,0.2); opacity: 1; font-weight: 700; }
+
+/* ターンパネルの常時ダイス読み取り（赤/黄/イベントの小チップ） */
+.dice-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 6px; font-weight: 900; font-size: 0.95rem; margin: 0 2px; vertical-align: middle; }
+.dice-chip-red { background: linear-gradient(145deg, #ff7676, #c62828); color: #fff; }
+.dice-chip-yellow { background: linear-gradient(145deg, #ffe066, #f0a020); color: #3a2b00; }
+.dice-chip-sum { font-weight: 800; color: #ffe34d; margin: 0 5px; font-size: 0.9rem; vertical-align: middle; }
+.dice-chip-ev { border-radius: 50%; width: 24px; height: 24px; min-width: 24px; color: #fff; font-size: 0.8rem; }
+.dice-chip-ev.ev-ship { background: linear-gradient(145deg, #6b7d8c, #2b3540); }
+.dice-chip-ev.ev-trade { background: linear-gradient(145deg, #ffd24d, #cf9018); color: #3a2b00; }
+.dice-chip-ev.ev-politics { background: linear-gradient(145deg, #5b8def, #2853b8); }
+.dice-chip-ev.ev-science { background: linear-gradient(145deg, #5fc77a, #2e8b48); }
+
 @keyframes diceTumble {
   0%   { transform: rotateZ(0)      rotateX(0)     scale(1.18); }
   25%  { transform: rotateZ(230deg) rotateX(20deg) scale(1.12); }

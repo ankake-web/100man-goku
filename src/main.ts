@@ -5,7 +5,7 @@
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP } from './constants';
+import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, CK_BARBARIAN_MAX, CK_TRACK_NAME } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
@@ -23,7 +23,8 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk } from './engine/citiesKnights';
+import type { CkTrack } from './types';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth } from './renderer/ui';
@@ -2110,11 +2111,105 @@ function diceRollMs(): number {
     default:        return 1700; // normal: しっかり「振っている感」を出す
   }
 }
-function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
+// 騎士と商人: ロール時に見せるイベントダイス情報（生産2ダイス＝赤+黄／イベントダイス／抽選・蛮族）。
+interface DiceEventInfo {
+  eventDie: 'ship' | CkTrack;
+  redDie: number;       // 赤ダイス(=生産d1) は抽選のしきい値にも使う
+  barbPos: number;
+  attacked: boolean;    // この前進で襲来したか
+  advanced: boolean;    // 蛮族船が前進したか
+  // 色ゲートのとき、現手番から時計回り順の各プレイヤーの抽選照合。船のときは null。
+  draws: Array<{ name: string; level: number; threshold: number; eligible: boolean; drew: boolean }> | null;
+}
+
+const EVENT_FACES: ('ship' | CkTrack)[] = ['ship', 'ship', 'ship', 'trade', 'politics', 'science'];
+const EVENT_LABEL: Record<string, string> = { ship: '🛶', trade: '商', politics: '政', science: '科' };
+
+/** ロール前後のstateからイベントダイスの可視化情報を導出。非CK or 情報なしは null。 */
+function buildDiceEventInfo(prev: GameState, next: GameState): DiceEventInfo | null {
+  if (!isCk(next) || !next.lastEventDie || !next.lastDiceRoll) return null;
+  const ev = next.lastEventDie;
+  const red = next.lastDiceRoll[0];
+  const info: DiceEventInfo = {
+    eventDie: ev, redDie: red,
+    barbPos: next.barbarianPosition ?? 0,
+    attacked: (next.barbarianAttacks ?? 0) > (prev.barbarianAttacks ?? 0),
+    advanced: (next.barbarianPosition ?? 0) > (prev.barbarianPosition ?? 0),
+    draws: null,
+  };
+  if (ev !== 'ship') {
+    const n = next.playerOrder.length;
+    const start = next.currentPlayerIndex ?? 0;
+    const rows: NonNullable<DiceEventInfo['draws']> = [];
+    for (let i = 0; i < n; i++) {
+      const pid = next.playerOrder[(start + i) % n]!;
+      const level = next.players[pid]?.improvements?.[ev] ?? 0;
+      const threshold = level + 1;
+      const eligible = level >= 1 && red <= threshold; // Lv0は不可・赤≤Lv+1
+      const before = (prev.players[pid]?.progressCards ?? []).length;
+      const after = (next.players[pid]?.progressCards ?? []).length;
+      rows.push({ name: next.players[pid]?.name ?? pid, level, threshold, eligible, drew: after > before });
+    }
+    info.draws = rows;
+  }
+  return info;
+}
+
+function setEventDieFace(el: HTMLElement, face: 'ship' | CkTrack): void {
+  el.textContent = EVENT_LABEL[face] ?? '?';
+  el.classList.remove('ev-ship', 'ev-trade', 'ev-politics', 'ev-science');
+  el.classList.add(`ev-${face}`);
+}
+
+/** イベント結果パネル（船＝蛮族トラック前進 / 色ゲート＝赤としきい値の照合・抽選）。 */
+function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
+  const panel = document.createElement('div');
+  panel.className = 'dice-event-panel';
+  if (info.eventDie === 'ship') {
+    const title = document.createElement('div');
+    title.className = 'dep-title';
+    title.textContent = info.attacked ? '⚔ 蛮族 襲来！' : '🛶 蛮族船が前進';
+    panel.appendChild(title);
+    const danger = info.barbPos >= CK_BARBARIAN_MAX - 2;
+    const track = document.createElement('div');
+    track.className = `dep-track${danger ? ' danger' : ''}`;
+    for (let i = 1; i <= CK_BARBARIAN_MAX; i++) {
+      const pip = document.createElement('span');
+      pip.className = `dep-pip${i <= info.barbPos ? ' on' : ''}${i === info.barbPos && info.advanced ? ' just' : ''}`;
+      track.appendChild(pip);
+    }
+    panel.appendChild(track);
+    const sub = document.createElement('div');
+    sub.className = 'dep-sub';
+    sub.textContent = info.attacked ? '騎士で防衛判定！' : `蛮族 ${info.barbPos} / ${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来）' : ''}`;
+    panel.appendChild(sub);
+  } else {
+    const color = info.eventDie;
+    const title = document.createElement('div');
+    title.className = `dep-title ev-${color}`;
+    title.textContent = `${EVENT_LABEL[color]} ${CK_TRACK_NAME[color]}の抽選（赤=${info.redDie} ≤ Lv+1?）`;
+    panel.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'dep-draws';
+    for (const r of info.draws ?? []) {
+      const rowEl = document.createElement('div');
+      rowEl.className = `dep-draw-row${r.eligible ? ' ok' : ''}`;
+      const cond = r.level < 1 ? '未改良' : `Lv${r.level}（赤≤${r.threshold}）`;
+      const mark = r.drew ? '🎴 +1' : r.eligible ? '引ける' : '✗';
+      rowEl.textContent = `${r.name}：${cond} → ${mark}`;
+      list.appendChild(rowEl);
+    }
+    panel.appendChild(list);
+  }
+  return panel;
+}
+
+// 3個のダイス（赤=生産d1／黄=生産d2／イベント）を振る演出。CK では結果に応じた
+// 「蛮族前進」「色別抽選の照合」パネルも見せる。eventInfo が null なら従来の2個演出。
+function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, onDone: () => void): void {
   if (d1 < 1 || d2 < 1) { onDone(); return; }
   // モーション抑制設定ではタンブル(回転)を省くが、出目のダイスは静的に見せる
   // （演出が「全員の画面に」出るよう、モーション無しでも結果を視認できるようにする）。
-  // 最速(instant)は完全スキップ（UIからは選べないが保険として残す）。
   const reduced = prefersReducedMotion();
   if (!reduced && fxSpeed() === 'instant') { onDone(); return; }
   const dur = reduced ? 0 : diceRollMs();
@@ -2123,11 +2218,18 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
   const row = document.createElement('div'); row.className = 'dice-row';
-  const die1 = document.createElement('div'); die1.className = dur > 0 ? 'dice-die rolling' : 'dice-die';
-  const die2 = document.createElement('div'); die2.className = dur > 0 ? 'dice-die rolling d2' : 'dice-die';
+  const die1 = document.createElement('div'); die1.className = `${dur > 0 ? 'dice-die rolling' : 'dice-die'} dice-red`;
+  const die2 = document.createElement('div'); die2.className = `${dur > 0 ? 'dice-die rolling d2' : 'dice-die'} dice-yellow`;
   setDiePips(die1, d1); setDiePips(die2, d2);
   row.append(die1, die2);
-  // 合計表示スロットを先に確保（確定時に中央がガタつかない）
+  // 第3のイベントダイス（CK のみ。色と形＝円で生産ダイスと区別）。
+  let dieE: HTMLElement | null = null;
+  if (eventInfo) {
+    dieE = document.createElement('div');
+    dieE.className = `${dur > 0 ? 'dice-die rolling d3' : 'dice-die'} dice-event`;
+    setEventDieFace(dieE, eventInfo.eventDie);
+    row.append(dieE);
+  }
   const sum = document.createElement('div'); sum.className = 'dice-sum';
   overlay.append(row, sum);
   host.appendChild(overlay);
@@ -2139,19 +2241,25 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
     setDiePips(die1, d1); setDiePips(die2, d2);
     die1.classList.remove('rolling'); die2.classList.remove('rolling', 'd2');
     die1.classList.add('settled');    die2.classList.add('settled');
-    sum.textContent = `${d1} + ${d2} = ${d1 + d2}`;
+    if (dieE && eventInfo) { dieE.classList.remove('rolling', 'd3'); dieE.classList.add('settled'); setEventDieFace(dieE, eventInfo.eventDie); }
+    // 赤+黄=生産。赤は抽選のしきい値にも使うことが伝わる表記。
+    sum.innerHTML = '';
+    const prod = document.createElement('span'); prod.className = 'dice-prod';
+    prod.textContent = `赤${d1} ＋ 黄${d2} ＝ 生産 ${d1 + d2}`;
+    sum.appendChild(prod);
     sum.classList.add('show');
-    // モーション抑制時はタンブルが無い分、結果を少し長めに見せてから進む。
-    setTimeout(() => { overlay.remove(); onDone(); }, reduced ? 900 : 480);
+    if (eventInfo) {
+      overlay.appendChild(buildEventResolutionPanel(eventInfo));
+      setTimeout(() => { overlay.remove(); onDone(); }, reduced ? 1500 : 1600); // 抽選/蛮族の照合を見せる
+    } else {
+      setTimeout(() => { overlay.remove(); onDone(); }, reduced ? 900 : 480);
+    }
   };
 
-  // モーション抑制: 回転は出さず、確定した出目を静的に表示してから進む。
   if (dur <= 0) { settle(); return; }
 
-  // 減速して回転が止まるトランブル演出（CSSアニメーション）
   die1.style.animationDuration = `${dur}ms`;
   die2.style.animationDuration = `${dur}ms`;
-  // 出目を切り替える間隔を徐々に伸ばして「減速して止まりそう」な溜めを作る
   const start = Date.now();
   const cycle = (): void => {
     if (stopped) return;
@@ -2159,6 +2267,7 @@ function playDiceRoll(d1: number, d2: number, onDone: () => void): void {
     if (elapsed >= dur) { settle(); return; }
     setDiePips(die1, 1 + Math.floor(Math.random() * 6));
     setDiePips(die2, 1 + Math.floor(Math.random() * 6));
+    if (dieE) setEventDieFace(dieE, EVENT_FACES[Math.floor(Math.random() * 6)]!);
     const p = elapsed / dur;
     const interval = 55 + p * p * 300; // 55ms → ~355ms（後半ほどゆっくり）
     setTimeout(cycle, interval);
@@ -2229,12 +2338,12 @@ function animateBuildPlacement(action: Action | undefined): void {
   }
 }
 
-// ROLL_DICE ならダイス演出を見せてから finish、それ以外は即 finish。
-function runWithDiceAnim(action: Action | undefined, finish: () => void): void {
+// ROLL_DICE ならダイス演出（赤・黄・イベントの3個＋CKの抽選/蛮族パネル）を見せてから finish。
+function runWithDiceAnim(action: Action | undefined, prevState: GameState, finish: () => void): void {
   if (action?.type === 'ROLL_DICE' && state.lastDiceRoll) {
     diceAnimating = true;
     const [d1, d2] = state.lastDiceRoll;
-    playDiceRoll(d1, d2, finish);
+    playDiceRoll(d1, d2, buildDiceEventInfo(prevState, state), finish);
   } else {
     finish();
   }
@@ -2361,7 +2470,7 @@ function dispatch(action: Action): void {
         scheduleAiTurn();
       }
     };
-    runWithDiceAnim(action, finish);
+    runWithDiceAnim(action, prevState, finish);
   } catch (err) {
     // 例外が出ても全体は止めない。ウォッチドッグが安全行動で進行を回復する。
     console.warn('applyAction error (recoverable):', err);
@@ -2910,7 +3019,7 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
 
   // 再描画＋演出（dispatch と共通本体）。LAN では後続スケジューリングはしない（サーバが駆動）。
   // 世代ガード: ダイス演出中のホーム復帰後に旧ゲームの演出を走らせない。
-  runWithDiceAnim(action, () => {
+  runWithDiceAnim(action, prevState, () => {
     if (gen !== gameGeneration) return;
     runTransitionFx(prevState, action, diceTotal, robberFromTile);
     // 演出中に溜まった配信を順次適用（後続が ROLL_DICE なら再び演出に入りキューが続く）。

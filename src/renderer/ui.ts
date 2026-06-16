@@ -1475,15 +1475,19 @@ export function renderUI(
   if (state.lastDiceRoll) {
     const [d1, d2] = state.lastDiceRoll;
     const diceEl = el('div', 'dice-result');
-    diceEl.textContent = `🎲 ${d1}+${d2}=${d1 + d2}`;
-    // 騎士と商人: イベントダイスの結果（船=蛮族前進 / 色ゲート=進歩カード抽選）も表示。
-    if (isCk(state) && state.lastEventDie) {
+    if (isCk(state)) {
+      // 騎士と商人: 赤(生産d1・抽選しきい値)／黄(生産d2)／イベントダイスを色チップで常時表示。
+      const chip = (cls: string, txt: string): HTMLSpanElement => { const s = el('span', cls); s.textContent = txt; return s; };
+      diceEl.appendChild(chip('dice-chip dice-chip-red', String(d1)));
+      diceEl.appendChild(chip('dice-chip dice-chip-yellow', String(d2)));
+      diceEl.appendChild(chip('dice-chip-sum', `＝生産${d1 + d2}`));
       const ev = state.lastEventDie;
-      const evLabel = ev === 'ship' ? '🛶 蛮族前進'
-        : ev === 'trade' ? '🟡 商業' : ev === 'politics' ? '🔵 政治' : '🟢 科学';
-      const evEl = el('span', 'dice-event');
-      evEl.textContent = `／ ${evLabel}`;
-      diceEl.appendChild(evEl);
+      if (ev) {
+        const evTxt = ev === 'ship' ? '🛶' : ev === 'trade' ? '商' : ev === 'politics' ? '政' : '科';
+        diceEl.appendChild(chip(`dice-chip dice-chip-ev ev-${ev}`, evTxt));
+      }
+    } else {
+      diceEl.textContent = `🎲 ${d1}+${d2}=${d1 + d2}`;
     }
     turnPanel.appendChild(diceEl);
   }
