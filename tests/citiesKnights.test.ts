@@ -663,6 +663,22 @@ describe('C&K ルール監査の修正', () => {
     expect(drewAtLv0Red2).toBe(false);  // Lv0 は赤2で引けない
   });
 
+  it('A2: 未改良(Lv0)は赤=1でも引けない（境界）。Lv1は赤=1で引ける', async () => {
+    const { applyEventDie, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const base = ck({ progressDecks: buildProgressDecks(createRng(1)) });
+    const lv1 = { ...base, players: { ...base.players, player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 1 } }) } } as GameState;
+    let lv0Red1Drew: boolean | null = null, lv1Red1Drew = false;
+    for (let seed = 1; seed <= 300 && (lv0Red1Drew === null || !lv1Red1Drew); seed++) {
+      const r0 = applyEventDie(base, createRng(seed), 1); // Lv0, 赤=1
+      if (r0.lastEventDie === 'science') lv0Red1Drew = ((r0.players.player1!.progressCards ?? []).length) > 0;
+      const r1 = applyEventDie(lv1, createRng(seed), 1); // Lv1, 赤=1
+      if (r1.lastEventDie === 'science' && ((r1.players.player1!.progressCards ?? []).length) > 0) lv1Red1Drew = true;
+    }
+    expect(lv0Red1Drew).toBe(false); // Lv0 は赤=1でも引けない
+    expect(lv1Red1Drew).toBe(true);  // Lv1 は赤=1で引ける
+  });
+
   it('B: 交易所(商業Lv3)は商品のみ2:1、資源は据え置き', async () => {
     const { getEffectiveTradeRate } = await import('../src/engine/trade');
     const s = ck({ players: { ...ck().players, player1: makePlayer('player1', { improvements: { trade: 3, politics: 0, science: 0 }, commodities: { coin: 3, cloth: 0, paper: 0 } }) } }) as GameState;
