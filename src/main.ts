@@ -2274,7 +2274,6 @@ function showDiceSum(sum: HTMLElement, d1: number, d2: number): void {
     mk('dice-sum-die yellow', String(d2)),
     mk('dice-sum-eq', '＝'),
     mk('dice-sum-total', String(d1 + d2)),
-    mk('dice-sum-label', '生産'),
   );
   sum.classList.add('show');
 }
@@ -2484,7 +2483,18 @@ function runWithDiceAnim(action: Action | undefined, prevState: GameState, finis
   }
 }
 
+// ターン終了時など、盤面を画面内に出す（スマホで操作パネルまでスクロールしている状態から戻す）。
+function scrollToBoard(): void {
+  const board = document.getElementById('board-area') ?? document.getElementById('board');
+  try {
+    if (board && typeof board.scrollIntoView === 'function') board.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch { window.scrollTo(0, 0); }
+}
+
 function dispatch(action: Action): void {
+  // 自分がターンを終了したら盤面へスクロールして次の状況を見せる（スマホ）。
+  if (action.type === 'END_TURN') scrollToBoard();
   // LAN対戦: ローカル applyAction は禁止（正本はサーバ）。Action はサーバへ送る。
   if (netMode) { netDispatch(action); return; }
   // ダイス演出中は操作を受け付けない（多重ロール・先走り操作を防止）

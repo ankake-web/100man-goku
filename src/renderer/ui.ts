@@ -54,29 +54,48 @@ function makeImgBtn(icon: string | HTMLElement, label: string | (string | HTMLEl
   if (!disabled) btn.addEventListener('click', onClick);
   return btn;
 }
-// ログ先頭の絵文字を素材アイコン/CSSグリフに置き換える（直近ログを画像化）。
-const LOG_ICON: Array<[string, string | null | (() => HTMLElement)]> = [
-  ['🛤', () => glyph('ic-road')],
-  ['🏠', ASSETS.piece.settlement],
-  ['🏙', ASSETS.piece.city],
-  ['🃏', () => glyph('ic-cards')],
-  ['💱', ASSETS.commodity.coin],
-  ['🦹', ASSETS.piece.robber],
-  ['🏴‍☠️', ASSETS.piece.pirate],
-  ['⚔', ASSETS.knight.basic],
-  ['🛡', ASSETS.knight.basic],
-  ['⛵', ASSETS.piece.barbarianShip],
-  ['🛶', ASSETS.piece.barbarianShip],
-];
-function logIconAndRest(message: string): { icon: HTMLElement | null; rest: string } {
-  for (const [emo, src] of LOG_ICON) {
-    if (message.startsWith(emo)) {
+// ログ中の絵文字（資源/商品/コマ/称号…）を素材アイコン/CSSグリフに置換する。
+// RESOURCE_IMG 等は後方定義のため、参照は呼び出し時(実行時)に解決する（遅延構築）。
+let _logEmojiMap: Record<string, string | (() => HTMLElement)> | null = null;
+function logEmojiMap(): Record<string, string | (() => HTMLElement)> {
+  if (_logEmojiMap) return _logEmojiMap;
+  _logEmojiMap = {
+    // 資源
+    '🌲': RESOURCE_IMG.wood, '🧱': RESOURCE_IMG.brick, '🐑': RESOURCE_IMG.wool, '🌾': RESOURCE_IMG.grain, '⛰': RESOURCE_IMG.ore,
+    // 商品
+    '🪙': COMMODITY_IMG.coin, '🧵': COMMODITY_IMG.cloth, '📜': COMMODITY_IMG.paper,
+    // コマ/建物/称号
+    '🏠': ASSETS.piece.settlement ?? '', '🏙': ASSETS.piece.city ?? '',
+    '🦹': ASSETS.piece.robber ?? '', '🏴‍☠️': ASSETS.piece.pirate ?? '',
+    '⛵': ASSETS.piece.barbarianShip ?? '', '🛶': ASSETS.piece.barbarianShip ?? '',
+    '💱': ASSETS.commodity.coin, '⚔': ASSETS.knight.basic, '🛡': ASSETS.knight.basic,
+    '🛤': () => glyph('ic-road'), '🃏': () => glyph('ic-cards'),
+  };
+  return _logEmojiMap;
+}
+const LOG_EMOJI_DROP = ['📥', '✨']; // 画像の無い装飾的な先頭マークは省く
+// メッセージを走査し、既知の絵文字を素材画像へ、装飾は省略、残りはテキストとして parent へ。
+function renderLogMessage(parent: HTMLElement, message: string): void {
+  const map = logEmojiMap();
+  const keys = Object.keys(map).sort((a, b) => b.length - a.length);
+  let i = 0, buf = '';
+  const flush = (): void => { if (buf) { parent.append(document.createTextNode(buf)); buf = ''; } };
+  while (i < message.length) {
+    const drop = LOG_EMOJI_DROP.find(d => message.startsWith(d, i));
+    if (drop) { flush(); i += drop.length; continue; }
+    const k = keys.find(key => message.startsWith(key, i));
+    if (k) {
+      flush();
+      const src = map[k]!;
       const icon = typeof src === 'function' ? src() : inlineIc(src, 'log-ic');
-      icon.classList.add('log-icon');   // 右マージン＋整列
-      return { icon, rest: message.slice(emo.length).replace(/^\s+/, '') };
+      icon.classList.add('log-icon');
+      parent.append(icon);
+      i += k.length;
+      continue;
     }
+    buf += message[i]; i++;
   }
-  return { icon: null, rest: message };
+  flush();
 }
 // modeBtn のアイコン版（道/開拓地/都市などの建設トグル）。
 function modeImgBtn(icon: string | HTMLElement, label: string, mode: Exclude<BuildMode, 'idle'>, canAfford: boolean, current: BuildMode, setBuildMode: (m: BuildMode) => void): HTMLButtonElement {
@@ -1265,7 +1284,7 @@ export function showAssetGallery(): void {
   const overlay = el('div', 'gallery-overlay');
   const modal = el('div', 'gallery-modal');
   const header = el('div', 'gallery-header');
-  header.textContent = '🖼 コマ・カード図鑑（騎士と商人）';
+  header.textContent = '🖼 コマ・カード図鑑（都市と騎士）';
   modal.appendChild(header);
   const body = el('div', 'gallery-body');
 
@@ -1357,7 +1376,7 @@ function appendCkBuildSection(
   const player = state.players[pid]!;
   const sec = el('div', 'ck-build');
   const title = el('div', 'ck-build-title');
-  title.textContent = '⚔ 騎士と商人 アクション';
+  title.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(' 都市と騎士 アクション'));
   sec.appendChild(title);
 
   // 都市改善（3ツリー）
@@ -1686,10 +1705,11 @@ export function renderUI(
       Object.assign(el('span', 'dice-rd-eq'), { textContent: '=' }),
       Object.assign(el('span', 'dice-rd-total'), { textContent: String(d1 + d2) }),
     );
-    if (ev) {
-      // イベント: 漢字でなく素材アイコン（船=蛮族船 / 色ゲート=トラックアイコン）。
-      diceEl.append(inlineIc(ev === 'ship' ? ASSETS.piece.barbarianShip : IMP_IMG[ev], 'dice-rd-ev'));
-      if (gateTurn) diceEl.append(Object.assign(el('span', 'dice-rd-note'), { textContent: `抽選しきい値 赤${d1}` }));
+    if (ev === 'ship') {
+      diceEl.append(inlineIc(ASSETS.piece.barbarianShip, 'dice-rd-ev'));
+    } else if (ev) {
+      // 色ゲート: 変な言い回しをやめ「トラックのマーク＋しきい値(=赤の目)」だけを示す（例: [政治]5）。
+      diceEl.append(inlineIc(IMP_IMG[ev], 'dice-rd-ev'), Object.assign(el('span', 'dice-rd-thresh'), { textContent: String(d1) }));
     }
     turnPanel.appendChild(diceEl);
   }
@@ -1730,10 +1750,8 @@ export function renderUI(
   const lastLog = state.log.length > 0 ? state.log[state.log.length - 1] : null;
   if (lastLog) {
     const ev = el('div', 'last-event');
-    // 先頭の絵文字を素材アイコンに置換して表示（画像をフル活用）。
-    const { icon, rest } = logIconAndRest(lastLog.message);
-    if (icon) ev.append(icon);
-    ev.append(document.createTextNode(rest));
+    // ログ中の絵文字（資源/商品/コマ…）を素材画像に置換して表示。
+    renderLogMessage(ev, lastLog.message);
     turnPanel.appendChild(ev);
   }
 
