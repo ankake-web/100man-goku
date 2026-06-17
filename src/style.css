@@ -350,10 +350,7 @@ h1 {
 /* アニメ抑制時はパルスを止め、産出ヘックスを静的に明るく示す（どこから出たか分かる）。 */
 @media (prefers-reduced-motion: reduce) {
   .hex-tile.producing { animation: none; filter: brightness(1.5) drop-shadow(0 0 6px rgba(255,240,150,0.85)); }
-  .dice-slot.settled .dice-cube-wrap, .dice-slot.settled .dice-cube-wrap::after,
-  .dice-slot.slot-event.settled .dice-cube-wrap { animation: none; }
   .board-shake, .board-shake-danger, .board-hit { animation: none; }
-  .dice-slot.rolling .dice-cube-wrap { transform: none; }   /* 持ち上げも省略 */
 }
 
 .hex-tile.forest   { fill: #2d6a2d; }
@@ -2332,177 +2329,24 @@ h1 {
     rgba(6,8,14,0) 0%, rgba(6,8,14,0.12) 42%, rgba(4,6,12,0.5) 100%);
 }
 .dice-board-dim.on { opacity: 1; }
+/* WebGL(Three.js) ダイス描画レイヤー。下中央のクラスタ枠。canvas は枠いっぱい。 */
+.dice-gl-wrap {
+  width: clamp(244px, 84vw, 384px);
+  height: clamp(132px, 32vh, 196px);
+  pointer-events: none;
+}
+.dice-gl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  pointer-events: none;
+}
 .dice-board-dim.reduced {                         /* reduced: ぼかさず軽い減光のみ・即時 */
   -webkit-backdrop-filter: brightness(0.8);
   backdrop-filter: brightness(0.8);
   background: rgba(4,6,12,0.18);
   transition: opacity 0.12s ease;
 }
-/* ② 定位置トレイ（淡い窪み）。出しゃばらず盤を覆い隠しすぎない。 */
-.dice-tray-zone {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-}
-.dice-tray {
-  position: absolute;
-  left: 50%; bottom: -3px;
-  transform: translateX(-50%);
-  width: clamp(176px, 64vw, 288px);
-  height: clamp(38px, 12vw, 56px);
-  border-radius: 50%;
-  background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0.4), rgba(0,0,0,0) 72%);
-  pointer-events: none;
-}
-/* ===== 3Dダイス（本物の6面立方体・preserve-3d）===== */
-.dice-stage {
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  gap: clamp(9px, 3.4vw, 19px);  /* 近接クラスタ（重ならず自然な間隔） */
-  perspective: 430px;            /* 強めの遠近＝立方体らしい手前の張り出し */
-  perspective-origin: 50% 38%;   /* やや上から見下ろす角度 */
-  position: relative;
-  z-index: 1;                    /* トレイ(窪み)より前面 */
-}
-.dice-slot {
-  --cube: clamp(56px, 16.5vw, 78px);
-  --h: calc(var(--cube) / 2);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.dice-cube-wrap {
-  position: relative;
-  width: var(--cube);
-  height: var(--cube);
-  transform-style: preserve-3d;
-}
-.dice-cube {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-  transform: rotateX(-24deg) rotateY(28deg);  /* 静止時の見栄え（JSが上書き・3面が見える等角寄り） */
-  will-change: transform;
-}
-.dice-slot.rolling .dice-cube { filter: blur(0.5px); }       /* 回転中はややぼかす */
-.dice-slot.settled .dice-cube { filter: none; }              /* 着地で輪郭シャープ */
-.dice-slot.settled .dice-cube-wrap { animation: cubeLand 0.34s cubic-bezier(0.2,1.4,0.4,1); }
-/* 着地リング（赤/黄は自色、イベントは結果色） */
-.dice-slot.settled .dice-cube-wrap::after {
-  content: '';
-  position: absolute;
-  inset: -7px;
-  border-radius: 16px;
-  border: 3px solid var(--ring, #ffd76a);
-  opacity: 0;
-  pointer-events: none;
-  animation: diceRing 0.62s ease-out;
-}
-/* ④ イベント着地のクライマックス: リングを結果色で強発光＋スケールpop(eventLand) */
-.dice-slot.slot-event.settled .dice-cube-wrap::after {
-  border-width: 4px; inset: -9px;
-  box-shadow: 0 0 22px 3px var(--ring), inset 0 0 9px var(--ring);
-}
-.dice-slot.slot-event.settled .dice-cube-wrap { animation: eventLand 0.46s cubic-bezier(0.2,1.5,0.4,1); }
-.cube-face {
-  position: absolute;
-  inset: 0;
-  width: var(--cube);
-  height: var(--cube);
-  box-sizing: border-box;
-  backface-visibility: hidden;
-  border-radius: 8px;
-}
-/* 各面に共通のベベル＋光沢オーバーレイ。静止していても「塊（ソリッド）」に見せる。 */
-.cube-face::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(155deg,
-    rgba(255,255,255,0.30) 0%,
-    rgba(255,255,255,0.07) 34%,
-    rgba(0,0,0,0.05) 60%,
-    rgba(0,0,0,0.32) 100%);
-  /* エッジの陰影＋上辺のハイライトで“固い立方体”の面取り感（エッジオンでも薄く見えない） */
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.24), inset 0 1.5px 0 rgba(255,255,255,0.38), inset 0 -1.5px 2px rgba(0,0,0,0.25);
-}
-.dice-cube .face-front  { transform: translateZ(var(--h)); }
-.dice-cube .face-back   { transform: rotateY(180deg) translateZ(var(--h)); }
-.dice-cube .face-right  { transform: rotateY(90deg)  translateZ(var(--h)); }
-.dice-cube .face-left   { transform: rotateY(-90deg) translateZ(var(--h)); }
-.dice-cube .face-top    { transform: rotateX(90deg)  translateZ(var(--h)); }
-.dice-cube .face-bottom { transform: rotateX(-90deg) translateZ(var(--h)); }
-
-/* 生産ダイス: 象牙/骨色マテリアル。赤/黄はピップ色＋縁で識別。 */
-.pip-face {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 2px;
-  padding: 11%;
-  background: linear-gradient(150deg, #fffaf0, #ece0cc);
-  box-shadow: inset 0 0 9px rgba(120,90,50,0.16);
-}
-.prod-cube.red .pip-face    { border: 1px solid rgba(170,60,40,0.4); }
-.prod-cube.yellow .pip-face { border: 1px solid rgba(180,130,30,0.4); }
-.pip-cell { display: flex; align-items: center; justify-content: center; }
-.pip-cell.on::after {
-  content: '';
-  width: 72%;
-  height: 72%;
-  border-radius: 50%;
-  /* 浅い凹み（ドリル痕）: 上に濃い影＋下にわずかなハイライト */
-  box-shadow: inset 0 2px 3px rgba(0,0,0,0.6), inset 0 -1px 1px rgba(255,255,255,0.28);
-}
-.prod-cube.red    .pip-cell.on::after { background: radial-gradient(circle at 35% 30%, #e2604f, #9c1d12); }
-.prod-cube.yellow .pip-cell.on::after { background: radial-gradient(circle at 35% 30%, #e0a32a, #966408); }
-
-/* イベントダイス: 濃い石/木マテリアル。船×3＋色ゲート×3。 */
-.event-cube .cube-face {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(150deg, #3c4753, #232b34);
-  border: 1px solid rgba(0,0,0,0.5);
-  /* 彫り込みの陰影＋上辺の軽いスペキュラ（濃い石でも面が立つ） */
-  box-shadow: inset 0 0 12px rgba(0,0,0,0.55), inset 0 2px 3px rgba(255,255,255,0.1);
-}
-.event-cube .ef-ship-img { width: 80%; height: 80%; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
-.event-face.ef-trade    { background: linear-gradient(150deg, #d3a838, #8a6510); }
-.event-face.ef-politics { background: linear-gradient(150deg, #3f74d8, #21356f); }
-.event-face.ef-science  { background: linear-gradient(150deg, #3fae62, #1d6b3a); }
-.ef-gate {
-  position: relative;
-  font-size: calc(var(--cube) * 0.46);
-  font-weight: 900;
-  color: #fff;
-  text-shadow: 0 2px 5px rgba(0,0,0,0.7);
-  /* ゲート(門)らしい縦長アーチの内枠 */
-  padding: 4% 16% 0;
-  border-radius: 46% 46% 12% 12% / 56% 56% 12% 12%;
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.45);
-}
-
-/* ③ 接地影（高さで大きく薄く→着地で小さく濃く。本体の持ち上げ/着地とリンク） */
-.dice-shadow {
-  width: calc(var(--cube) * 0.92);
-  height: 11px;
-  margin-top: 7px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(0,0,0,0.52), rgba(0,0,0,0) 70%);
-  transform: scale(1.5);
-  opacity: 0.45;
-  transition: transform 0.28s ease, opacity 0.28s ease, filter 0.28s ease;
-}
-.dice-slot.rolling .dice-shadow { transform: scale(1.95); opacity: 0.22; filter: blur(2.5px); }  /* 投げ上げ=大きく薄くぼかす */
-.dice-slot.settled .dice-shadow { transform: scale(0.95); opacity: 0.64; filter: blur(0.6px); }  /* 着地=小さく濃く締まる */
-/* 投げ上げの高さ（本体を少し持ち上げ→cubeLand/eventLand で着地。影とリンク） */
-.dice-slot.rolling .dice-cube-wrap { transform: translateY(-10px); }
 .dice-sum {
   display: inline-flex;
   align-items: center;
@@ -2589,19 +2433,6 @@ h1 {
 .dice-chip-ev.ev-politics { background: linear-gradient(145deg, #5b8def, #2853b8); }
 .dice-chip-ev.ev-science { background: linear-gradient(145deg, #5fc77a, #2e8b48); }
 
-/* 着地の落下＋微バウンド（持ち上げ位置 -10px から落として弾む＝高さ感） */
-@keyframes cubeLand {
-  0%   { transform: translateY(-10px); }
-  60%  { transform: translateY(2px); }
-  100% { transform: translateY(0); }
-}
-/* イベント着地クライマックス: 落下＋スケールpop（オーバーシュート） */
-@keyframes eventLand {
-  0%   { transform: translateY(-10px) scale(1); }
-  42%  { transform: translateY(3px) scale(1.16); }
-  72%  { transform: translateY(0) scale(0.97); }
-  100% { transform: translateY(0) scale(1); }
-}
 /* イベント着地の軽い画面ヒット（board-shake とは別物の短い衝撃・数px） */
 @keyframes boardHit {
   0%   { transform: translateY(0); }
@@ -2609,11 +2440,6 @@ h1 {
   100% { transform: translateY(0); }
 }
 .board-hit { animation: boardHit 0.2s ease-out; }
-/* 着地リング（出目を強調するパルス） */
-@keyframes diceRing {
-  0%   { opacity: 0.9; transform: scale(0.82); }
-  100% { opacity: 0;   transform: scale(1.28); }
-}
 /* 色ゲートの画面カラーウォッシュ */
 @keyframes colorWash {
   0%   { opacity: 0; }

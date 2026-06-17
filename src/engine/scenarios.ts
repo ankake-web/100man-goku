@@ -310,7 +310,7 @@ const seafarersGreaterCatan: Scenario = {
 // ---- 騎士と商人(Cities & Knights) ----
 const citiesKnights: Scenario = {
   id: 'cities_knights',
-  name: '騎士と商人',
+  name: '都市と騎士',
   description: '商品・都市改善・騎士・蛮族の襲来。最も奥深い拡張ルール（13点）。',
   category: 'cities_knights',
   coords: () => getAllTileCoords(),
