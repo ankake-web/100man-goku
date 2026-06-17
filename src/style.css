@@ -845,7 +845,31 @@ h1 {
   white-space: nowrap;
   overflow: hidden;
 }
-.stat-count { flex: 0 0 auto; }
+.stat-count { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; }
+/* パネルの小アイコン（コマ/騎士の素材画像）と数値。絵文字を排し素材で統一。 */
+.stat-ic {
+  width: 1.05em; height: 1.05em; object-fit: contain; vertical-align: -0.18em;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));
+}
+.stat-n { font-variant-numeric: tabular-nums; }
+.stat-glyph { display: inline-block; vertical-align: -0.1em; }
+/* 手札=カードの重なりを表すCSSアイコン（絵文字不使用） */
+.ic-cards {
+  position: relative; width: 0.8em; height: 1.04em; border-radius: 2px;
+  background: linear-gradient(150deg, #f3e6c4, #cdb47e);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.45);
+}
+.ic-cards::before {
+  content: ''; position: absolute; left: 2.5px; top: -2.5px; right: -2.5px; bottom: 2.5px;
+  border-radius: 2px; background: linear-gradient(150deg, #e7d4a6, #bda067);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4); z-index: -1;
+}
+/* 最長交易路=道のCSSアイコン（小さな色付きバー） */
+.ic-road {
+  width: 1.1em; height: 0.34em; border-radius: 2px;
+  background: linear-gradient(90deg, #d8b070, #a9743a);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.3);
+}
 .panel-vp {
   color: #ffd700;
   font-size: 0.85rem;
@@ -2787,9 +2811,10 @@ h1 {
   font-weight: 700; min-width: 0; max-width: 5em;   /* 名前は約4〜5文字で省略 */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.mini-stat { color: #ffd700; font-weight: 700; flex: 0 0 auto; }
-.mini-badges { display: inline-flex; gap: 1px; flex: 0 0 auto; }
-.mini-badge { font-size: 0.9em; }
+.mini-stat { color: #f0e4cf; font-weight: 700; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; }
+.mini-vp { color: #ffd700; }
+.mini-badges { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.mini-badge { display: inline-flex; align-items: center; }
 /* 現手番は枠を強調、自分の手番はやさしく点滅して分かりやすく */
 .mini-panel.current { border-color: #fff; box-shadow: 0 0 8px var(--mini-color, #fff), 0 1px 4px rgba(0,0,0,0.5); }
 .mini-panel.mine { animation: miniMinePulse 1.7s ease-in-out infinite; }

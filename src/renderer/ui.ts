@@ -19,7 +19,7 @@ import type { BuildMode } from './events';
 
 const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
 // 画像参照は中央マニフェスト経由（単一の真実）。
-import { ASSETS, assetImg } from '../assets/manifest';
+import { ASSETS, assetImg, houseImg, cityImg, type ColorKey } from '../assets/manifest';
 
 const knightImg = ASSETS.knight.basic;
 // 騎士と商人: 商品アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
@@ -69,6 +69,24 @@ const PLAYER_COLORS: Record<string, string> = {
   player3: '#a855f7',
   player4: '#f0a020',
 };
+// プレイヤーID→コマ画像の色キー（開拓地/都市の色つき画像用）。
+const PLAYER_COLOR_KEY: Record<string, ColorKey> = {
+  player1: 'red', player2: 'blue', player3: 'purple', player4: 'orange',
+};
+// パネルの統計チップ: 小アイコン画像（任意）＋数値。絵文字を素材/CSSアイコンに置換するための共通部品。
+function statChip(iconUrl: string | null, n: number | string, extra = '', glyphCls = ''): HTMLElement {
+  const c = el('span', `stat-count${extra ? ' ' + extra : ''}`);
+  if (iconUrl) {
+    const im = document.createElement('img');
+    im.className = 'stat-ic'; im.src = iconUrl; im.alt = ''; im.draggable = false;
+    c.appendChild(im);
+  } else if (glyphCls) {
+    c.appendChild(el('span', `stat-glyph ${glyphCls}`));
+  }
+  const t = el('span', 'stat-n'); t.textContent = String(n);
+  c.appendChild(t);
+  return c;
+}
 
 // この幅以上でプレイヤーパネルを盤面の四隅に配置する（未満は盤面下に縦並び）
 const CORNER_LAYOUT_MIN_WIDTH = 1200;
@@ -1807,15 +1825,19 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     name.textContent = clipByWidth(p.name, 8);   // 全角4文字相当で単純切り捨て（省略記号なし）
     row1.append(dot, name);
 
-    // 2行目: ★点数 🃏手札枚数（公開情報のみ）＋ 称号アイコン
+    // 2行目: ★点数 手札枚数（カードアイコン）＋ 称号アイコン（道=CSS / 騎士=画像）
     const row2 = el('div', 'mini-row2');
     const stat = el('span', 'mini-stat');
-    stat.textContent = `★${vp} 🃏${handTotal}`;
+    stat.append(
+      Object.assign(el('span', 'mini-vp'), { textContent: `★${vp}` }),
+      el('span', 'stat-glyph ic-cards'),
+      Object.assign(el('span'), { textContent: String(handTotal) }),
+    );
     row2.appendChild(stat);
     if (p.hasLongestRoad || p.hasLargestArmy) {
       const badges = el('span', 'mini-badges');
-      if (p.hasLongestRoad) { const bdg = el('span', 'mini-badge'); bdg.textContent = '🛤'; badges.appendChild(bdg); }
-      if (p.hasLargestArmy) { const bdg = el('span', 'mini-badge'); bdg.textContent = '⚔'; badges.appendChild(bdg); }
+      if (p.hasLongestRoad) { const bdg = el('span', 'mini-badge'); bdg.appendChild(el('span', 'stat-glyph ic-road')); badges.appendChild(bdg); }
+      if (p.hasLargestArmy) { const bdg = el('span', 'mini-badge'); const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false; bdg.appendChild(kn); badges.appendChild(bdg); }
       row2.appendChild(badges);
     }
 
@@ -1887,13 +1909,13 @@ function buildPlayerPanel(
   const rankEl = el('span', `rank-badge${rank === 1 ? ' rank-1' : ''}`);
   rankEl.textContent = rankLabel;
   statRow.appendChild(rankEl);
-  // 開拓地数・都市数・手札枚数をまとめて表示（手札は枚数のみ＝公開情報）。
+  // 開拓地数・都市数・手札枚数（コマは色つき画像・手札はカードCSSアイコン＝絵文字を排除）。
+  const ckey = PLAYER_COLOR_KEY[pId] ?? 'red';
   const counts = el('span', 'stat-counts');
-  for (const [icon, n] of [['🏠', bd.settlements], ['🏙', bd.cities], ['🃏', handTotal]] as [string, number][]) {
-    const c = el('span', 'stat-count');
-    c.textContent = `${icon}${n}`;
-    counts.appendChild(c);
-  }
+  const sChip = statChip(houseImg(ckey), bd.settlements); sChip.title = '開拓地';
+  const cChip = statChip(cityImg(ckey), bd.cities); cChip.title = '都市';
+  const hChip = statChip(null, handTotal, 'stat-hand', 'ic-cards'); hChip.title = '手札（枚数）';
+  counts.append(sChip, cChip, hChip);
   statRow.appendChild(counts);
   h3.appendChild(statRow);
   div.appendChild(h3);
@@ -1911,12 +1933,13 @@ function buildPlayerPanel(
     }
     if (bd.lr) {
       const item = el('span', 'vp-item bonus');
-      item.textContent = '🛤最長+2';
+      item.append(el('span', 'stat-glyph ic-road'), Object.assign(el('span'), { textContent: '最長+2' }));
       vpRow.appendChild(item);
     }
     if (bd.la) {
       const item = el('span', 'vp-item bonus');
-      item.textContent = '⚔最大+2';
+      const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false;
+      item.append(kn, Object.assign(el('span'), { textContent: '最大+2' }));
       vpRow.appendChild(item);
     }
     if (showVpCards) {
@@ -1932,13 +1955,13 @@ function buildPlayerPanel(
   const meta = el('div', 'panel-meta');
   const lrLen = player.longestRoadLength; // エンジン維持のキャッシュ（calcLongestRoad の再計算は不要）
   const lrItem = el('span', `panel-meta-item${player.hasLongestRoad ? ' held' : ''}`);
-  lrItem.textContent = `🛤${lrLen}`;
+  lrItem.append(el('span', 'stat-glyph ic-road'), Object.assign(el('span'), { textContent: String(lrLen) }));
   lrItem.title = player.hasLongestRoad
     ? `最長交易路 保持中（${lrLen}本）`
     : `最長道路 ${lrLen}本（獲得は${LONGEST_ROAD_MIN}本以上）`;
   meta.appendChild(lrItem);
   const knItem = el('span', `panel-meta-item${player.hasLargestArmy ? ' held' : ''}`);
-  knItem.textContent = `⚔${player.knightsPlayed}`;
+  { const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false; knItem.append(kn, Object.assign(el('span'), { textContent: String(player.knightsPlayed) })); }
   knItem.title = player.hasLargestArmy
     ? `最大騎士力 保持中（騎士${player.knightsPlayed}回）`
     : `騎士使用 ${player.knightsPlayed}回（獲得は${LARGEST_ARMY_MIN}回以上）`;
