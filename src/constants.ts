@@ -118,11 +118,11 @@ export const PROGRESS_DECK_COUNTS: Record<ProgressCardType, number> = {
 };
 export const PROGRESS_CARD_NAME: Record<ProgressCardType, string> = {
   smith: '鍛冶屋', engineer: '技師', irrigation: '灌漑', mining: '採掘',
-  alchemist: '錬金術師', crane: 'クレーン', inventor: '発明家', medicine: '医術', printer: '印刷', road_building_progress: '道路建設',
-  resource_monopoly: '資源独占', trade_monopoly: '商品独占', master_merchant: '大商人',
+  alchemist: '錬金術師', crane: 'クレーン', inventor: '発明家', medicine: '医術', printer: '印刷機', road_building_progress: '街道建設',
+  resource_monopoly: '資源独占', trade_monopoly: '交易独占', master_merchant: '大商人',
   commercial_harbor: '商業港', merchant: '商人', merchant_fleet: '商船隊',
-  warlord: '将軍', saboteur: '破壊工作', wedding: '婚礼',
-  bishop: '僧正', constitution: '立憲', deserter: '脱走兵', diplomat: '外交官', intrigue: '陰謀', spy: 'スパイ',
+  warlord: '将軍', saboteur: '破壊工作員', wedding: '婚礼',
+  bishop: '僧正', constitution: '憲法', deserter: '脱走兵', diplomat: '外交官', intrigue: '陰謀', spy: 'スパイ',
 };
 export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   smith: '騎士を最大2体まで無料で1段昇格',

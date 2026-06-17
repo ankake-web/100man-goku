@@ -1850,6 +1850,15 @@ h1 {
 .action-btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-icon-img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
 .btn-icon-label { min-width: 0; }
+/* 進歩カードの系統色分け（政治=青/科学=緑/商業=黄）。手札ボタンは左帯、図鑑は枠色。 */
+.pc-card { border-left: 5px solid var(--pc-color, #888) !important; }
+.pc-card.pc-deck-politics { --pc-color: #4d82e6; }
+.pc-card.pc-deck-science  { --pc-color: #3fae62; }
+.pc-card.pc-deck-trade    { --pc-color: #e0b020; }
+.gallery-card-cell { border-radius: 10px; }
+.gallery-card-cell.pc-deck-politics { box-shadow: 0 0 0 2px #4d82e6 inset, 0 4px 12px rgba(0,0,0,0.4); }
+.gallery-card-cell.pc-deck-science  { box-shadow: 0 0 0 2px #3fae62 inset, 0 4px 12px rgba(0,0,0,0.4); }
+.gallery-card-cell.pc-deck-trade    { box-shadow: 0 0 0 2px #e0b020 inset, 0 4px 12px rgba(0,0,0,0.4); }
 /* 名前＋コスト素材アイコンを縦に積んだボタンラベル（何の素材で作れるか常時表示） */
 .btn-stacked { display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1.15; min-width: 0; }
 .btn-name { font-weight: 700; white-space: nowrap; }

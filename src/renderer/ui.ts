@@ -69,7 +69,7 @@ function logEmojiMap(): Record<string, string | (() => HTMLElement)> {
     '🦹': ASSETS.piece.robber ?? '', '🏴‍☠️': ASSETS.piece.pirate ?? '',
     '⛵': ASSETS.piece.barbarianShip ?? '', '🛶': ASSETS.piece.barbarianShip ?? '',
     '💱': ASSETS.commodity.coin, '⚔': ASSETS.knight.basic, '🛡': ASSETS.knight.basic,
-    '🛤': () => glyph('ic-road'), '🃏': () => glyph('ic-cards'),
+    '🛤': ASSETS.action.road, '🃏': () => glyph('ic-cards'),
   };
   return _logEmojiMap;
 }
@@ -480,7 +480,7 @@ function buildBankTradeUI(
   const bankOf = (k: TradeKind): number => isCommodity(k) ? (state.commodityBank ?? { coin: 0, cloth: 0, paper: 0 })[k] : state.bank[k as ResourceType];
 
   const header = el('div', 'modal-header');
-  header.append(inlineIc(ASSETS.commodity.coin, 'inline-ic'), document.createTextNode(' バンク交易'));
+  header.append(inlineIc(ASSETS.action.bankTrade, 'inline-ic'), document.createTextNode(' バンク交易'));
   div.appendChild(header);
 
   const kindIcon = (k: TradeKind): string => isCommodity(k) ? COMMODITY_IMG[k] : RESOURCE_IMG[k as ResourceType];
@@ -1324,8 +1324,8 @@ export function showAssetGallery(): void {
     const s = el('div', 'gallery-section-title'); s.textContent = titleTxt; body.appendChild(s);
     const grid = el('div', 'gallery-grid gallery-grid-cards'); body.appendChild(grid); return grid;
   };
-  const cardItem = (grid: HTMLElement, src: string | null, name: string, desc: string): void => {
-    const cell = el('div', 'gallery-cell gallery-card-cell');
+  const cardItem = (grid: HTMLElement, src: string | null, name: string, desc: string, deck?: CkTrack): void => {
+    const cell = el('div', `gallery-cell gallery-card-cell${deck ? ' pc-deck-' + deck : ''}`);
     const fr = el('div', 'gallery-card-frame');
     fr.appendChild(assetImg(src, 'gallery-card-art', name, name));
     const fb = document.createElement('img');
@@ -1374,7 +1374,7 @@ export function showAssetGallery(): void {
     const cg = cardSection(`📜 進歩カード（${label}デッキ）`);
     for (const type of PROGRESS_DECK_CARDS[deck]) {
       const art = ASSETS.progressCard[type] ?? ASSETS.cardBack[deck];
-      cardItem(cg, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type]);
+      cardItem(cg, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type], deck);
     }
   }
 
@@ -1464,6 +1464,8 @@ function appendCkBuildSection(
       // 使えないカードも閲覧可能（disabled=false）。実際の使用可否はモーダルの「使う」で制御。
       const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', false,
         () => showProgressCardInfo(c, can, dispatch));
+      // 系統が一目で分かるよう色分け（政治=青/科学=緑/商業=黄）。
+      btn.classList.add('pc-card', `pc-deck-${c.deck}`);
       btn.title = PROGRESS_CARD_DESC[c.type];
       pcRow.appendChild(btn);
     }
@@ -1586,7 +1588,7 @@ function buildActionButtons(
 
   // 建設ボタンは絵文字でなくコマ画像/CSSアイコンで（道=CSSバー・開拓地/都市=色つきコマ画像）。
   const ckey = PLAYER_COLOR_KEY[pid] ?? 'red';
-  div.appendChild(modeImgBtn(glyph('ic-road'), [costLabel('道', resCostParts(BUILD_COSTS.road))], 'road', canRoad, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(ASSETS.action.road, [costLabel('道', resCostParts(BUILD_COSTS.road))], 'road', canRoad, buildMode, setBuildMode));
   if (hasSea) {
     div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
     // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
@@ -1607,12 +1609,12 @@ function buildActionButtons(
   // 騎士と商人: 都市改善・騎士・城壁。
   if (isCk(state)) appendCkBuildSection(div, state, pid, dispatch, buildMode, setBuildMode);
 
-  div.appendChild(makeImgBtn(ASSETS.commodity.coin, 'バンク交易', 'btn-build', false,
+  div.appendChild(makeImgBtn(ASSETS.action.bankTrade, 'バンク交易', 'btn-build', false,
     () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
 
   // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
   if (state.playerOrder.length > 1) {
-    div.appendChild(makeBtn('🤝 プレイヤー間交易', 'btn-build', false,
+    div.appendChild(makeImgBtn(ASSETS.action.playerTrade, 'プレイヤー間交易', 'btn-build', false,
       () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
   }
 
