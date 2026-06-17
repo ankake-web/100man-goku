@@ -1850,6 +1850,12 @@ h1 {
 .action-btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-icon-img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
 .btn-icon-label { min-width: 0; }
+/* 名前＋コスト素材アイコンを縦に積んだボタンラベル（何の素材で作れるか常時表示） */
+.btn-stacked { display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1.15; min-width: 0; }
+.btn-name { font-weight: 700; white-space: nowrap; }
+.btn-cost { display: inline-flex; align-items: center; gap: 1px; flex-wrap: wrap; justify-content: center; opacity: 0.95; }
+.cost-ic { width: 1.05em; height: 1.05em; object-fit: contain; vertical-align: -0.15em; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+.cost-n { font-size: 0.72rem; font-weight: 800; margin-right: 2px; }
 .ck-comm-coin  { background: rgba(255,205,70,0.22); }
 .ck-comm-cloth { background: rgba(110,200,240,0.2); }
 .ck-comm-paper { background: rgba(220,220,220,0.2); }

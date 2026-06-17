@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, ResourceType, Player, ResourceHand } from '../types';
-import { RESOURCE_TYPES, BUILD_COSTS, VP_TABLE } from '../constants';
+import { RESOURCE_TYPES, BUILD_COSTS, CK_COSTS, VP_TABLE } from '../constants';
 import { calcVP, calcPublicVP, victoryTarget } from '../engine/scoring';
 import { LONGEST_ROAD_MIN, LARGEST_ARMY_MIN } from '../constants';
 import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
@@ -98,11 +98,31 @@ function renderLogMessage(parent: HTMLElement, message: string): void {
   flush();
 }
 // modeBtn のアイコン版（道/開拓地/都市などの建設トグル）。
-function modeImgBtn(icon: string | HTMLElement, label: string, mode: Exclude<BuildMode, 'idle'>, canAfford: boolean, current: BuildMode, setBuildMode: (m: BuildMode) => void): HTMLButtonElement {
+function modeImgBtn(icon: string | HTMLElement, label: string | (string | HTMLElement)[], mode: Exclude<BuildMode, 'idle'>, canAfford: boolean, current: BuildMode, setBuildMode: (m: BuildMode) => void): HTMLButtonElement {
   const isActive = current === mode;
   const disabled = !canAfford && !isActive;
   const cls = isActive ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled';
   return makeImgBtn(icon, label, cls, disabled, () => setBuildMode(isActive ? 'idle' : mode));
+}
+
+// 建設コストの素材アイコン列。各ボタンに「何の素材で作れるか」を常時表示して覚えなくて済むように。
+function costIcons(parts: Array<[string, number]>): HTMLElement {
+  const row = el('span', 'btn-cost');
+  for (const [img, n] of parts) {
+    if (n <= 0) continue;
+    row.append(inlineIc(img, 'cost-ic'));
+    if (n > 1) row.append(Object.assign(el('span', 'cost-n'), { textContent: `×${n}` }));
+  }
+  return row;
+}
+function resCostParts(cost: Partial<ResourceHand>): Array<[string, number]> {
+  return RESOURCE_TYPES.filter(r => (cost[r] ?? 0) > 0).map(r => [RESOURCE_IMG[r], cost[r]!] as [string, number]);
+}
+// 名前（1行目）＋コストアイコン（2行目）を縦に積んだボタンラベル。
+function costLabel(name: string, parts: Array<[string, number]>): HTMLElement {
+  const wrap = el('span', 'btn-stacked');
+  wrap.append(Object.assign(el('span', 'btn-name'), { textContent: name }), costIcons(parts));
+  return wrap;
 }
 
 // ============================================================
@@ -1408,13 +1428,13 @@ function appendCkBuildSection(
   const knightRow = el('div', 'ck-knight-row');
   const firstV = (pred: (vid: string) => boolean): string | undefined => Object.keys(state.vertices).find(pred);
   const buildVid = firstV(v => canBuildKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(knightImg, '騎士を建てる', buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
+  knightRow.appendChild(makeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
     () => buildVid && dispatch({ type: 'BUILD_KNIGHT', vertexId: buildVid })));
   const actVid = firstV(v => canActivateKnight(state, pid, v));
-  knightRow.appendChild(makeBtn('⚡ 騎士を起動', actVid ? 'btn-build' : 'btn-disabled', !actVid,
+  knightRow.appendChild(makeImgBtn(RESOURCE_IMG.grain, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], actVid ? 'btn-build' : 'btn-disabled', !actVid,
     () => actVid && dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: actVid })));
   const upVid = firstV(v => canUpgradeKnight(state, pid, v));
-  knightRow.appendChild(makeBtn('⬆ 騎士を昇格', upVid ? 'btn-build' : 'btn-disabled', !upVid,
+  knightRow.appendChild(makeImgBtn(knightImg, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], upVid ? 'btn-build' : 'btn-disabled', !upVid,
     () => upVid && dispatch({ type: 'UPGRADE_KNIGHT', vertexId: upVid })));
   // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
@@ -1425,7 +1445,7 @@ function appendCkBuildSection(
     knightRow.appendChild(modeBtn('🦹 強盗を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
   }
   const wallVid = firstV(v => canBuildCityWall(state, pid, v));
-  knightRow.appendChild(makeBtn('🧱 城壁', wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
+  knightRow.appendChild(makeImgBtn(ASSETS.piece.cityWall ?? RESOURCE_IMG.brick, [costLabel('城壁', resCostParts(CK_COSTS.cityWall))], wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
     () => wallVid && dispatch({ type: 'BUILD_CITY_WALL', vertexId: wallVid })));
   sec.appendChild(knightRow);
 
@@ -1566,7 +1586,7 @@ function buildActionButtons(
 
   // 建設ボタンは絵文字でなくコマ画像/CSSアイコンで（道=CSSバー・開拓地/都市=色つきコマ画像）。
   const ckey = PLAYER_COLOR_KEY[pid] ?? 'red';
-  div.appendChild(modeImgBtn(glyph('ic-road'), '道', 'road', canRoad, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(glyph('ic-road'), [costLabel('道', resCostParts(BUILD_COSTS.road))], 'road', canRoad, buildMode, setBuildMode));
   if (hasSea) {
     div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
     // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
@@ -1576,11 +1596,11 @@ function buildActionButtons(
     // 船ルールはいつでも見られるよう常時ヘルプを置く（作れても動かせない等の疑問対策）。
     div.appendChild(makeBtn('⛵ 船のルール', 'btn-ship-help', false, () => showShipRulesHelp(state, pid)));
   }
-  div.appendChild(modeImgBtn(houseImg(ckey), '開拓地', 'settlement', canSettl, buildMode, setBuildMode));
-  div.appendChild(modeImgBtn(cityImg(ckey), '都市', 'city', canCity, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(houseImg(ckey), [costLabel('開拓地', resCostParts(BUILD_COSTS.settlement))], 'settlement', canSettl, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(cityImg(ckey), [costLabel('都市', resCostParts(BUILD_COSTS.city))], 'city', canCity, buildMode, setBuildMode));
   // 発展カードは騎士と商人では使わない（進歩カードに置換）。基本/航海者のみ表示。
   if (!isCk(state)) {
-    div.appendChild(makeImgBtn(glyph('ic-cards'), '発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
+    div.appendChild(makeImgBtn(glyph('ic-cards'), [costLabel('発展カード', resCostParts(BUILD_COSTS.dev_card))], canDev ? 'btn-build' : 'btn-disabled', !canDev,
       () => dispatch({ type: 'BUY_DEV_CARD' })));
   }
 
