@@ -25,6 +25,7 @@ import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
 import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk } from './engine/citiesKnights';
 import type { CkTrack } from './types';
+import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
 import { renderUI, syncBoardDrawWidth, showAssetGallery } from './renderer/ui';
@@ -503,7 +504,7 @@ function buildRulePanel(): HTMLDetailsElement {
     '7のとき、陸タイルをタップ＝盗賊、海タイルをタップ＝海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
     '海岸の港（3:1 / 2:1）も使える。航海者の盤面は 13点で勝ち。',
   ]));
-  body.appendChild(ruleSection('⚔ 騎士と商人（上級者向け・13点で勝ち）', [
+  body.appendChild(ruleSection('⚔ 都市と騎士（上級者向け・13点で勝ち）', [
     '基本ルールに「商品・都市の発展・騎士・蛮族の襲来」が加わる拡張。',
     '商品：都市が建つ地形のうち 森＝紙・牧草＝布・山＝金貨 を1個ずつ追加で産む（資源とは別の手札）。',
     '都市の発展（交易・政治・科学の3系統）：商品を払ってレベルアップ。Lv3で特典、Lv4で都市が「メトロポリス」になり +4点。',
@@ -743,6 +744,9 @@ function cpuOfferSignature(cpuPid: string, offer: TradeOffer): string {
  */
 function redraw(skipBoard = false): void {
   if (!state) return;
+
+  // ゲーム進行中は three(WebGL ダイス) を裏で先読み（初回ロールまでに用意。多重ロードは内部ガード）。
+  if (state.phase === 'MAIN') preloadDiceGL();
 
   // DISCARD フェーズの uiPhase 自動同期。
   // LAN ではマスク済み state のため discardPid は「自分（8枚以上の場合）」に
@@ -2102,114 +2106,6 @@ function showTurnToast(pid: string, isMe: boolean): void {
   setTimeout(() => toast.remove(), 1700);
 }
 
-// ダイスのロール演出（擬似3D）。盤面中央で2つのサイコロが転がり、最初は速く→徐々に
-// 減速→最後に確定。出目はピップ（点）で描画する。完了後に onDone を呼ぶ。
-// 演出時間は速度設定に応じて調整（最速は0=スキップ）。ゲーム結果には一切影響しない。
-
-// 各目のピップ配置（3x3 グリッドのインデックス 0..8）
-const DICE_PIPS: Record<number, number[]> = {
-  1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
-};
-// 立方体の6面（向かい合う面の和=7）。面は固定割当なので、目のすり替え（スロット表現）は起きない。
-type CubeFaceKey = 'front' | 'back' | 'right' | 'left' | 'top' | 'bottom';
-const CUBE_FACE_KEYS: CubeFaceKey[] = ['front', 'back', 'right', 'left', 'top', 'bottom'];
-// 生産ダイス: 面→目（front=1,back=6,right=3,left=4,top=5,bottom=2）。
-const PROD_FACE_VALUE: Record<CubeFaceKey, number> = {
-  front: 1, back: 6, right: 3, left: 4, top: 5, bottom: 2,
-};
-// 目→「その面を正面に出す」最終回転 [rotX, rotY]（度）。単軸のみ＝満回転を足しても着地面が厳密。
-const PROD_SHOW_ROT: Record<number, [number, number]> = {
-  1: [0, 0], 2: [90, 0], 3: [0, -90], 4: [0, 90], 5: [-90, 0], 6: [0, 180],
-};
-// イベントダイス: 船×3面＋色ゲート×3面（青=政治/緑=科学/黄=商業）。
-const EVENT_FACE_RESULT: Record<CubeFaceKey, 'ship' | CkTrack> = {
-  front: 'ship', back: 'ship', right: 'ship', left: 'trade', top: 'politics', bottom: 'science',
-};
-// 結果→その面を正面に出す最終回転。
-const EVENT_SHOW_ROT: Record<'ship' | CkTrack, [number, number]> = {
-  ship: [0, 0], trade: [0, 90], politics: [-90, 0], science: [90, 0],
-};
-
-/** 生産ダイスの1面（3x3 ピップ）。 */
-function buildPipFace(value: number): HTMLElement {
-  const f = document.createElement('div');
-  f.className = 'cube-face pip-face';
-  const on = DICE_PIPS[value] ?? [];
-  for (let i = 0; i < 9; i++) {
-    const cell = document.createElement('span');
-    cell.className = on.includes(i) ? 'pip-cell on' : 'pip-cell';
-    f.appendChild(cell);
-  }
-  return f;
-}
-/** 生産ダイスの立方体（赤/黄・象牙色）。6面に目を固定配置。 */
-function buildProdCube(color: 'red' | 'yellow'): HTMLElement {
-  const cube = document.createElement('div');
-  cube.className = `dice-cube prod-cube ${color}`;
-  for (const key of CUBE_FACE_KEYS) {
-    const face = buildPipFace(PROD_FACE_VALUE[key]);
-    face.classList.add(`face-${key}`);
-    cube.appendChild(face);
-  }
-  return cube;
-}
-/** イベントダイスの1面（船アート or 色ゲート記号）。 */
-function buildEventFace(result: 'ship' | CkTrack): HTMLElement {
-  const f = document.createElement('div');
-  f.className = `cube-face event-face ef-${result}`;
-  if (result === 'ship') {
-    if (ASSETS.piece.barbarianShip) {
-      const img = document.createElement('img');
-      img.className = 'ef-ship-img'; img.src = ASSETS.piece.barbarianShip; img.alt = '蛮族船'; img.draggable = false;
-      f.appendChild(img);
-    } else {
-      f.textContent = '🛶';
-    }
-  } else {
-    const gate = document.createElement('span');
-    gate.className = 'ef-gate';
-    gate.textContent = result === 'trade' ? '商' : result === 'politics' ? '政' : '科';
-    f.appendChild(gate);
-  }
-  return f;
-}
-/** イベントダイスの立方体（濃い石/木）。船×3＋色ゲート×3。 */
-function buildEventCube(): HTMLElement {
-  const cube = document.createElement('div');
-  cube.className = 'dice-cube event-cube';
-  for (const key of CUBE_FACE_KEYS) {
-    const face = buildEventFace(EVENT_FACE_RESULT[key]);
-    face.classList.add(`face-${key}`);
-    cube.appendChild(face);
-  }
-  return cube;
-}
-// 静止時の傾き。目的面を支配的に保ったまま、上面＋側面も見える等角寄りの姿勢にして
-// 「平面ではなく立方体が止まっている」ように見せる。45°未満＝目的面が支配的で誤読なし
-// （行列検証済み: この傾きでも全6面＋イベント4結果で支配面=出目が一致）。
-const REST_TILT: [number, number] = [-24, 28];
-/** show回転に静止傾きを足した着地姿勢。 */
-function restPose(show: [number, number]): [number, number] {
-  return [show[0] + REST_TILT[0], show[1] + REST_TILT[1]];
-}
-/** 回転なしで目的の面を正面に固定（reduced-motion / instant 用）。 */
-// zJit = 視軸(Z)回りの微小回転。最外(rotateZ を先頭)に置くため支配面=出目は不変（自然な散らし用）。
-function setCubeStatic(cube: HTMLElement, show: [number, number], zJit = 0): void {
-  const [fx, fy] = restPose(show);
-  cube.style.transition = 'none';
-  cube.style.transform = `rotateZ(${zJit}deg) rotateX(${fx}deg) rotateY(${fy}deg)`;
-}
-/** 着地姿勢へ転がす。開始は数回転ぶん戻した位置＝角度のついたタンブル→目的面へスナップ。 */
-function spinCube(cube: HTMLElement, show: [number, number], spinsX: number, spinsY: number, durMs: number, zJit = 0): void {
-  const [fx, fy] = restPose(show);
-  const startX = fx + 360 * spinsX;   // 満回転は恒等変換＝着地面は厳密に一致
-  const startY = fy + 360 * spinsY;
-  cube.style.transition = 'none';
-  cube.style.transform = `rotateZ(${zJit}deg) rotateX(${startX}deg) rotateY(${startY}deg)`;
-  void cube.offsetWidth;              // reflow を挟んで適用順を確定
-  cube.style.transition = `transform ${durMs}ms cubic-bezier(0.16, 0.74, 0.18, 1.04)`;
-  cube.style.transform = `rotateZ(${zJit}deg) rotateX(${fx}deg) rotateY(${fy}deg)`;
-}
 // 騎士と商人: ロール時に見せるイベントダイス情報（生産2ダイス＝赤+黄／イベントダイス／抽選・蛮族）。
 interface DiceEventInfo {
   eventDie: 'ship' | CkTrack;
@@ -2343,6 +2239,20 @@ function applyEventFlourish(info: DiceEventInfo): void {
   }
 }
 
+// three(WebGL) は重いので動的 import で遅延ロード（初期バンドルを軽く保つ＝レンダーオンデマンドの精神）。
+// ゲーム開始時(preloadDiceGL)に裏で読み込み、初回ロールまでに用意できる。未ロード/非対応時は null。
+let _diceGLMod: typeof import('./renderer/diceGL') | null = null;
+let _diceGLLoading = false;
+function preloadDiceGL(): void {
+  if (_diceGLMod || _diceGLLoading) return;
+  _diceGLLoading = true;
+  import('./renderer/diceGL').then(m => { _diceGLMod = m; }).catch(e => { _diceGLLoading = false; console.warn('DiceGL load failed', e); });
+}
+function getDiceGL(): DiceGLController | null {
+  if (!_diceGLMod) { preloadDiceGL(); return null; } // 未ロードなら今ロード開始し、今回はフォールバック表示
+  return _diceGLMod.ensureDiceGL();
+}
+
 /** ロール中だけ盤面を沈めるオーバーレイ（背後の盤を blur+減彩+減光、ダイスへスポット）。z50のダイスは前面のまま。 */
 function showBoardDim(reduced: boolean): HTMLElement {
   const host = document.getElementById('board-area') ?? document.body;
@@ -2369,9 +2279,9 @@ function boardHit(): void {
   setTimeout(() => board.classList.remove('board-hit'), 220);
 }
 
-// 3Dダイス演出: 赤=生産d1／黄=生産d2／イベント(CK)を本物の立方体として転がし、
-// 決定済みの出目の面を正面で静止させる。着地は時間差（赤→黄→イベント）。
-// eventInfo が null なら生産2個のみ。出目の再抽選は一切しない（値を見せるだけ）。
+// 3Dダイス演出（Three.js/WebGL）: 赤=生産d1／黄=生産d2／イベント(CK)を実写級の立方体として
+// 転がし、diceGLMapping の目標姿勢へ着地させる（出目は外部値・物理で決めない）。着地は時間差
+// （赤→黄→イベント）。既存の演出（盤dim・生産合計ポップ・抽選照合・蛮族前進/wash・board hit）へ繋ぐ。
 function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, onDone: () => void): void {
   if (d1 < 1 || d2 < 1) { onDone(); return; }
   const reduced = prefersReducedMotion();
@@ -2381,96 +2291,68 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   const dim = showBoardDim(reduced);                 // ① ロール中だけ盤を沈める
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
-  // ② 下中央の定位置クラスタ。トレイ(淡い窪み)の上に3個を近接配置。
-  const trayZone = document.createElement('div'); trayZone.className = 'dice-tray-zone';
-  const tray = document.createElement('div'); tray.className = 'dice-tray';
-  const stage = document.createElement('div'); stage.className = 'dice-stage';
-
-  // 1スロット = 立方体 + 接地影。slot に出目リング色(--ring)を持たせる。
-  interface Slot { slot: HTMLElement; cube: HTMLElement; }
-  const mkSlot = (cube: HTMLElement, extra: string, ring: string): Slot => {
-    const slot = document.createElement('div'); slot.className = `dice-slot ${extra}`;
-    slot.style.setProperty('--ring', ring);
-    const wrap = document.createElement('div'); wrap.className = 'dice-cube-wrap';
-    wrap.appendChild(cube);
-    const shadow = document.createElement('div'); shadow.className = 'dice-shadow';
-    slot.append(wrap, shadow);
-    return { slot, cube };
-  };
-
-  const red = mkSlot(buildProdCube('red'), 'slot-red', '#ff6a5a');
-  const yellow = mkSlot(buildProdCube('yellow'), 'slot-yellow', '#ffce4a');
-  stage.append(red.slot, yellow.slot);
-  let eventSlot: Slot | null = null;
-  if (eventInfo) {
-    const ring = eventInfo.eventDie === 'ship' ? '#8fa6bb'
-      : eventInfo.eventDie === 'politics' ? '#5b8def'
-      : eventInfo.eventDie === 'science' ? '#5fc77a' : '#ffd24d';
-    eventSlot = mkSlot(buildEventCube(), 'slot-event', ring);
-    stage.append(eventSlot.slot);
-  }
-  trayZone.append(tray, stage);
   const sum = document.createElement('div'); sum.className = 'dice-sum';
-  overlay.append(sum, trayZone);                     // 合計は上・トレイは下
+  const glWrap = document.createElement('div'); glWrap.className = 'dice-gl-wrap';
+  overlay.append(sum, glWrap);                        // 合計は上・ダイス(canvas)は下中央
   host.appendChild(overlay);
 
-  const redShow = PROD_SHOW_ROT[d1] ?? [0, 0];
-  const yellowShow = PROD_SHOW_ROT[d2] ?? [0, 0];
-  const eventShow = eventInfo ? EVENT_SHOW_ROT[eventInfo.eventDie] : [0, 0] as [number, number];
-  // 視軸回りの微小回転（自然な散らし。支配面=出目は不変）。
-  const zR = Math.random() * 10 - 5, zY = Math.random() * 10 - 5, zE = Math.random() * 8 - 4;
+  const spec: RollSpec = {
+    red: { value: d1 }, yellow: { value: d2 },
+    event: eventInfo ? { result: eventInfo.eventDie } : null,
+  };
+  const gl = getDiceGL();
 
-  // reduced-motion: 回転を省き即着地（出目の正しさは維持）。
-  if (reduced) {
-    setCubeStatic(red.cube, redShow, zR); setCubeStatic(yellow.cube, yellowShow, zY);
-    red.slot.classList.add('settled'); yellow.slot.classList.add('settled');
+  let done = false;
+  const finishAll = (): void => {
+    if (done) return; done = true;
+    overlay.remove(); hideBoardDim(dim); gl?.reset(); onDone();
+  };
+  // 結果パネル＋（船=揺れ / 色=wash＋抽選照合）。パネルは上に挿入してダイスを動かさない。
+  const showPanelAndFlourish = (): void => {
+    if (!eventInfo) return;
+    overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild);
+    setTimeout(() => applyEventFlourish(eventInfo), 260); // board-hit の後（#board-area transform 競合回避）
+  };
+
+  // ⑧ WebGL非対応/失敗 → 最小限の結果表示（出目と船/色ゲートは sum＋パネルで判別可能）。
+  if (!gl) {
+    glWrap.remove();
     showDiceSum(sum, d1, d2);
-    if (eventSlot && eventInfo) {
-      setCubeStatic(eventSlot.cube, eventShow, zE); eventSlot.slot.classList.add('settled');
-      overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild); // パネルは上に挿入（ダイスを動かさない）
-      applyEventFlourish(eventInfo);
-    }
-    setTimeout(() => { overlay.remove(); hideBoardDim(dim); onDone(); }, eventInfo ? 1500 : 900);
+    if (eventInfo) showPanelAndFlourish();
+    setTimeout(finishAll, eventInfo ? 1700 : 900);
     return;
   }
 
-  // 着地時刻（normal を基準に速度設定で伸縮）。赤→黄→イベントの順に時間差。
-  // 全体をゆっくり・長めに見せる（転がりを目で追えるように）。
+  gl.mountTo(glWrap);
+
+  // reduced-motion: タンブルを省き即着地（出目の正しさは維持）。
+  if (reduced) {
+    gl.showStatic(spec);
+    showDiceSum(sum, d1, d2);
+    showPanelAndFlourish();
+    setTimeout(finishAll, eventInfo ? 1500 : 900);
+    return;
+  }
+
+  // 着地時刻（既存タイミングを維持）。赤→黄(+約300ms)→イベント(さらに遅れ＝見せ場)。
   const k = fxSpeed() === 'fast' ? 0.6 : fxSpeed() === 'slow' ? 1.5 : 1;
   const tRed = Math.round(1550 * k);
-  const tYellow = Math.round(1850 * k);   // 赤＋約300ms
-  const tEvent = Math.round(2350 * k);    // さらに遅れて最後・持続も長い＝見せ場
+  const tYellow = Math.round(1850 * k);
+  const tEvent = Math.round(2350 * k);
 
-  red.slot.classList.add('rolling'); yellow.slot.classList.add('rolling');
-  eventSlot?.slot.classList.add('rolling');
-  // 回転数は控えめ（長い時間×少なめの回転＝ゆっくり転がって見える）。
-  spinCube(red.cube, redShow, 2, 2, tRed, zR);
-  spinCube(yellow.cube, yellowShow, 2, 3, tYellow, zY);
-  if (eventSlot) spinCube(eventSlot.cube, eventShow, 3, 3, tEvent, zE);
+  gl.roll(spec, { redMs: tRed, yellowMs: tYellow, eventMs: tEvent }, {
+    onRedLand: () => playSE('dice'),
+    onYellowLand: () => { playSE('dice'); showDiceSum(sum, d1, d2); }, // 赤＋黄が揃って合計ポップ
+    onEventLand: () => {
+      playSE('diceLandHeavy');
+      boardHit();                                     // ④ 着地の軽い画面ヒット（クライマックスは GL 側で発光）
+      showPanelAndFlourish();
+    },
+  });
 
-  const land = (s: Slot, heavy: boolean): void => {
-    s.slot.classList.remove('rolling');
-    s.slot.classList.add('settled');
-    playSE(heavy ? 'diceLandHeavy' : 'dice');
-  };
-
-  let done = false;
-  const finishAll = (): void => { if (done) return; done = true; overlay.remove(); hideBoardDim(dim); onDone(); };
-
-  setTimeout(() => land(red, false), tRed);
-  setTimeout(() => { land(yellow, false); showDiceSum(sum, d1, d2); }, tYellow); // 赤＋黄が揃って合計ポップ
-  if (eventInfo && eventSlot) {
-    setTimeout(() => {
-      land(eventSlot!, true);
-      boardHit();                                       // ④ 着地の軽い画面ヒット（diceLandHeavyに同期・~220ms）
-      overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild); // パネルは上に挿入（ダイスを動かさない）
-      // 船=揺れ / 色=wash は board-hit が終わってから（#board-area の transform 競合を回避）。
-      setTimeout(() => applyEventFlourish(eventInfo), 260);
-      setTimeout(finishAll, Math.round(2300 * k));      // 抽選/蛮族の照合をしっかり見せる
-    }, tEvent);
-  } else {
-    setTimeout(finishAll, tYellow + Math.round(1000 * k));
-  }
+  // 結果照合を見せる持続は従来どおり（イベント着地後に十分見せてから片付け）。
+  if (eventInfo) setTimeout(finishAll, tEvent + Math.round(2300 * k));
+  else setTimeout(finishAll, tYellow + Math.round(1000 * k));
 }
 
 // ============================================================
