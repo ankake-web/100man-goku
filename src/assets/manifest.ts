@@ -30,6 +30,7 @@ import barbarianShip from './barbarian-ship.png';
 import roadIcon from './road.png';
 import bankTradeIcon from './bank-trade.png';
 import playerTradeIcon from './player-trade.png';
+import knightActivateIcon from './knight-activate.png';
 
 // ---- 騎士（基本/強い/最強。盤面はプレイヤー色の土台ディスクで所有者を示す中立コマ） ----
 import knightBasic from './knight-basic.png';
@@ -142,7 +143,7 @@ export const ASSETS = {
   } as Record<'trade' | 'politics' | 'science', Record<3 | 4, string>>,
   trackIcon: { trade: impTrade, politics: impPolitics, science: impScience } as Record<'trade' | 'politics' | 'science', string>,
   // アクション系アイコン（道/バンク交易/プレイヤー間交易）
-  action: { road: roadIcon, bankTrade: bankTradeIcon, playerTrade: playerTradeIcon },
+  action: { road: roadIcon, bankTrade: bankTradeIcon, playerTrade: playerTradeIcon, knightActivate: knightActivateIcon },
   cardBack: { trade: cardBackTrade, politics: cardBackPolitics, science: cardBackScience } as Record<'trade' | 'politics' | 'science', string>,
   politicsCard: {
     bishop: polBishop, diplomat: polDiplomat, intrigue: polIntrigue, deserter: polDeserter,
