@@ -32,16 +32,58 @@ function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
   img.className = cls; img.src = COMMODITY_IMG[c]; img.alt = c; img.draggable = false;
   return img;
 }
-// アイコン画像＋ラベルのボタン（改善ボタン等）。makeBtn と同じクラス体系。
-function makeImgBtn(imgSrc: string, label: string, cls: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
+// 小さなインラインアイコン画像（テキスト/ラベル/ログ等に混ぜる）。欠損(null)はプレースホルダへ。
+function inlineIc(src: string | null | undefined, cls = 'inline-ic'): HTMLImageElement {
+  return assetImg(src ?? null, cls, '', '');
+}
+// CSSグリフ（道など素材画像が無いもの）。glyphCls 自身が em ベースの形状/サイズを持つ。
+function glyph(glyphCls: string, extra = ''): HTMLSpanElement {
+  return el('span', `stat-glyph ${glyphCls}${extra ? ' ' + extra : ''}`);
+}
+// アイコン（画像URL or 要素＝CSSグリフ）＋ラベルのボタン。label に文字列 or ノード配列。
+function makeImgBtn(icon: string | HTMLElement, label: string | (string | HTMLElement)[], cls: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
   const btn = el('button', `action-btn has-icon ${cls}`);
-  const img = document.createElement('img');
-  img.className = 'btn-icon-img'; img.src = imgSrc; img.alt = ''; img.draggable = false;
-  const span = el('span', 'btn-icon-label'); span.textContent = label;
-  btn.appendChild(img); btn.appendChild(span);
+  let iconEl: HTMLElement;
+  if (typeof icon === 'string') { const im = document.createElement('img'); im.className = 'btn-icon-img'; im.src = icon; im.alt = ''; im.draggable = false; iconEl = im; }
+  else { icon.classList.add('btn-icon-img'); iconEl = icon; }
+  const span = el('span', 'btn-icon-label');
+  if (typeof label === 'string') span.textContent = label;
+  else for (const part of label) span.append(typeof part === 'string' ? document.createTextNode(part) : part);
+  btn.appendChild(iconEl); btn.appendChild(span);
   btn.disabled = disabled;
   if (!disabled) btn.addEventListener('click', onClick);
   return btn;
+}
+// ログ先頭の絵文字を素材アイコン/CSSグリフに置き換える（直近ログを画像化）。
+const LOG_ICON: Array<[string, string | null | (() => HTMLElement)]> = [
+  ['🛤', () => glyph('ic-road')],
+  ['🏠', ASSETS.piece.settlement],
+  ['🏙', ASSETS.piece.city],
+  ['🃏', () => glyph('ic-cards')],
+  ['💱', ASSETS.commodity.coin],
+  ['🦹', ASSETS.piece.robber],
+  ['🏴‍☠️', ASSETS.piece.pirate],
+  ['⚔', ASSETS.knight.basic],
+  ['🛡', ASSETS.knight.basic],
+  ['⛵', ASSETS.piece.barbarianShip],
+  ['🛶', ASSETS.piece.barbarianShip],
+];
+function logIconAndRest(message: string): { icon: HTMLElement | null; rest: string } {
+  for (const [emo, src] of LOG_ICON) {
+    if (message.startsWith(emo)) {
+      const icon = typeof src === 'function' ? src() : inlineIc(src, 'log-ic');
+      icon.classList.add('log-icon');   // 右マージン＋整列
+      return { icon, rest: message.slice(emo.length).replace(/^\s+/, '') };
+    }
+  }
+  return { icon: null, rest: message };
+}
+// modeBtn のアイコン版（道/開拓地/都市などの建設トグル）。
+function modeImgBtn(icon: string | HTMLElement, label: string, mode: Exclude<BuildMode, 'idle'>, canAfford: boolean, current: BuildMode, setBuildMode: (m: BuildMode) => void): HTMLButtonElement {
+  const isActive = current === mode;
+  const disabled = !canAfford && !isActive;
+  const cls = isActive ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled';
+  return makeImgBtn(icon, label, cls, disabled, () => setBuildMode(isActive ? 'idle' : mode));
 }
 
 // ============================================================
@@ -118,6 +160,7 @@ function resIconImg(r: ResourceType, cls: string): HTMLImageElement {
 const RESOURCE_NAMES: Record<ResourceType, string> = {
   wood: '木材', brick: 'レンガ', wool: '羊毛', grain: '麦', ore: '鉄鉱',
 };
+const COMMODITY_NAMES: Record<CommodityType, string> = { coin: '金貨', cloth: '布', paper: '紙' };
 
 const DEV_CARD_NAMES: Record<string, string> = {
   knight:          '⚔ 騎士',
@@ -398,23 +441,21 @@ function buildBankTradeUI(
   const bankOf = (k: TradeKind): number => isCommodity(k) ? (state.commodityBank ?? { coin: 0, cloth: 0, paper: 0 })[k] : state.bank[k as ResourceType];
 
   const header = el('div', 'modal-header');
-  header.textContent = '💱 バンク交易';
+  header.append(inlineIc(ASSETS.commodity.coin, 'inline-ic'), document.createTextNode(' バンク交易'));
   div.appendChild(header);
 
-  // 渡す/受け取るの1ボタンを生成（give=渡す, receive=受け取る）。
+  const kindIcon = (k: TradeKind): string => isCommodity(k) ? COMMODITY_IMG[k] : RESOURCE_IMG[k as ResourceType];
+  const kindName = (k: TradeKind): string => isCommodity(k) ? COMMODITY_NAMES[k] : RESOURCE_NAMES[k as ResourceType];
+  // 渡す/受け取るの1ボタンを生成（give=渡す, receive=受け取る）。アイコンは絵文字でなく素材画像。
   const kindButton = (k: TradeKind, isReceive: boolean): HTMLButtonElement => {
     if (!isReceive) {
       const rate = getEffectiveTradeRate(state, pid, k);
       const canAfford = heldOf(k) >= rate;
-      const label = isCommodity(k)
-        ? `${COMMODITY_EMOJI[k]} ×${heldOf(k)}（${rate}:1）`
-        : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]} ×${heldOf(k)}（${rate}:1）`;
-      return makeBtn(label, give === k ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled', !canAfford,
+      return makeImgBtn(kindIcon(k), `${kindName(k)} ×${heldOf(k)}（${rate}:1）`, give === k ? 'btn-active' : canAfford ? 'btn-build' : 'btn-disabled', !canAfford,
         () => setUIPhase({ type: 'bankTrade', give: give === k ? null : k, receive }));
     }
     const inBank = bankOf(k) > 0;
-    const label = isCommodity(k) ? `${COMMODITY_EMOJI[k]}` : `${RESOURCE_EMOJI[k as ResourceType]} ${RESOURCE_NAMES[k as ResourceType]}`;
-    return makeBtn(label, receive === k ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled', !inBank,
+    return makeImgBtn(kindIcon(k), kindName(k), receive === k ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled', !inBank,
       () => setUIPhase({ type: 'bankTrade', give, receive: receive === k ? null : k }));
   };
   // 資源・商品を別々の見出し＋行（背景色で区別）で描画する。
@@ -1321,7 +1362,7 @@ function appendCkBuildSection(
 
   // 都市改善（3ツリー）
   const impLabel = el('div', 'ck-sub-label');
-  impLabel.textContent = '🏛 都市の発展（商品で強化・Lv4でメトロポリス+4点）';
+  impLabel.append(inlineIc(ASSETS.piece.metropolisGate, 'inline-ic'), document.createTextNode(' 都市の発展（商品で強化・Lv4でメトロポリス+4点）'));
   sec.appendChild(impLabel);
   const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
   const impRow = el('div', 'ck-imp-row');
@@ -1330,9 +1371,10 @@ function appendCkBuildSection(
     const can = canBuildImprovement(state, pid, track);
     const c = CK_TRACK_COMMODITY[track];
     const nextLvl = lvl + 1;
-    const label = lvl >= 5
-      ? `${CK_TRACK_NAME[track]} Lv5（最大）`
-      : `${CK_TRACK_NAME[track]} Lv${lvl}→${nextLvl}（${COMMODITY_EMOJI[c]}${improvementCost(lvl)}）`;
+    // コストの商品は絵文字ではなく素材画像で表示。
+    const label: (string | HTMLElement)[] = lvl >= 5
+      ? [`${CK_TRACK_NAME[track]} Lv5（最大）`]
+      : [`${CK_TRACK_NAME[track]} Lv${lvl}→${nextLvl}（`, inlineIc(COMMODITY_IMG[c], 'inline-ic'), `×${improvementCost(lvl)}）`];
     // 改良建築: Lv3/Lv4 へ進む時はその建築画像（交易所/銀行/要塞/大聖堂/水道橋/劇場）、他はトラックアイコン。
     const icon = (nextLvl === 3 || nextLvl === 4) ? ASSETS.building[track][nextLvl as 3 | 4] : IMP_IMG[track];
     impRow.appendChild(makeImgBtn(icon, label, can ? 'btn-build' : 'btn-disabled', !can,
@@ -1342,12 +1384,12 @@ function appendCkBuildSection(
 
   // 騎士・城壁
   const knLabel = el('div', 'ck-sub-label');
-  knLabel.textContent = '🛡 騎士・防衛（建設→麦で起動して使える）';
+  knLabel.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(' 騎士・防衛（建設→麦で起動して使える）'));
   sec.appendChild(knLabel);
   const knightRow = el('div', 'ck-knight-row');
   const firstV = (pred: (vid: string) => boolean): string | undefined => Object.keys(state.vertices).find(pred);
   const buildVid = firstV(v => canBuildKnight(state, pid, v));
-  knightRow.appendChild(makeBtn('🛡 騎士を建てる', buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
+  knightRow.appendChild(makeImgBtn(knightImg, '騎士を建てる', buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
     () => buildVid && dispatch({ type: 'BUILD_KNIGHT', vertexId: buildVid })));
   const actVid = firstV(v => canActivateKnight(state, pid, v));
   knightRow.appendChild(makeBtn('⚡ 騎士を起動', actVid ? 'btn-build' : 'btn-disabled', !actVid,
@@ -1503,7 +1545,9 @@ function buildActionButtons(
   // 建設モード選択中のヒント文（「選択中：光っている場所をタップ」）は操作パネルの
   // レイアウトを崩すため表示しない。配置可能な頂点/辺は盤面側のハイライトで示す。
 
-  div.appendChild(modeBtn('🛤 道', 'road', canRoad, buildMode, setBuildMode));
+  // 建設ボタンは絵文字でなくコマ画像/CSSアイコンで（道=CSSバー・開拓地/都市=色つきコマ画像）。
+  const ckey = PLAYER_COLOR_KEY[pid] ?? 'red';
+  div.appendChild(modeImgBtn(glyph('ic-road'), '道', 'road', canRoad, buildMode, setBuildMode));
   if (hasSea) {
     div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
     // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
@@ -1513,18 +1557,18 @@ function buildActionButtons(
     // 船ルールはいつでも見られるよう常時ヘルプを置く（作れても動かせない等の疑問対策）。
     div.appendChild(makeBtn('⛵ 船のルール', 'btn-ship-help', false, () => showShipRulesHelp(state, pid)));
   }
-  div.appendChild(modeBtn('🏠 開拓地', 'settlement', canSettl, buildMode, setBuildMode));
-  div.appendChild(modeBtn('🏙 都市', 'city', canCity, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(houseImg(ckey), '開拓地', 'settlement', canSettl, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(cityImg(ckey), '都市', 'city', canCity, buildMode, setBuildMode));
   // 発展カードは騎士と商人では使わない（進歩カードに置換）。基本/航海者のみ表示。
   if (!isCk(state)) {
-    div.appendChild(makeBtn('🃏 発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
+    div.appendChild(makeImgBtn(glyph('ic-cards'), '発展カード購入', canDev ? 'btn-build' : 'btn-disabled', !canDev,
       () => dispatch({ type: 'BUY_DEV_CARD' })));
   }
 
   // 騎士と商人: 都市改善・騎士・城壁。
   if (isCk(state)) appendCkBuildSection(div, state, pid, dispatch, buildMode, setBuildMode);
 
-  div.appendChild(makeBtn('💱 バンク交易', 'btn-build', false,
+  div.appendChild(makeImgBtn(ASSETS.commodity.coin, 'バンク交易', 'btn-build', false,
     () => setUIPhase({ type: 'bankTrade', give: null, receive: null })));
 
   // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
@@ -1540,7 +1584,7 @@ function buildActionButtons(
     div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
   }
 
-  div.appendChild(makeBtn('↩ ターン終了', 'btn-end', false, () => dispatch({ type: 'END_TURN' })));
+  div.appendChild(makeBtn('ターン終了', 'btn-end', false, () => dispatch({ type: 'END_TURN' })));
   return div;
 }
 
@@ -1631,22 +1675,21 @@ export function renderUI(
   if (state.lastDiceRoll) {
     const [d1, d2] = state.lastDiceRoll;
     const diceEl = el('div', 'dice-result');
-    if (isCk(state)) {
-      // 騎士と商人: 赤(生産d1・抽選しきい値)／黄(生産d2)／イベントダイスを色チップで常時表示。
-      const chip = (cls: string, txt: string): HTMLSpanElement => { const s = el('span', cls); s.textContent = txt; return s; };
-      const ev = state.lastEventDie;
-      // 色ゲートのターンは「赤単体＝進歩カード抽選のしきい値」を強調表示する。
-      const gateTurn = ev != null && ev !== 'ship';
-      diceEl.appendChild(chip(`dice-chip dice-chip-red${gateTurn ? ' dice-chip-red-emph' : ''}`, String(d1)));
-      diceEl.appendChild(chip('dice-chip dice-chip-yellow', String(d2)));
-      diceEl.appendChild(chip('dice-chip-sum', `＝生産${d1 + d2}`));
-      if (ev) {
-        const evTxt = ev === 'ship' ? '🛶' : ev === 'trade' ? '商' : ev === 'politics' ? '政' : '科';
-        diceEl.appendChild(chip(`dice-chip dice-chip-ev ev-${ev}`, evTxt));
-        if (gateTurn) diceEl.appendChild(chip('dice-chip-gate-note', `赤${d1}＝抽選値`));
-      }
-    } else {
-      diceEl.textContent = `🎲 ${d1}+${d2}=${d1 + d2}`;
+    const die = (cls: string, n: number): HTMLSpanElement => Object.assign(el('span', `dice-rd ${cls}`), { textContent: String(n) });
+    const ev = isCk(state) ? state.lastEventDie : null;
+    // 色ゲートのターンは「赤単体＝進歩カード抽選のしきい値」を強調表示する。
+    const gateTurn = ev != null && ev !== 'ship';
+    // 赤・黄の目を色バッジで → 合計（漢字や「生産8」のチープな表記をやめる）。
+    diceEl.append(
+      die(`red${gateTurn ? ' emph' : ''}`, d1),
+      die('yellow', d2),
+      Object.assign(el('span', 'dice-rd-eq'), { textContent: '=' }),
+      Object.assign(el('span', 'dice-rd-total'), { textContent: String(d1 + d2) }),
+    );
+    if (ev) {
+      // イベント: 漢字でなく素材アイコン（船=蛮族船 / 色ゲート=トラックアイコン）。
+      diceEl.append(inlineIc(ev === 'ship' ? ASSETS.piece.barbarianShip : IMP_IMG[ev], 'dice-rd-ev'));
+      if (gateTurn) diceEl.append(Object.assign(el('span', 'dice-rd-note'), { textContent: `抽選しきい値 赤${d1}` }));
     }
     turnPanel.appendChild(diceEl);
   }
@@ -1655,26 +1698,29 @@ export function renderUI(
   const titles = el('div', 'turn-titles');
   const lrHolder = state.longestRoadHolder ? state.players[state.longestRoadHolder] : null;
   const laHolder = state.largestArmyHolder ? state.players[state.largestArmyHolder] : null;
+  // 最長交易路: 道のCSSアイコン＋保持者（絵文字を排除）。
   const t1 = el('span', 'turn-title-item');
-  t1.textContent = lrHolder
-    // エンジンが updateLongestRoad で全プレイヤー分を維持するキャッシュを参照する
-    // （毎 redraw の DFS 再計算は道が密集した終盤にモーダル操作のジャンクになる）。
-    ? `🛤最長 ${lrHolder.name}(${lrHolder.longestRoadLength})`
-    : '🛤最長 未獲得';
+  t1.append(glyph('ic-road'), document.createTextNode(lrHolder ? ` 最長 ${lrHolder.name}(${lrHolder.longestRoadLength})` : ' 最長 未獲得'));
   const t3 = el('span', 'turn-title-item');
   if (isCk(state)) {
-    // 騎士と商人: 最大騎士の代わりに蛮族トラックを表示（残り1–2マスで警告色＋ピップ）。
+    // 騎士と商人: 蛮族トラックを 蛮族船画像＋ピップ＋残数 で表示（漢字/絵文字なし）。
     const pos = state.barbarianPosition ?? 0;
     const danger = pos >= CK_BARBARIAN_MAX - 2;
-    const t2 = el('span', `turn-title-item${danger ? ' ck-barb-danger' : ''}`);
-    const pips = '●'.repeat(pos) + '○'.repeat(Math.max(0, CK_BARBARIAN_MAX - pos));
-    t2.textContent = `🛶蛮族 ${pips} ${pos}/${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来！）' : ''}（襲来${state.barbarianAttacks ?? 0}回）`;
-    t3.textContent = '';
+    const t2 = el('span', `turn-title-item barb-track${danger ? ' ck-barb-danger' : ''}`);
+    t2.append(inlineIc(ASSETS.piece.barbarianShip, 'barb-ship-ic'));
+    const trackEl = el('span', 'barb-pips');
+    for (let i = 1; i <= CK_BARBARIAN_MAX; i++) {
+      trackEl.append(el('span', `barb-pip${i <= pos ? (danger ? ' on danger' : ' on') : ''}`));
+    }
+    t2.append(trackEl, Object.assign(el('span', 'barb-count'), { textContent: `${pos}/${CK_BARBARIAN_MAX}` }));
+    if ((state.barbarianAttacks ?? 0) > 0) t2.append(Object.assign(el('span', 'barb-atk'), { textContent: `襲来${state.barbarianAttacks}` }));
+    if (danger) t2.append(Object.assign(el('span', 'barb-warn'), { textContent: 'まもなく襲来！' }));
     titles.append(t1, t2);
   } else {
+    // 最大騎士: 騎士画像＋保持者 / 山札: カードCSSアイコン＋残数。
     const t2 = el('span', 'turn-title-item');
-    t2.textContent = laHolder ? `⚔最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : '⚔最大騎士 未獲得';
-    t3.textContent = `🃏山札 ${state.devDeck.length}`;
+    t2.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(laHolder ? ` 最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : ' 最大騎士 未獲得'));
+    t3.append(glyph('ic-cards'), document.createTextNode(` 山札 ${state.devDeck.length}`));
     titles.append(t1, t2, t3);
   }
   turnPanel.appendChild(titles);
@@ -1684,7 +1730,10 @@ export function renderUI(
   const lastLog = state.log.length > 0 ? state.log[state.log.length - 1] : null;
   if (lastLog) {
     const ev = el('div', 'last-event');
-    ev.textContent = lastLog.message;
+    // 先頭の絵文字を素材アイコンに置換して表示（画像をフル活用）。
+    const { icon, rest } = logIconAndRest(lastLog.message);
+    if (icon) ev.append(icon);
+    ev.append(document.createTextNode(rest));
     turnPanel.appendChild(ev);
   }
 
