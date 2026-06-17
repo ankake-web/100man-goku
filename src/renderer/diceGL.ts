@@ -50,19 +50,20 @@ const PIPS: Record<number, [number, number][]> = {
   6: [[1, 1], [3, 1], [1, 2], [3, 2], [1, 3], [3, 3]],
 };
 
-/** 生産ダイスのピップ面（透過。ボディ象牙色の上に“掘った穴”として描く）。 */
+/** 生産ダイスのピップ面（透過。平らな塗り＋わずかな凹み陰影＝硬い彫り目）。 */
 function pipTexture(value: number, pip: string): THREE.CanvasTexture {
   return canvasTexture((c) => {
     c.clearRect(0, 0, TEX, TEX);
-    const step = TEX / 4, r = TEX * 0.072;
+    const step = TEX / 4, r = TEX * 0.082;
     for (const [gx, gy] of PIPS[value] ?? []) {
       const x = gx * step, y = gy * step;
-      // 凹みの陰影
-      const g = c.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
-      g.addColorStop(0, pip); g.addColorStop(1, '#1c0e08');
+      c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = pip; c.fill();
+      // 上に光・下に影でわずかな凹凸（硬さを出す）
+      const g = c.createRadialGradient(x, y - r * 0.4, r * 0.1, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.38)');
+      g.addColorStop(0.55, 'rgba(255,255,255,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.4)');
       c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = g; c.fill();
-      c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,0.18)';
-      c.beginPath(); c.arc(x, y + r * 0.18, r * 0.92, Math.PI * 0.15, Math.PI * 0.85); c.stroke();
     }
   });
 }
@@ -197,38 +198,38 @@ class DiceGLController {
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'dice-gl-canvas';
 
-    // やや上・前方から。結果は正面の面に出る（上面は補助的に見えて立体感を出す）。
-    this.camera = new THREE.PerspectiveCamera(28, 2, 0.1, 100);
-    this.camera.position.set(0, 1.18, 5.15);
-    this.camera.lookAt(0, 0.46, 0);
+    // やや上・前方から。結果は正面の面に出る。少し引いてダイスを小さめのフレーミングに。
+    this.camera = new THREE.PerspectiveCamera(27, 2, 0.1, 100);
+    this.camera.position.set(0, 1.15, 5.95);
+    this.camera.lookAt(0, 0.42, 0);
 
     // IBL（HDRI不要の自然な反射）
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    // キーライト＋ソフトシャドウ＋補助光
-    const key = new THREE.DirectionalLight(0xffffff, 2.1);
-    key.position.set(2.6, 5.2, 3.2); key.castShadow = true;
+    // キーライト＋ソフトシャドウ＋補助光。コントラスト強め＝硬く締まった陰影。
+    const key = new THREE.DirectionalLight(0xffffff, 2.7);
+    key.position.set(2.8, 5.4, 3.0); key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.camera.near = 1; key.shadow.camera.far = 14;
     const c = key.shadow.camera as THREE.OrthographicCamera;
     c.left = -4; c.right = 4; c.top = 4; c.bottom = -4;
-    key.shadow.bias = -0.0008; key.shadow.radius = 4;
+    key.shadow.bias = -0.0008; key.shadow.radius = 2.2;   // 影をシャープに＝硬い接地
     this.scene.add(key);
-    this.scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x40331f, 0.5));
+    this.scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x33291a, 0.34));
 
     // 接地影プレーン
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(20, 20),
-      new THREE.ShadowMaterial({ opacity: 0.34 }),
+      new THREE.ShadowMaterial({ opacity: 0.42 }),
     );
     ground.rotation.x = -Math.PI / 2; ground.position.y = 0; ground.receiveShadow = true;
     this.scene.add(ground);
 
     this.dice = {
-      red: this.makeProdDie('#fff7ec', '#e0e6ef', '#c8362a', -1.32),
-      yellow: this.makeProdDie('#fff7ec', '#e0e6ef', '#b88514', 0),
-      event: this.makeEventDie(1.32),
+      red: this.makeProdDie('#cf2f29', '#fff2ee', -1.3),     // 赤いダイス＋クリームの目
+      yellow: this.makeProdDie('#e8b21e', '#3a2a06', 0),     // 黄色いダイス＋濃い目
+      event: this.makeEventDie(1.3),
     };
 
     // 蛮族船アートを非同期ロード→船面に反映
@@ -242,11 +243,11 @@ class DiceGLController {
     window.addEventListener('resize', () => { if (this.canvas.isConnected) this.resize(); });
   }
 
-  private faceDecal(tex: THREE.Texture, faceIdx: number, sizeScale = 0.78): THREE.Mesh {
+  private faceDecal(tex: THREE.Texture, faceIdx: number, sizeScale = 0.8): THREE.Mesh {
     const n = FACE_NORMALS[faceIdx]!.clone();
-    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.55, metalness: 0.0 });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.4, metalness: 0.0 });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(sizeScale, sizeScale), mat);
-    plane.position.copy(n.clone().multiplyScalar(0.5 + 0.012));
+    plane.position.copy(n.clone().multiplyScalar(0.5 + 0.006));
     plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
     plane.castShadow = false;
     return plane;
@@ -254,14 +255,15 @@ class DiceGLController {
 
   private makeBody(color: string, roughness: number, metalness: number): { group: THREE.Group; body: THREE.MeshStandardMaterial } {
     const body = new THREE.MeshStandardMaterial({ color, roughness, metalness });
-    const mesh = new THREE.Mesh(new RoundedBoxGeometry(1, 1, 1, 5, 0.1), body);
+    // 角丸を小さく＝エッジの立った“硬い”サイコロ感（削り出しの面取り程度）。
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(1, 1, 1, 3, 0.045), body);
     mesh.castShadow = true; mesh.receiveShadow = true;
     const group = new THREE.Group(); group.add(mesh);
     return { group, body };
   }
 
-  private makeProdDie(ivory: string, _edge: string, pip: string, x: number): Die {
-    const { group, body } = this.makeBody(ivory, 0.5, 0.0);
+  private makeProdDie(bodyColor: string, pip: string, x: number): Die {
+    const { group, body } = this.makeBody(bodyColor, 0.36, 0.0);  // 低roughness＝硬いプラ/骨の明確なハイライト
     for (let i = 0; i < 6; i++) group.add(this.faceDecal(pipTexture(PROD_FACE_VALUE[i]!, pip), i));
     group.position.set(x, 0.5, 0);
     this.scene.add(group);
@@ -269,7 +271,7 @@ class DiceGLController {
   }
 
   private makeEventDie(x: number): Die {
-    const { group, body } = this.makeBody('#39434f', 0.72, 0.08);
+    const { group, body } = this.makeBody('#39434f', 0.62, 0.12);
     for (let i = 0; i < 6; i++) {
       const r = EVENT_FACE_RESULT[i]!;
       if (r === 'ship') {

@@ -350,7 +350,6 @@ h1 {
 /* アニメ抑制時はパルスを止め、産出ヘックスを静的に明るく示す（どこから出たか分かる）。 */
 @media (prefers-reduced-motion: reduce) {
   .hex-tile.producing { animation: none; filter: brightness(1.5) drop-shadow(0 0 6px rgba(255,240,150,0.85)); }
-  .board-shake, .board-shake-danger, .board-hit { animation: none; }
 }
 
 .hex-tile.forest   { fill: #2d6a2d; }
@@ -2307,72 +2306,75 @@ h1 {
   inset: 0;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;     /* 下中央寄せ＝定位置クラスタ */
+  justify-content: flex-end;     /* 下中央寄せ＝定位置 */
   align-items: center;
-  gap: 12px;
-  padding-bottom: clamp(38px, 12vh, 100px);
+  gap: 10px;
+  padding-bottom: clamp(34px, 10vh, 88px);
   z-index: 50;
   pointer-events: none;
-  perspective: 700px;            /* 立体的に見せる */
+  overflow: hidden;              /* 子のはみ出しでページにスクロールを作らない（モバイルのURLバー出現→画面縮みを防止） */
 }
-/* ① ロール中だけ盤を沈めるオーバーレイ（背後の盤だけ blur+減彩+減光、ダイスへスポット） */
+/* ロール中だけ盤を沈める（背後の盤を減光＋減彩＋スポット）。blur は外して合成負荷とガタつきを抑える。 */
 .dice-board-dim {
   position: absolute;
   inset: 0;
   z-index: 47;                   /* ダイス(50)の下・盤(auto)の上 */
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.32s ease;
-  -webkit-backdrop-filter: blur(1.6px) saturate(0.7) brightness(0.66);
-  backdrop-filter: blur(1.6px) saturate(0.7) brightness(0.66);
-  background: radial-gradient(circle at 50% 72%,
-    rgba(6,8,14,0) 0%, rgba(6,8,14,0.12) 42%, rgba(4,6,12,0.5) 100%);
+  transition: opacity 0.3s ease;
+  -webkit-backdrop-filter: brightness(0.62) saturate(0.72);
+  backdrop-filter: brightness(0.62) saturate(0.72);
+  background: radial-gradient(circle at 50% 76%,
+    rgba(6,8,14,0) 0%, rgba(6,8,14,0.18) 44%, rgba(4,6,12,0.56) 100%);
 }
 .dice-board-dim.on { opacity: 1; }
-/* WebGL(Three.js) ダイス描画レイヤー。下中央のクラスタ枠。canvas は枠いっぱい。 */
-.dice-gl-wrap {
-  width: clamp(244px, 84vw, 384px);
-  height: clamp(132px, 32vh, 196px);
-  pointer-events: none;
-}
-.dice-gl-canvas {
-  width: 100% !important;
-  height: 100% !important;
-  display: block;
-  pointer-events: none;
-}
-.dice-board-dim.reduced {                         /* reduced: ぼかさず軽い減光のみ・即時 */
+.dice-board-dim.reduced {                         /* reduced: 軽い減光のみ・即時 */
   -webkit-backdrop-filter: brightness(0.8);
   backdrop-filter: brightness(0.8);
-  background: rgba(4,6,12,0.18);
+  background: rgba(4,6,12,0.2);
   transition: opacity 0.12s ease;
 }
+
+/* 結果カード: ダイス(canvas)＋生産合計を1枚にまとめ、盤に置かれた“面”として見せる（浮き防止）。 */
+.dice-result-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 16px 11px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(22,26,36,0.6), rgba(10,12,18,0.84));
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.09);
+  animation: dicePop 0.34s cubic-bezier(0.2,1.4,0.4,1);
+}
+/* WebGLダイス描画レイヤー（小さめ）。canvas は枠いっぱい。 */
+.dice-gl-wrap {
+  width: clamp(208px, 72vw, 320px);
+  height: clamp(112px, 26vh, 156px);
+  pointer-events: none;
+}
+.dice-gl-canvas { width: 100% !important; height: 100% !important; display: block; pointer-events: none; }
+
+/* 生産合計: 赤/黄を色バッジ＋合計を強調（チープな素テキストをやめる）。 */
 .dice-sum {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 2.2rem;   /* 確定前から高さを確保し中央がガタつかない */
-  padding: 5px 20px;
-  border-radius: 14px;
-  font-size: 1.95rem;
+  gap: 7px;
+  min-height: 1.9rem;            /* 確定前から高さ確保＝カードがガタつかない */
   font-weight: 900;
-  color: #ffe34d;
-  /* 盤面に重なっても読めるよう、濃色背景＋縁取り＋影で視認性を確保 */
-  background: rgba(12,14,20,0.93);
-  border: 2px solid rgba(255,215,0,0.7);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
-  text-shadow: 0 2px 5px rgba(0,0,0,1);
 }
-/* 確定前（空）は背景の枠を出さない */
-.dice-sum:empty {
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 0;
+.dice-sum-die {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 29px; height: 29px; border-radius: 8px; font-size: 1.12rem; color: #fff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.42);
 }
-.dice-sum.show { animation: dicePop 0.45s cubic-bezier(0.2,1.5,0.5,1); }
-
-.dice-prod { white-space: nowrap; }
+.dice-sum-die.red    { background: linear-gradient(150deg, #e44b3f, #b21d16); }
+.dice-sum-die.yellow { background: linear-gradient(150deg, #f1c33a, #c8920f); color: #3a2a06; }
+.dice-sum-plus, .dice-sum-eq { color: rgba(255,255,255,0.6); font-size: 1.0rem; }
+.dice-sum-total { font-size: 1.7rem; color: #ffe24a; margin-left: 2px; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+.dice-sum-label { font-size: 0.78rem; color: rgba(255,255,255,0.62); align-self: flex-end; margin-bottom: 4px; }
+.dice-sum.show { animation: dicePop 0.42s cubic-bezier(0.2,1.5,0.5,1); }
 
 /* 色ゲートが出た瞬間の画面カラーウォッシュ（その色が画面に広がる） */
 .dice-color-wash {
@@ -2382,13 +2384,16 @@ h1 {
 .dice-color-wash.ev-trade    { background: radial-gradient(circle, rgba(230,180,40,0.34), rgba(230,180,40,0) 72%); }
 .dice-color-wash.ev-politics { background: radial-gradient(circle, rgba(70,120,230,0.34), rgba(70,120,230,0) 72%); }
 .dice-color-wash.ev-science  { background: radial-gradient(circle, rgba(50,180,90,0.34), rgba(50,180,90,0) 72%); }
+/* 蛮族が残り少/襲来のときの赤い警告フラッシュ（盤は揺らさない・非レイアウト） */
+.dice-color-wash.ev-danger   { background: radial-gradient(circle, rgba(220,40,40,0.42), rgba(220,40,40,0) 78%); }
 
-/* イベント結果パネル（蛮族前進 / 色別抽選の照合） */
+/* イベント結果パネル（蛮族前進 / 色別抽選の照合）。結果カードと調和する締まったデザイン。 */
 .dice-event-panel {
-  margin-top: 4px; max-width: min(92vw, 380px);
-  background: rgba(12,14,20,0.96); border: 2px solid rgba(255,255,255,0.18);
-  border-radius: 14px; padding: 10px 14px; color: #fff;
-  box-shadow: 0 8px 26px rgba(0,0,0,0.6);
+  max-width: min(92vw, 360px);
+  background: linear-gradient(180deg, rgba(24,28,38,0.97), rgba(12,14,20,0.97));
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 16px; padding: 11px 15px; color: #fff;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
 }
 .dep-ship { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
@@ -2433,29 +2438,12 @@ h1 {
 .dice-chip-ev.ev-politics { background: linear-gradient(145deg, #5b8def, #2853b8); }
 .dice-chip-ev.ev-science { background: linear-gradient(145deg, #5fc77a, #2e8b48); }
 
-/* イベント着地の軽い画面ヒット（board-shake とは別物の短い衝撃・数px） */
-@keyframes boardHit {
-  0%   { transform: translateY(0); }
-  35%  { transform: translateY(3px); }
-  100% { transform: translateY(0); }
-}
-.board-hit { animation: boardHit 0.2s ease-out; }
 /* 色ゲートの画面カラーウォッシュ */
 @keyframes colorWash {
   0%   { opacity: 0; }
   28%  { opacity: 1; }
   100% { opacity: 0; }
 }
-/* 蛮族前進時の画面の揺れ（残り少ない/襲来は danger で強め） */
-@keyframes boardShake {
-  0%, 100% { transform: translate(0, 0); }
-  20% { transform: translate(-4px, 2px); }
-  40% { transform: translate(4px, -2px); }
-  60% { transform: translate(-3px, 1px); }
-  80% { transform: translate(3px, -1px); }
-}
-.board-shake { animation: boardShake 0.5s ease-in-out; }
-.board-shake-danger { animation: boardShake 0.62s ease-in-out; box-shadow: inset 0 0 70px rgba(255,40,40,0.4); }
 @keyframes dicePop {
   0%   { transform: scale(1.45); }
   55%  { transform: scale(0.9); }
