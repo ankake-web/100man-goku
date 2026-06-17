@@ -191,7 +191,7 @@ class DiceGLController {
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 0.98;   // 少し締めてコントラストを上げる＝硬い印象
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -207,21 +207,21 @@ class DiceGLController {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    // キーライト＋ソフトシャドウ＋補助光。コントラスト強め＝硬く締まった陰影。
-    const key = new THREE.DirectionalLight(0xffffff, 2.7);
-    key.position.set(2.8, 5.4, 3.0); key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    // 強いキーライト＋シャープシャドウ＋弱い補助光＝硬く締まった陰影（柔らかい均一光をやめる）。
+    const key = new THREE.DirectionalLight(0xffffff, 3.4);
+    key.position.set(2.9, 5.2, 2.8); key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.near = 1; key.shadow.camera.far = 14;
     const c = key.shadow.camera as THREE.OrthographicCamera;
     c.left = -4; c.right = 4; c.top = 4; c.bottom = -4;
-    key.shadow.bias = -0.0008; key.shadow.radius = 2.2;   // 影をシャープに＝硬い接地
+    key.shadow.bias = -0.0007; key.shadow.radius = 1.0;   // 影をくっきり＝硬い接地
     this.scene.add(key);
-    this.scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x33291a, 0.34));
+    this.scene.add(new THREE.HemisphereLight(0xcdd9ee, 0x2a2014, 0.18)); // 補助は控えめ＝コントラスト維持
 
     // 接地影プレーン
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(20, 20),
-      new THREE.ShadowMaterial({ opacity: 0.42 }),
+      new THREE.ShadowMaterial({ opacity: 0.55 }),
     );
     ground.rotation.x = -Math.PI / 2; ground.position.y = 0; ground.receiveShadow = true;
     this.scene.add(ground);
@@ -245,25 +245,25 @@ class DiceGLController {
 
   private faceDecal(tex: THREE.Texture, faceIdx: number, sizeScale = 0.8): THREE.Mesh {
     const n = FACE_NORMALS[faceIdx]!.clone();
-    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.4, metalness: 0.0 });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.32, metalness: 0.0, envMapIntensity: 0.45 });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(sizeScale, sizeScale), mat);
-    plane.position.copy(n.clone().multiplyScalar(0.5 + 0.006));
+    plane.position.copy(n.clone().multiplyScalar(0.5 + 0.004));
     plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
     plane.castShadow = false;
     return plane;
   }
 
   private makeBody(color: string, roughness: number, metalness: number): { group: THREE.Group; body: THREE.MeshStandardMaterial } {
-    const body = new THREE.MeshStandardMaterial({ color, roughness, metalness });
-    // 角丸を小さく＝エッジの立った“硬い”サイコロ感（削り出しの面取り程度）。
-    const mesh = new THREE.Mesh(new RoundedBoxGeometry(1, 1, 1, 3, 0.045), body);
+    const body = new THREE.MeshStandardMaterial({ color, roughness, metalness, envMapIntensity: 0.45 });
+    // 角丸をごく小さく＝エッジの立った硬い立方体（柔らかい丸みをやめる。面取り程度）。
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(1, 1, 1, 2, 0.02), body);
     mesh.castShadow = true; mesh.receiveShadow = true;
     const group = new THREE.Group(); group.add(mesh);
     return { group, body };
   }
 
   private makeProdDie(bodyColor: string, pip: string, x: number): Die {
-    const { group, body } = this.makeBody(bodyColor, 0.36, 0.0);  // 低roughness＝硬いプラ/骨の明確なハイライト
+    const { group, body } = this.makeBody(bodyColor, 0.3, 0.06);  // 硬い緻密な質感（くっきりハイライト）
     for (let i = 0; i < 6; i++) group.add(this.faceDecal(pipTexture(PROD_FACE_VALUE[i]!, pip), i));
     group.position.set(x, 0.5, 0);
     this.scene.add(group);
@@ -271,7 +271,7 @@ class DiceGLController {
   }
 
   private makeEventDie(x: number): Die {
-    const { group, body } = this.makeBody('#39434f', 0.62, 0.12);
+    const { group, body } = this.makeBody('#39434f', 0.5, 0.18);  // 硬い石/金属寄りの締まった質感
     for (let i = 0; i < 6; i++) {
       const r = EVENT_FACE_RESULT[i]!;
       if (r === 'ship') {
