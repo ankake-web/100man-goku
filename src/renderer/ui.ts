@@ -1358,8 +1358,8 @@ export function showAssetGallery(): void {
     const s = el('div', 'gallery-section-title'); s.textContent = titleTxt; body.appendChild(s);
     const grid = el('div', 'gallery-grid gallery-grid-cards'); body.appendChild(grid); return grid;
   };
-  const cardItem = (grid: HTMLElement, src: string | null, name: string, desc: string, deck?: CkTrack): void => {
-    const cell = el('div', `gallery-cell gallery-card-cell${deck ? ' pc-deck-' + deck : ''}`);
+  const cardItem = (grid: HTMLElement, src: string | null, name: string, desc: string): void => {
+    const cell = el('div', 'gallery-cell gallery-card-cell');
     const fr = el('div', 'gallery-card-frame');
     fr.appendChild(assetImg(src, 'gallery-card-art', name, name));
     const fb = document.createElement('img');
@@ -1408,7 +1408,7 @@ export function showAssetGallery(): void {
     const cg = cardSection(`📜 進歩カード（${label}デッキ）`);
     for (const type of PROGRESS_DECK_CARDS[deck]) {
       const art = ASSETS.progressCard[type] ?? ASSETS.cardBack[deck];
-      cardItem(cg, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type], deck);
+      cardItem(cg, art, PROGRESS_CARD_NAME[type], PROGRESS_CARD_DESC[type]);
     }
   }
 
@@ -1465,10 +1465,10 @@ function appendCkBuildSection(
   knightRow.appendChild(makeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
     () => buildVid && dispatch({ type: 'BUILD_KNIGHT', vertexId: buildVid })));
   const actVid = firstV(v => canActivateKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(RESOURCE_IMG.grain, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], actVid ? 'btn-build' : 'btn-disabled', !actVid,
+  knightRow.appendChild(makeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], actVid ? 'btn-build' : 'btn-disabled', !actVid,
     () => actVid && dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: actVid })));
   const upVid = firstV(v => canUpgradeKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(knightImg, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], upVid ? 'btn-build' : 'btn-disabled', !upVid,
+  knightRow.appendChild(makeImgBtn(ASSETS.knight.mighty, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], upVid ? 'btn-build' : 'btn-disabled', !upVid,
     () => upVid && dispatch({ type: 'UPGRADE_KNIGHT', vertexId: upVid })));
   // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
@@ -1498,8 +1498,6 @@ function appendCkBuildSection(
       // 使えないカードも閲覧可能（disabled=false）。実際の使用可否はモーダルの「使う」で制御。
       const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', false,
         () => showProgressCardInfo(c, can, dispatch, state, pid));
-      // 系統が一目で分かるよう色分け（政治=青/科学=緑/商業=黄）。
-      btn.classList.add('pc-card', `pc-deck-${c.deck}`);
       btn.title = PROGRESS_CARD_DESC[c.type];
       pcRow.appendChild(btn);
     }

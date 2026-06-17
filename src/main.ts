@@ -703,6 +703,18 @@ function fxSpeed(): CpuSpeed {
   return netMode ? 'normal' : (lastConfig?.cpuSpeed ?? 'normal');
 }
 
+// サイコロ演出の速さ設定（CPU速度とは独立・localStorage保存）。off=演出なしで即結果。
+type DiceFxMode = 'off' | 'slow' | 'normal' | 'fast';
+const DICE_FX_KEY = 'catan_dice_fx';
+function diceFxMode(): DiceFxMode {
+  try { const v = localStorage.getItem(DICE_FX_KEY); if (v === 'off' || v === 'slow' || v === 'normal' || v === 'fast') return v; } catch { /* ignore */ }
+  return 'normal';
+}
+function setDiceFxMode(m: DiceFxMode): void {
+  try { localStorage.setItem(DICE_FX_KEY, m); } catch { /* ignore */ }
+}
+const DICE_FX_LABELS: Record<DiceFxMode, string> = { off: 'OFF（即結果）', slow: 'ゆっくり', normal: '普通', fast: '速い' };
+
 // このターンにCPUがプレイヤー間交易を提案済みか（連続提案防止）
 let cpuPlayerTradeOfferedThisTurn = false;
 
@@ -981,6 +993,27 @@ function updateGameNav(): void {
     });
     speedRow.append(lbl, sel);
     dd.appendChild(speedRow);
+  }
+
+  // サイコロ演出の速さ（OFF/ゆっくり/普通/速い）。CPU速度とは独立・即反映。
+  {
+    const diceRow = document.createElement('div');
+    diceRow.className = 'game-menu-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'game-menu-label';
+    lbl.textContent = 'サイコロ演出';
+    const sel = document.createElement('select');
+    sel.className = 'game-menu-select';
+    const cur = diceFxMode();
+    (['off', 'slow', 'normal', 'fast'] as DiceFxMode[]).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = DICE_FX_LABELS[m];
+      if (cur === m) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => setDiceFxMode(sel.value as DiceFxMode));
+    diceRow.append(lbl, sel);
+    dd.appendChild(diceRow);
   }
 
   // BGM ON/OFF + 音量
@@ -2354,10 +2387,11 @@ function hideBoardDim(dim: HTMLElement | null): void {
 function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, onDone: () => void): void {
   if (d1 < 1 || d2 < 1) { onDone(); return; }
   const reduced = prefersReducedMotion();
-  if (!reduced && fxSpeed() === 'instant') { onDone(); return; }
+  const mode = diceFxMode();                          // サイコロ演出の速さ（off=演出なしで即結果）
+  const instant = reduced || mode === 'off';
 
   const host = document.getElementById('board-area') ?? document.body;
-  const dim = showBoardDim(reduced);                 // ① ロール中だけ盤を沈める
+  const dim = showBoardDim(instant);                 // ① ロール中だけ盤を沈める（off/抑制は軽い減光）
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
   // ダイスと合計を1枚の「結果カード」にまとめ、ダイスが面に乗っているように見せる（浮き防止）。
@@ -2397,8 +2431,8 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
 
   gl.mountTo(glWrap);
 
-  // reduced-motion: タンブルを省き即着地（出目の正しさは維持）。
-  if (reduced) {
+  // 演出OFF / reduced-motion: タンブルを省き即着地（出目の正しさは維持）。
+  if (instant) {
     gl.showStatic(spec);
     showDiceSum(sum, d1, d2);
     showPanelAndFlourish();
@@ -2406,8 +2440,8 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
     return;
   }
 
-  // 着地時刻（既存タイミングを維持）。赤→黄(+約300ms)→イベント(さらに遅れ＝見せ場)。
-  const k = fxSpeed() === 'fast' ? 0.6 : fxSpeed() === 'slow' ? 1.5 : 1;
+  // 着地時刻（サイコロ演出の速さ設定で伸縮）。赤→黄(+約300ms)→イベント(さらに遅れ＝見せ場)。
+  const k = mode === 'fast' ? 0.6 : mode === 'slow' ? 1.5 : 1;
   const tRed = Math.round(1550 * k);
   const tYellow = Math.round(1850 * k);
   const tEvent = Math.round(2350 * k);
