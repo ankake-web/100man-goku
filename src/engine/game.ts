@@ -694,7 +694,7 @@ export function applyAction(
         && (state.turnPhase === 'TRADE_BUILD' || (isAlchemist && state.turnPhase === 'PRE_ROLL'));
       if (!okPhase) throw new Error('PLAY_PROGRESS: wrong phase for this card');
       if (!canPlayProgress(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
-      return checkVictory(playProgress(state, pid, action.cardId, rng), pid);
+      return checkVictory(playProgress(state, pid, action.cardId, rng, action.choice), pid);
     }
     case 'MOVE_KNIGHT': {
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('MOVE_KNIGHT: must be in TRADE_BUILD');

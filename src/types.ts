@@ -376,6 +376,14 @@ export interface LogEntry {
 
 // ---- アクション ----
 
+// 進歩カードの「プレイヤーが選ぶ」対象（公式準拠）。
+//   資源独占=resource / 交易独占=commodity / 大商人=targetPlayerId。未指定なら自動最善で解決。
+export interface ProgressChoice {
+  resource?: ResourceType;
+  commodity?: CommodityType;
+  targetPlayerId?: PlayerId;
+}
+
 export type Action =
   | { type: 'ROLL_DICE' }
   | { type: 'MOVE_ROBBER';         tileId: TileId; stealFromPlayerId: PlayerId | null }
@@ -400,7 +408,7 @@ export type Action =
   | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
   | { type: 'MOVE_KNIGHT';         fromVertexId: VertexId; toVertexId: VertexId }
   | { type: 'CHASE_ROBBER';        vertexId: VertexId } // 騎士で強盗を追い払う（ROBBERフェーズへ遷移）
-  | { type: 'PLAY_PROGRESS';       cardId: string }
+  | { type: 'PLAY_PROGRESS';       cardId: string; choice?: ProgressChoice }
   | { type: 'OFFER_TRADE';         offer: TradeOffer; targetPlayerIds: PlayerId[] }
   | { type: 'RESPOND_TRADE';       response: PlayerResponse }
   | { type: 'CONFIRM_TRADE';       responderId: PlayerId }

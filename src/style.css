@@ -1850,6 +1850,12 @@ h1 {
 .action-btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-icon-img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
 .btn-icon-label { min-width: 0; }
+/* 進歩カードの選択UI（資源/商品/相手を選ぶ・公式準拠） */
+.pc-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pc-choice-label { font-weight: 800; color: #ffe6b0; text-align: center; }
+.pc-choice-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pc-choice-row .action-btn { flex: 0 1 auto; }
+.pc-choice-empty { color: rgba(255,255,255,0.6); padding: 6px; }
 /* 進歩カードの系統色分け（政治=青/科学=緑/商業=黄）。手札ボタンは左帯、図鑑は枠色。 */
 .pc-card { border-left: 5px solid var(--pc-color, #888) !important; }
 .pc-card.pc-deck-politics { --pc-color: #4d82e6; }
