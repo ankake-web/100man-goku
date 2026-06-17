@@ -13,7 +13,7 @@
 
 import type {
   GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player,
-  ProgressCard, ProgressCardType, TileType, Knight, TradeKind,
+  ProgressCard, ProgressCardType, TileType, Knight, TradeKind, ProgressChoice,
 } from '../types';
 
 /** 勝利点の進歩カード（憲法/印刷機）。手札上限の対象外で、即時+1VP。 */
@@ -795,7 +795,7 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
     case 'mining':     return adjacentTerrainCount(state, pid, 'mountain') > 0;
     case 'resource_monopoly': return opps.some(o => handTotalRes(state.players[o]!) > 0);
     case 'trade_monopoly':    return opps.some(o => COMMODITY_TYPES.reduce((s, c) => s + commodities(state.players[o]!)[c], 0) > 0);
-    case 'master_merchant':   return opps.some(o => handTotalRes(state.players[o]!) > 0);
+    case 'master_merchant':   return opps.some(o => handTotalRes(state.players[o]!) > 0 && calcVP(state, o) > myVp); // 公式: 自分よりVPが高い相手のみ
     case 'warlord':  return Object.values(state.vertices).some(v => v.knight?.playerId === pid && !v.knight.active);
     case 'saboteur': return opps.some(o => calcVP(state, o) >= myVp && handTotalRes(state.players[o]!) > 0);
     case 'wedding':  return opps.some(o => calcVP(state, o) > myVp && handTotalRes(state.players[o]!) > 0);
@@ -826,7 +826,7 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
 }
 
 /** 進歩カードを使用して効果を適用（バリデーション済み前提）。カードは手札から除去。 */
-export function playProgress(state: GameState, pid: PlayerId, cardId: string, rng: () => number): GameState {
+export function playProgress(state: GameState, pid: PlayerId, cardId: string, rng: () => number, choice?: ProgressChoice): GameState {
   const p0 = state.players[pid]!;
   const card = (p0.progressCards ?? []).find(c => c.id === cardId)!;
   // カードを手札から除去した基準state。
@@ -884,21 +884,28 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
       bank[r] -= amt; gainRes(pid, { [r]: amt }); break;
     }
     case 'resource_monopoly': {
-      let best: ResourceType = 'wood', bt = -1;
-      for (const r of RESOURCE_TYPES) { const t = opps.reduce((s, o) => s + players[o]!.hand[r], 0); if (t > bt) { bt = t; best = r; } }
+      // 公式: 奪う資源は自分で指名（choice）。未指定なら自動で最多の資源（CPU/フォールバック）。
+      let best: ResourceType = choice?.resource ?? 'wood';
+      if (!choice?.resource) { let bt = -1; for (const r of RESOURCE_TYPES) { const t = opps.reduce((s, o) => s + players[o]!.hand[r], 0); if (t > bt) { bt = t; best = r; } } }
       let gained = 0;
       for (const o of opps) { const take = Math.min(2, players[o]!.hand[best]); if (take > 0) { players[o] = { ...players[o]!, hand: { ...players[o]!.hand, [best]: players[o]!.hand[best] - take } }; gained += take; } }
       gainRes(pid, { [best]: gained }); break;
     }
     case 'trade_monopoly': {
-      let best: CommodityType = 'coin', bt = -1;
-      for (const c of COMMODITY_TYPES) { const t = opps.reduce((s, o) => s + commodities(players[o]!)[c], 0); if (t > bt) { bt = t; best = c; } }
+      // 公式: 奪う商品は自分で指名（choice）。未指定なら自動で最多の商品。
+      let best: CommodityType = choice?.commodity ?? 'coin';
+      if (!choice?.commodity) { let bt = -1; for (const c of COMMODITY_TYPES) { const t = opps.reduce((s, o) => s + commodities(players[o]!)[c], 0); if (t > bt) { bt = t; best = c; } } }
       let gained = 0;
       for (const o of opps) { const take = Math.min(1, commodities(players[o]!)[best]); if (take > 0) { players[o] = { ...players[o]!, commodities: { ...commodities(players[o]!), [best]: commodities(players[o]!)[best] - take } }; gained += take; } }
       players[pid] = { ...players[pid]!, commodities: { ...commodities(players[pid]!), [best]: commodities(players[pid]!)[best] + gained } }; break;
     }
     case 'master_merchant': {
-      const target = [...opps].filter(o => handTotalRes(players[o]!) > 0).sort((a, b) => calcVP(state, b) - calcVP(state, a))[0];
+      // 公式: 自分よりVPが高い相手から1人を選ぶ（choice）。未指定なら最高VPの相手（CPU/フォールバック）。
+      const myVp = calcVP(state, pid);
+      const eligible = opps.filter(o => handTotalRes(players[o]!) > 0 && calcVP(state, o) > myVp);
+      const target = (choice?.targetPlayerId && eligible.includes(choice.targetPlayerId))
+        ? choice.targetPlayerId
+        : [...eligible].sort((a, b) => calcVP(state, b) - calcVP(state, a))[0];
       if (target) { const { hand, taken } = takeRandom(players[target]!.hand, 2, rng); players[target] = { ...players[target]!, hand }; gainRes(pid, taken); }
       break;
     }

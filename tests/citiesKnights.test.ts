@@ -397,6 +397,25 @@ describe('C&K 進歩カード', () => {
     expect(next.players.player1!.hand.wood).toBe(2); // 2枚奪取
     expect(next.players.player2!.hand.wood).toBe(1); // 残り1
   });
+
+  it('resource_monopoly: choice で指定した資源を奪う（自動最善でなくプレイヤー指名・公式）', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const { makeHand } = await import('../src/constants');
+    const g = ckState();
+    const s: GameState = {
+      ...g,
+      players: {
+        player1: makePlayer('player1', { hand: makeHand(), progressCards: [{ id: 'm1', type: 'resource_monopoly', deck: 'trade' }] }),
+        player2: makePlayer('player2', { hand: makeHand({ wood: 1, ore: 3 }) }),
+      },
+    };
+    // 自動なら最多の ore を奪うが、choice=wood を指名したら wood を奪う。
+    const next = playProgress(s, 'player1', 'm1', createRng(1), { resource: 'wood' });
+    expect(next.players.player1!.hand.wood).toBe(1);
+    expect(next.players.player1!.hand.ore).toBe(0);  // ore は奪っていない
+    expect(next.players.player2!.hand.ore).toBe(3);  // ore はそのまま
+  });
 });
 
 describe('C&K 騎士の移動', () => {

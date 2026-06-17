@@ -14,7 +14,7 @@ import {
   playerHasMovableKnight, playerHasChasableKnight,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS } from '../constants';
-import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard } from '../types';
+import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
 import type { BuildMode } from './events';
 
 const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
@@ -1253,7 +1253,34 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
 }
 
 // 騎士と商人: 進歩カードの「効果説明＋使う/やめる」モーダル（使用前に効果が分かるように）。
-function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a: Action) => void): void {
+// 公式準拠の選択UI: 資源独占=資源を指名 / 交易独占=商品を指名 / 大商人=相手を選ぶ。
+function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: PlayerId | undefined, play: (c: ProgressChoice) => void, cancel: () => void): HTMLElement {
+  const wrap = el('div', 'pc-choice');
+  const label = el('div', 'pc-choice-label');
+  const row = el('div', 'pc-choice-row');
+  if (card.type === 'resource_monopoly') {
+    label.textContent = '奪う資源を選ぶ';
+    for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ resource: r })));
+  } else if (card.type === 'trade_monopoly') {
+    label.textContent = '奪う商品を選ぶ';
+    for (const c of COMMODITY_TYPES) row.appendChild(makeImgBtn(COMMODITY_IMG[c], COMMODITY_NAMES[c], 'btn-build', false, () => play({ commodity: c })));
+  } else { // master_merchant
+    label.textContent = '相手を選ぶ（自分よりVPが高い相手）';
+    const myVp = pid ? calcVP(state, pid) : 0;
+    const cardsOf = (o: PlayerId): number => state.players[o]!.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + state.players[o]!.hand[r], 0);
+    const eligible = state.playerOrder.filter(o => o !== pid && calcVP(state, o) > myVp && cardsOf(o as PlayerId) > 0) as PlayerId[];
+    for (const o of eligible) {
+      const b = makeBtn(`${state.players[o]!.name}（★${calcVP(state, o)}）`, 'btn-build', false, () => play({ targetPlayerId: o }));
+      b.style.borderLeft = `5px solid ${PLAYER_COLORS[o] ?? '#888'}`;
+      row.appendChild(b);
+    }
+    if (eligible.length === 0) row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '対象がいません' }));
+  }
+  wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
+  return wrap;
+}
+
+function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a: Action) => void, state?: GameState, pid?: PlayerId): void {
   document.querySelector('.help-overlay')?.remove();
   const overlay = document.createElement('div');
   overlay.className = 'help-overlay';
@@ -1279,12 +1306,19 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   desc.textContent = PROGRESS_CARD_DESC[card.type];
   box.appendChild(desc);
 
+  // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
+  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant';
+  const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
+
   const actions = el('div', 'pc-info-actions');
   const useBtn = document.createElement('button');
   useBtn.className = `action-btn ${canPlay ? 'btn-primary' : 'btn-disabled'}`;
-  useBtn.textContent = canPlay ? '▶ 使う' : '今は使えません';
+  useBtn.textContent = canPlay ? (needsChoice ? '▶ 使う（選ぶ）' : '▶ 使う') : '今は使えません';
   useBtn.disabled = !canPlay;
-  if (canPlay) useBtn.addEventListener('click', () => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id }); });
+  if (canPlay) useBtn.addEventListener('click', () => {
+    if (needsChoice && state) { actions.remove(); box.appendChild(buildProgressChoicePicker(card, state, pid, play, () => overlay.remove())); }
+    else play();
+  });
   actions.appendChild(useBtn);
   const closeBtn = document.createElement('button');
   closeBtn.className = 'action-btn btn-end';
@@ -1463,7 +1497,7 @@ function appendCkBuildSection(
       // タップで「効果説明＋使う/やめる」のカード詳細を表示（使用前に効果が分かるように）。
       // 使えないカードも閲覧可能（disabled=false）。実際の使用可否はモーダルの「使う」で制御。
       const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], can ? 'btn-build' : 'btn-disabled', false,
-        () => showProgressCardInfo(c, can, dispatch));
+        () => showProgressCardInfo(c, can, dispatch, state, pid));
       // 系統が一目で分かるよう色分け（政治=青/科学=緑/商業=黄）。
       btn.classList.add('pc-card', `pc-deck-${c.deck}`);
       btn.title = PROGRESS_CARD_DESC[c.type];
