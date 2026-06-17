@@ -2123,6 +2123,23 @@ function flashBonus(pid: PlayerId, label: string): void {
 }
 
 // 自分の手番が始まった瞬間に、やわらかいチャイムで知らせる（他人の手番開始と区別）。
+// 自分宛てのプレイヤー間交易提案が新たに来たら、操作パネル（提案UI）へゆっくりスクロールして気づかせる。
+function maybeScrollToTradeOffer(prevState: GameState, newState: GameState): void {
+  const me = selfPlayerId();
+  if (!me) return;
+  const offerForMe = (s: GameState): boolean => {
+    const t = s.pendingTrade;
+    return !!(t && t.state === 'TRADE_RESPONSE' && t.targetPlayerIds.includes(me) && !t.responses[me]);
+  };
+  if (offerForMe(newState) && !offerForMe(prevState)) {
+    requestAnimationFrame(() => {
+      const target = (document.querySelector('.turn-panel .modal-panel')
+        ?? document.querySelector('.turn-panel')) as HTMLElement | null;
+      target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    });
+  }
+}
+
 function maybeYourTurnCue(prevState: GameState, newState: GameState): void {
   if (newState.phase === 'GAME_OVER') return;
   const me = selfPlayerId();
@@ -2453,6 +2470,7 @@ function runTransitionFx(
   animateBuildPlacement(action);
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);
+  maybeScrollToTradeOffer(prevState, state);
 }
 
 // 建設フィードバック(C-4): 開拓地/都市はスケールインのポップ、道は辺をなぞる描画。

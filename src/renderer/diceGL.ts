@@ -305,8 +305,21 @@ class DiceGLController {
     die.restQuat.copy(q);
   }
 
+  // ダイスの横位置: 基本ゲーム(2個)は中央寄せ、騎士と商人(3個)は赤/黄/イベントを横並び。
+  private layoutDice(hasEvent: boolean): void {
+    if (hasEvent) {
+      this.dice.red.group.position.x = -1.3;
+      this.dice.yellow.group.position.x = 0;
+      this.dice.event.group.position.x = 1.3;
+    } else {
+      this.dice.red.group.position.x = -0.72;
+      this.dice.yellow.group.position.x = 0.72;
+    }
+  }
+
   /** 即着地（reduced-motion / instant）。出目の正しさのみ担保。 */
   showStatic(spec: RollSpec): void {
+    this.layoutDice(!!spec.event);
     this.setDieTo(this.dice.red, productionTargetQuaternion(spec.red.value));
     this.setDieTo(this.dice.yellow, productionTargetQuaternion(spec.yellow.value));
     if (spec.event) this.setDieTo(this.dice.event, eventTargetQuaternion(spec.event.result));
@@ -330,6 +343,7 @@ class DiceGLController {
   /** ロール開始。出目→目標姿勢へタンブル着地。各着地で callbacks を発火。 */
   roll(spec: RollSpec, timing: RollTiming, cb: RollCallbacks): void {
     this.dice.event.group.visible = !!spec.event;
+    this.layoutDice(!!spec.event);
     this.armDie(this.dice.red, productionTargetQuaternion(spec.red.value), timing.redMs, cb.onRedLand);
     this.armDie(this.dice.yellow, productionTargetQuaternion(spec.yellow.value), timing.yellowMs, cb.onYellowLand);
     if (spec.event) {
