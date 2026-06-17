@@ -2213,28 +2213,37 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
 /** 生産合計（赤+黄）のポップ表示。赤は抽選しきい値にも使うことが伝わる表記。 */
 function showDiceSum(sum: HTMLElement, d1: number, d2: number): void {
   sum.innerHTML = '';
-  const prod = document.createElement('span'); prod.className = 'dice-prod';
-  prod.textContent = `赤${d1} ＋ 黄${d2} ＝ 生産 ${d1 + d2}`;
-  sum.appendChild(prod);
+  // 赤・黄の値を色付きバッジで、合計を強調。チープな素テキストを避ける。
+  const mk = (cls: string, txt: string): HTMLElement => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; return s; };
+  sum.append(
+    mk('dice-sum-die red', String(d1)),
+    mk('dice-sum-plus', '＋'),
+    mk('dice-sum-die yellow', String(d2)),
+    mk('dice-sum-eq', '＝'),
+    mk('dice-sum-total', String(d1 + d2)),
+    mk('dice-sum-label', '生産'),
+  );
   sum.classList.add('show');
 }
 
-/** イベント結果を演出へ接続: 船=蛮族前進で画面を軽く揺らす / 色ゲート=その色が画面に広がる。 */
+/** イベント結果を演出へ接続: 船=蛮族前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。
+ * 盤面(#board-area)を transform で動かすと結果表示時にガタつくため、盤は動かさず
+ * オーバーレイのフラッシュ（非レイアウト・GPU合成のみ）で表現する。 */
 function applyEventFlourish(info: DiceEventInfo): void {
   if (prefersReducedMotion() || fxSpeed() === 'instant') return;
-  const board = document.getElementById('board-area');
+  const board = document.getElementById('board-area') ?? document.body;
   if (info.eventDie === 'ship') {
-    if (info.advanced && board) {
-      // 残り1〜2マス or 襲来は警告色＋強めの揺れ。パン/ズーム変換は内側 g にあり競合しない。
-      const danger = info.barbPos >= CK_BARBARIAN_MAX - 2 || info.attacked;
-      const cls = danger ? 'board-shake-danger' : 'board-shake';
-      board.classList.add(cls);
-      setTimeout(() => board.classList.remove(cls), 700);
+    // 残り1〜2マス or 襲来のみ、赤い警告フラッシュ（盤は揺らさない）。
+    if (info.advanced && (info.barbPos >= CK_BARBARIAN_MAX - 2 || info.attacked)) {
+      const flash = document.createElement('div');
+      flash.className = 'dice-color-wash ev-danger';
+      board.appendChild(flash);
+      setTimeout(() => flash.remove(), 900);
     }
   } else {
     const wash = document.createElement('div');
     wash.className = `dice-color-wash ev-${info.eventDie}`;
-    (board ?? document.body).appendChild(wash);
+    board.appendChild(wash);
     setTimeout(() => wash.remove(), 950);
   }
 }
@@ -2269,15 +2278,6 @@ function hideBoardDim(dim: HTMLElement | null): void {
   dim.classList.remove('on');
   setTimeout(() => dim.remove(), 360);
 }
-/** イベント着地の軽い画面ヒット（board-shake とは別物の短い"着地の衝撃"）。 */
-function boardHit(): void {
-  if (prefersReducedMotion() || fxSpeed() === 'instant') return;
-  const board = document.getElementById('board-area');
-  if (!board) return;
-  board.classList.remove('board-hit'); void board.offsetWidth;
-  board.classList.add('board-hit');
-  setTimeout(() => board.classList.remove('board-hit'), 220);
-}
 
 // 3Dダイス演出（Three.js/WebGL）: 赤=生産d1／黄=生産d2／イベント(CK)を実写級の立方体として
 // 転がし、diceGLMapping の目標姿勢へ着地させる（出目は外部値・物理で決めない）。着地は時間差
@@ -2291,9 +2291,12 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   const dim = showBoardDim(reduced);                 // ① ロール中だけ盤を沈める
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
-  const sum = document.createElement('div'); sum.className = 'dice-sum';
+  // ダイスと合計を1枚の「結果カード」にまとめ、ダイスが面に乗っているように見せる（浮き防止）。
+  const card = document.createElement('div'); card.className = 'dice-result-card';
   const glWrap = document.createElement('div'); glWrap.className = 'dice-gl-wrap';
-  overlay.append(sum, glWrap);                        // 合計は上・ダイス(canvas)は下中央
+  const sum = document.createElement('div'); sum.className = 'dice-sum';
+  card.append(glWrap, sum);
+  overlay.append(card);
   host.appendChild(overlay);
 
   const spec: RollSpec = {
@@ -2307,11 +2310,11 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
     if (done) return; done = true;
     overlay.remove(); hideBoardDim(dim); gl?.reset(); onDone();
   };
-  // 結果パネル＋（船=揺れ / 色=wash＋抽選照合）。パネルは上に挿入してダイスを動かさない。
+  // 結果パネル＋（船=警告フラッシュ / 色=wash＋抽選照合）。パネルは上に挿入してダイスを動かさない。
   const showPanelAndFlourish = (): void => {
     if (!eventInfo) return;
     overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild);
-    setTimeout(() => applyEventFlourish(eventInfo), 260); // board-hit の後（#board-area transform 競合回避）
+    applyEventFlourish(eventInfo);
   };
 
   // ⑧ WebGL非対応/失敗 → 最小限の結果表示（出目と船/色ゲートは sum＋パネルで判別可能）。
@@ -2344,8 +2347,7 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
     onRedLand: () => playSE('dice'),
     onYellowLand: () => { playSE('dice'); showDiceSum(sum, d1, d2); }, // 赤＋黄が揃って合計ポップ
     onEventLand: () => {
-      playSE('diceLandHeavy');
-      boardHit();                                     // ④ 着地の軽い画面ヒット（クライマックスは GL 側で発光）
+      playSE('diceLandHeavy');                        // クライマックスの発光は GL 側（盤は動かさない＝ガタつき防止）
       showPanelAndFlourish();
     },
   });
@@ -2801,8 +2803,6 @@ function clearTransientFx(): void {
   document
     .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast')
     .forEach(n => n.remove());
-  // 盤面に残った一時クラス（沈み/ヒット/揺れ）を確実に除去（連続ロールで残留させない）。
-  document.getElementById('board-area')?.classList.remove('board-hit', 'board-shake', 'board-shake-danger');
 }
 
 // ============================================================
