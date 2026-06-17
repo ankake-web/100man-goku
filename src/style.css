@@ -710,6 +710,42 @@ h1 {
 }
 .dice-event { font-size: 0.82rem; font-weight: 700; color: #cfe8ff; margin-left: 4px; opacity: 0.92; }
 
+/* ターンパネルのダイス読み取り: 赤/黄バッジ→合計＋イベント素材アイコン（漢字/「生産8」表記なし） */
+.dice-result { display: inline-flex; align-items: center; gap: 5px; }
+.dice-rd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.5em; height: 1.5em; padding: 0 0.18em; border-radius: 5px;
+  font-size: 0.92rem; font-weight: 900; color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.42), 0 1px 2px rgba(0,0,0,0.5);
+}
+.dice-rd.red { background: linear-gradient(150deg, #e44b3f, #b21d16); }
+.dice-rd.yellow { background: linear-gradient(150deg, #f1c33a, #c8920f); color: #3a2a06; }
+.dice-rd.emph { box-shadow: 0 0 0 2px #fff, 0 0 6px 1px rgba(255,120,90,0.9); }
+.dice-rd-eq { color: rgba(255,255,255,0.5); font-weight: 700; }
+.dice-rd-total { font-size: 1.18rem; font-weight: 900; color: #ffe24a; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.dice-rd-ev { width: 1.7em; height: 1.7em; object-fit: contain; margin-left: 3px; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
+.dice-rd-note { font-size: 0.72rem; font-weight: 700; color: #ffd0c4; }
+
+/* 小インラインアイコン（ラベル/タイトル/ログ中）。emで文字に追従。 */
+.inline-ic { width: 1.15em; height: 1.15em; object-fit: contain; vertical-align: -0.22em; display: inline-block; }
+.log-icon { vertical-align: -0.2em; margin-right: 4px; }
+.log-ic { width: 1.25em; height: 1.25em; object-fit: contain; }
+
+/* 蛮族トラック: 蛮族船画像＋ピップ＋残数（絵文字/漢字なし） */
+.barb-track { display: inline-flex; align-items: center; gap: 4px; }
+.barb-ship-ic { width: 1.5em; height: 1.5em; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.barb-pips { display: inline-flex; gap: 2px; }
+.barb-pip { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); }
+.barb-pip.on { background: #ffcf4d; border-color: #ffcf4d; }
+.barb-pip.on.danger { background: #ff5a5a; border-color: #ff5a5a; box-shadow: 0 0 5px rgba(255,80,80,0.85); }
+.barb-count { font-weight: 800; font-size: 0.82rem; }
+.barb-atk { font-size: 0.74rem; opacity: 0.82; }
+.barb-warn { font-size: 0.74rem; color: #ff6b6b; font-weight: 800; }
+
+/* ボタンアイコンにCSSグリフ（道/カード）を使う場合のサイズ上書き（btn-icon-img の28pxを打ち消す） */
+.btn-icon-img.ic-road { width: 22px; height: 8px; border-radius: 3px; }
+.btn-icon-img.ic-cards { width: 17px; height: 22px; }
+
 /* ---- アクションボタン ---- */
 /* 自動折り返しグリッド: 横長パネルでは複数列、狭幅では自然に列数が減る。
    各ボタンは等幅セルに広がり、文言は1行(nowrap)で押しやすくする。 */
