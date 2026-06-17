@@ -5,7 +5,7 @@
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, CK_BARBARIAN_MAX, CK_TRACK_NAME } from './constants';
+import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, CK_BARBARIAN_MAX, CK_TRACK_NAME } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
@@ -23,8 +23,8 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk } from './engine/citiesKnights';
-import type { CkTrack } from './types';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction } from './engine/citiesKnights';
+import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
 import type { BoardRenderOptions, BoardViewport } from './renderer/board';
@@ -44,6 +44,10 @@ import { ASSETS } from './assets/manifest'; // 画像参照は中央マニフェ
 // 資源取得アニメ用の画像（手札カードと同じ。既に読込済み＝追加負荷なし）。
 const RES_FLY_IMG: Record<ResourceType, string> = {
   wood: ASSETS.resource.lumber, brick: ASSETS.resource.brick, wool: ASSETS.resource.wool, grain: ASSETS.resource.grain, ore: ASSETS.resource.ore,
+};
+// 商品(紙/布/金貨)取得アニメ用の画像。資源と同じく取得時に飛ばす。
+const COM_FLY_IMG: Record<CommodityType, string> = {
+  paper: ASSETS.commodity.paper, cloth: ASSETS.commodity.cloth, coin: ASSETS.commodity.coin,
 };
 
 // ============================================================
@@ -1398,7 +1402,7 @@ function appendSystemLog(message: string): void {
 const RES_FLY_MS = 1300;       // 飛行時間（ゆっくり）
 const RES_FLY_STAGGER = 300;   // アイコン1個ずつの間隔（0.3秒）
 function spawnResFlyer(
-  res: ResourceType,
+  imgSrc: string,                     // 飛ばすアイコン画像（資源 or 商品）
   target: { x: number; y: number },   // 着地先（ビューポート座標。.res-fly は position:fixed）
   origin: { x: number; y: number },
   delay: number,
@@ -1411,10 +1415,10 @@ function spawnResFlyer(
     if (gen !== gameGeneration) return;
     const span = document.createElement('span');
     span.className = 'res-fly';
-    // 手札カードと同じ資源画像で飛ばす（絵文字→画像で見た目を統一）。
+    // 手札カードと同じ画像で飛ばす（資源・商品とも。絵文字→画像で見た目を統一）。
     const img = document.createElement('img');
     img.className = 'res-fly-img';
-    img.src = RES_FLY_IMG[res];
+    img.src = imgSrc;
     img.alt = '';
     img.draggable = false;
     span.appendChild(img);
@@ -1851,6 +1855,19 @@ function handDiffGains(oldState: GameState, newState: GameState, pid: string): A
   return gains;
 }
 
+// 商品(紙/布/金貨)の手札差分（増分のみ）。非ダイスの取得（交易等）で自分の増分を飛ばす用。
+function commodityDiffGains(oldState: GameState, newState: GameState, pid: string): Array<{ c: CommodityType; n: number }> {
+  const oldC = oldState.players[pid]?.commodities;
+  const newC = newState.players[pid]?.commodities;
+  if (!oldC || !newC) return [];
+  const gains: Array<{ c: CommodityType; n: number }> = [];
+  for (const c of COMMODITY_TYPES) {
+    const diff = (newC[c] ?? 0) - (oldC[c] ?? 0);
+    if (diff > 0) gains.push({ c, n: diff });
+  }
+  return gains;
+}
+
 // 資源 r を「このダイス目で産出し、かつ pid の建物に隣接する」タイルの画面中心を返す。
 // 見つからなければ その資源の産出タイル先頭 → 産出タイル → 盤面中央 へフォールバック。
 // 参照は公開情報（タイル/数字/強盗/盤面の建物）のみ。
@@ -1875,6 +1892,31 @@ function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: nu
   }
   if (firstOfRes) { const pos = screenOf(firstOfRes); if (pos) return pos; }
   return getProducingTileOrigin(diceTotal) ?? getBoardCenter();
+}
+
+// 商品 c を「このダイス目で産出し、かつ pid の都市に隣接する」タイルの画面中心を返す。
+// 商品は都市からのみ産出（森=紙/牧草=布/山=金貨）。見つからなければ該当地形タイル→盤面中央へ。
+function originForCommodity(diceTotal: number, pid: string, c: CommodityType): { x: number; y: number } {
+  const boardEl = document.getElementById('board');
+  const screenOf = (tileId: string): { x: number; y: number } | null => {
+    const g = boardEl?.querySelector(`[data-tile-id="${tileId}"]`) as SVGGElement | null;
+    if (!g) return null;
+    const rect = g.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  };
+  let firstOfCom: string | null = null;
+  for (const tile of Object.values(state.tiles)) {
+    if (tile.number !== diceTotal || tile.hasRobber) continue;
+    if (TILE_COMMODITY_MAP[tile.type] !== c) continue;
+    if (firstOfCom == null) firstOfCom = tile.id;
+    const vids = state.tileToVertices[tile.id] ?? [];
+    if (vids.some(v => state.vertices[v]?.building?.type === 'city' && state.vertices[v]?.building?.playerId === pid)) {
+      const pos = screenOf(tile.id);
+      if (pos) return pos;
+    }
+  }
+  if (firstOfCom) { const pos = screenOf(firstOfCom); if (pos) return pos; }
+  return getBoardCenter();
 }
 
 // OSの「視差効果を減らす/アニメ抑制」設定を尊重する。trueなら派手な動きは省略し即時化する。
@@ -1917,7 +1959,7 @@ function animateSetupGain(oldState: GameState, vertexId: string): void {
     const tid = tilesByRes.get(r)?.shift();
     const origin = (tid ? tileScreenCenter(tid) : null) ?? getBoardCenter();
     const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-    spawnResFlyer(r, target, jitter, delay, targetEl);
+    spawnResFlyer(RES_FLY_IMG[r], target, jitter, delay, targetEl);
     delay += RES_FLY_STAGGER;
   }
 }
@@ -1942,18 +1984,30 @@ function triggerResourceAnimation(
 
   // ダイス産出は公開情報。盤面（タイル/数字/強盗/建物）とバンクから各プレイヤーの
   // 実獲得を導出し、全員分のアイコンを該当ヘックスからパネルへ飛ばす。
+  // 騎士と商人では「資源＋商品(紙/布/金貨)」を都市産出に合わせて飛ばす（資源と同じ演出）。
   // LANでは相手の手札がマスクされ手札差分が0になるため、この公開導出が必須。
-  // ダイス以外（年の豊穣等）は従来どおり手札差分（自分のみ公開）で飛ばす。
+  // ダイス以外（交易・年の豊穣等）は手札差分（自分のみ公開）で資源・商品とも飛ばす。
   const isDice = action?.type === 'ROLL_DICE' && diceTotal !== undefined;
-  const production = isDice ? computeDiceProduction(oldState, diceTotal!) : null;
+  const ck = isCk(newState);
+  const ckProd = (isDice && ck) ? computeCkProduction(oldState, diceTotal!) : null;
+  const baseProd = (isDice && !ck) ? computeDiceProduction(oldState, diceTotal!) : null;
 
-  const MAX_PER_PLAYER = 6; // スマホで重くならないよう1人あたりの上限
+  const MAX_PER_PLAYER = 8; // スマホで重くならないよう1人あたりの上限（商品分を見込み少し増やす）
   let delay = 0;
   for (const pid of newState.playerOrder) {
-    const gains = production
-      ? RESOURCE_TYPES.map(r => ({ r, n: production[pid]?.[r] ?? 0 })).filter(g => g.n > 0)
-      : handDiffGains(oldState, newState, pid);
-    if (gains.length === 0) continue;
+    // 飛ばすアイコン群（資源・商品を統一して扱う）。
+    const flyables: Array<{ img: string; origin: { x: number; y: number }; n: number }> = [];
+    if (isDice && ckProd) {
+      for (const r of RESOURCE_TYPES) { const n = ckProd.resources[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(diceTotal!, pid, r), n }); }
+      for (const c of COMMODITY_TYPES) { const n = ckProd.commodities[pid]?.[c] ?? 0; if (n > 0) flyables.push({ img: COM_FLY_IMG[c], origin: originForCommodity(diceTotal!, pid, c), n }); }
+    } else if (isDice && baseProd) {
+      for (const r of RESOURCE_TYPES) { const n = baseProd[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(diceTotal!, pid, r), n }); }
+    } else {
+      const c0 = getBoardCenter();
+      for (const { r, n } of handDiffGains(oldState, newState, pid)) flyables.push({ img: RES_FLY_IMG[r], origin: c0, n });
+      for (const { c, n } of commodityDiffGains(oldState, newState, pid)) flyables.push({ img: COM_FLY_IMG[c], origin: c0, n });
+    }
+    if (flyables.length === 0) continue;
     const targetEl = flyTargetFor(pid);
     if (!targetEl) continue;
     // 着地先の中央座標を“今”確定させる（再描画でミニパネルが作り直されても飛行は崩れない）。
@@ -1962,11 +2016,10 @@ function triggerResourceAnimation(
     const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
 
     let count = 0;
-    for (const { r, n } of gains) {
-      const origin = isDice ? originForGain(diceTotal!, pid, r) : getBoardCenter();
+    for (const { img, origin, n } of flyables) {
       for (let i = 0; i < n && count < MAX_PER_PLAYER; i++) {
         const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-        spawnResFlyer(r, target, jitter, delay, targetEl);
+        spawnResFlyer(img, target, jitter, delay, targetEl);
         delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
         count++;
       }
