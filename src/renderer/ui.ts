@@ -1468,7 +1468,7 @@ function appendCkBuildSection(
   knightRow.appendChild(makeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], actVid ? 'btn-build' : 'btn-disabled', !actVid,
     () => actVid && dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: actVid })));
   const upVid = firstV(v => canUpgradeKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(ASSETS.knight.mighty, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], upVid ? 'btn-build' : 'btn-disabled', !upVid,
+  knightRow.appendChild(makeImgBtn(ASSETS.action.knightUpgrade, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], upVid ? 'btn-build' : 'btn-disabled', !upVid,
     () => upVid && dispatch({ type: 'UPGRADE_KNIGHT', vertexId: upVid })));
   // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
