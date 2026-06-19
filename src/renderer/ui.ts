@@ -1772,9 +1772,9 @@ export function renderUI(
   const titles = el('div', 'turn-titles');
   const lrHolder = state.longestRoadHolder ? state.players[state.longestRoadHolder] : null;
   const laHolder = state.largestArmyHolder ? state.players[state.largestArmyHolder] : null;
-  // 最長交易路: 道のCSSアイコン＋保持者（絵文字を排除）。
+  // 最長交易路: 道の画像アイコン＋保持者（道建設ボタンと同じ絵柄に統一）。
   const t1 = el('span', 'turn-title-item');
-  t1.append(glyph('ic-road'), document.createTextNode(lrHolder ? ` 最長 ${lrHolder.name}(${lrHolder.longestRoadLength})` : ' 最長 未獲得'));
+  t1.append(inlineIc(ASSETS.action.road, 'inline-ic'), document.createTextNode(lrHolder ? ` 最長 ${lrHolder.name}(${lrHolder.longestRoadLength})` : ' 最長 未獲得'));
   const t3 = el('span', 'turn-title-item');
   if (isCk(state)) {
     // 騎士と商人: 蛮族トラックを 蛮族船画像＋ピップ＋残数 で表示（漢字/絵文字なし）。
@@ -1957,7 +1957,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     row2.appendChild(stat);
     if (p.hasLongestRoad || p.hasLargestArmy) {
       const badges = el('span', 'mini-badges');
-      if (p.hasLongestRoad) { const bdg = el('span', 'mini-badge'); bdg.appendChild(el('span', 'stat-glyph ic-road')); badges.appendChild(bdg); }
+      if (p.hasLongestRoad) { const bdg = el('span', 'mini-badge'); bdg.appendChild(inlineIc(ASSETS.action.road, 'stat-ic')); badges.appendChild(bdg); }
       if (p.hasLargestArmy) { const bdg = el('span', 'mini-badge'); const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false; bdg.appendChild(kn); badges.appendChild(bdg); }
       row2.appendChild(badges);
     }
@@ -2054,7 +2054,7 @@ function buildPlayerPanel(
     }
     if (bd.lr) {
       const item = el('span', 'vp-item bonus');
-      item.append(el('span', 'stat-glyph ic-road'), Object.assign(el('span'), { textContent: '最長+2' }));
+      item.append(inlineIc(ASSETS.action.road, 'stat-ic'), Object.assign(el('span'), { textContent: '最長+2' }));
       vpRow.appendChild(item);
     }
     if (bd.la) {
@@ -2076,7 +2076,7 @@ function buildPlayerPanel(
   const meta = el('div', 'panel-meta');
   const lrLen = player.longestRoadLength; // エンジン維持のキャッシュ（calcLongestRoad の再計算は不要）
   const lrItem = el('span', `panel-meta-item${player.hasLongestRoad ? ' held' : ''}`);
-  lrItem.append(el('span', 'stat-glyph ic-road'), Object.assign(el('span'), { textContent: String(lrLen) }));
+  lrItem.append(inlineIc(ASSETS.action.road, 'stat-ic'), Object.assign(el('span'), { textContent: String(lrLen) }));
   lrItem.title = player.hasLongestRoad
     ? `最長交易路 保持中（${lrLen}本）`
     : `最長道路 ${lrLen}本（獲得は${LONGEST_ROAD_MIN}本以上）`;

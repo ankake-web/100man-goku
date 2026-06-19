@@ -1849,7 +1849,12 @@ h1 {
 /* アイコン付きボタン（改善トラックなど） */
 .action-btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-icon-img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
-.btn-icon-label { min-width: 0; }
+/* 長いラベル（「プレイヤー間交易」等）はボタン内で折り返し、はみ出さないようにする。 */
+.btn-icon-label { min-width: 0; white-space: normal; line-height: 1.15; }
+/* ターン操作ボタンの高さを揃える（「ターン終了」など1行ボタンが他より低く見える崩れを防ぐ）。
+   アイコン無しのボタンも中央寄せにして縦位置をアイコン付きボタンと合わせる。 */
+.action-buttons > .action-btn { min-height: 50px; }
+.action-buttons > .action-btn:not(.has-icon) { display: flex; align-items: center; justify-content: center; }
 /* 進歩カードの選択UI（資源/商品/相手を選ぶ・公式準拠） */
 .pc-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .pc-choice-label { font-weight: 800; color: #ffe6b0; text-align: center; }
