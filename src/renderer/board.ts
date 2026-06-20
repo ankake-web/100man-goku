@@ -50,6 +50,10 @@ export interface BoardRenderOptions {
   previewShipEdgeId?: string;
   // 航海者: 海賊コマのいる海タイルID（🏴‍☠️ マーカーを描く）。
   piratePosition?: string;
+  // 強盗/海賊を「移動先タイルへ先に動かして」から相手選択させる時のプレビュー位置。
+  // 指定時は実位置(hasRobber/piratePosition)を無視し、このタイルにコマを描く。
+  previewRobberTileId?: string;
+  previewPirateTileId?: string;
   // 騎士と商人: 商人コマのいる陸タイルID＋所有者の色（盤面に商人フィギュアを描く）。
   merchantTileId?: string;
   merchantColor?: string;
@@ -236,7 +240,11 @@ function renderTile(
   }
 
   // 強盗コマ: フィギュア画像（asset）。数字チップと丸かぶりしないよう下にずらす。
-  if (tile.hasRobber) {
+  // プレビュー指定時は実位置でなく移動先タイルにのみ描く（駒移動→相手選択の演出）。
+  const showRobberHere = opts?.previewRobberTileId != null
+    ? opts.previewRobberTileId === tile.id
+    : tile.hasRobber;
+  if (showRobberHere) {
     const touch = isTouchDevice();
     const ry = cy + ROBBER_DY;
     const w = size * (touch ? 0.92 : 0.8);          // 小さめ表示（数字チップと被っても数字が上に見えるよう）
@@ -260,7 +268,10 @@ function renderTile(
 
   // 海賊コマ（航海者）: 海タイルに海賊船フィギュア画像。盗賊と排他（海タイルに盗賊は乗らない）。
   // 海タイルは数字がないので強盗ほど下げず、中央寄りに置く。
-  if (opts?.piratePosition === tile.id) {
+  const showPirateHere = opts?.previewPirateTileId != null
+    ? opts.previewPirateTileId === tile.id
+    : opts?.piratePosition === tile.id;
+  if (showPirateHere) {
     const touch = isTouchDevice();
     const ry = cy + 18;
     const w = size * (touch ? 1.2 : 1.05);

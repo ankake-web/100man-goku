@@ -2236,6 +2236,31 @@ h1 {
   #board-notice { animation: none; }
 }
 
+/* ---- 進歩カード使用時の盤面中央 大型表示（短時間） ---- */
+#played-progress {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none;
+  animation: playedPcIn 0.32s cubic-bezier(0.2,1.5,0.4,1) both;
+}
+#played-progress.out { animation: playedPcOut 0.42s ease-in forwards; }
+.played-progress-img {
+  width: clamp(118px, 38vw, 188px);
+  border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.6), 0 0 0 3px rgba(255,255,255,0.9), 0 0 28px rgba(255,225,140,0.65);
+}
+.played-progress-cap {
+  font-weight: 900; font-size: 1.02rem; color: #fff;
+  background: rgba(12,14,20,0.92); padding: 5px 14px; border-radius: 999px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+}
+@keyframes playedPcIn  { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes playedPcOut { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -64%) scale(0.92); } }
+@media (prefers-reduced-motion: reduce) { #played-progress { animation: none; } }
+
 /* ---- 称号バッジの移動演出(C-7): 旧保持者→新保持者へ飛ぶ ---- */
 .badge-fly {
   position: fixed;
@@ -2342,6 +2367,26 @@ h1 {
   overflow-y: auto;
 }
 @keyframes victPop { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+/* スプラッシュ中はモーダルを隠し、スプラッシュ後にポップで登場させる */
+.victory-modal.victory-pending { opacity: 0; animation: none; pointer-events: none; }
+.victory-modal.victory-reveal { animation: victPop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1); }
+/* 優勝スプラッシュ（全画面の祝祭画像の上に大きく勝者名） */
+.victory-splash {
+  position: absolute; inset: 0; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; text-align: center;
+}
+.victory-splash.fade-out { animation: victSplashOut 0.36s ease forwards; }
+@keyframes victSplashOut { to { opacity: 0; } }
+.victory-splash-title {
+  font-weight: 900;
+  font-size: clamp(1.7rem, 7vw, 3.2rem);
+  text-shadow: 0 4px 22px rgba(0,0,0,0.92), 0 1px 3px rgba(0,0,0,0.9);
+  animation: victSplashPop 0.6s cubic-bezier(0.2,1.5,0.4,1) both;
+  word-break: break-word; padding: 0 18px;
+}
+.victory-splash-trophy { font-size: clamp(2.6rem, 14vw, 5.4rem); line-height: 1; margin-bottom: 6px; }
+@keyframes victSplashPop { 0% { opacity: 0; transform: scale(0.55); } 100% { opacity: 1; transform: scale(1); } }
 .victory-trophy {
   font-size: 2.6rem; line-height: 1; margin-bottom: 6px;
   animation: victTrophy 1.4s ease-in-out infinite;
@@ -2407,10 +2452,12 @@ h1 {
 .score-vp { color: #ffd700; font-weight: 900; font-size: 1.05rem; flex: 0 0 auto; }
 .score-bd { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .score-chip {
+  display: inline-flex; align-items: center; gap: 3px;
   font-size: 0.72rem; padding: 2px 6px; border-radius: 6px;
   background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.9);
 }
 .score-chip.bonus { background: rgba(255,215,0,0.18); color: #ffe9a0; }
+.score-chip-ic { width: 14px; height: 14px; object-fit: contain; flex: 0 0 auto; }
 .score-comment {
   margin-top: 6px; font-size: 0.8rem; line-height: 1.35;
   color: rgba(255,255,255,0.82);
@@ -2593,7 +2640,8 @@ h1 {
   animation: barbTitlePulse 0.55s cubic-bezier(0.2,1.5,0.4,1) 0.12s both;
 }
 .barbarian-attack-result.win, .barbarian-attack-result.tie { color: #ffe06a; }
-.barbarian-attack-result.defeat { color: #ff8a7a; }
+/* 敗北も赤は暗い背景で読みにくいので黄系（やや橙寄り）にして可読性を確保。 */
+.barbarian-attack-result.defeat { color: #ffc24d; }
 /* 画像は普通に見せ、赤マスクはやめる。見出しの可読性のため四隅だけ控えめに暗くする中立ビネット。 */
 #barbarian-attack::before {
   content: ''; position: absolute; inset: 0;
@@ -2662,7 +2710,7 @@ h1 {
 /* 蛮族襲来の防衛結果（撃退/同点=金・敗北=赤）。サブ行を強調する。 */
 .dep-result { font-size: 0.95rem; font-weight: 800; opacity: 1; line-height: 1.35; }
 .dep-result.win, .dep-result.tie { color: #ffd24d; }
-.dep-result.defeat { color: #ff7a6a; }
+.dep-result.defeat { color: #ffc24d; }
 .dep-draws { display: flex; flex-direction: column; gap: 3px; }
 .dep-draw-row { font-size: 0.86rem; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,0.05); opacity: 0.62; }
 .dep-draw-row.ok { background: rgba(110,200,120,0.2); opacity: 1; font-weight: 700; }

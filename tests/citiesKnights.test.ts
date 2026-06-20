@@ -190,6 +190,46 @@ describe('C&K メトロポリス', () => {
     expect(r.metropolis!.science!.playerId).toBe('player1');
     expect(r.players.player2!.improvements!.science).toBe(4);
   });
+
+  it('metropolisVertexId 指定で化ける都市を手動選択できる（候補2つ）', async () => {
+    const { buildImprovement, metropolisCityChoices, improvementTakesMetropolis } = await import('../src/engine/citiesKnights');
+    let s = oneTile('mountain', [[0, 'city', 'player1'], [1, 'city', 'player1']]);
+    const tid = Object.keys(s.tileToVertices).find(t => (s.tileToVertices[t]?.length ?? 0) >= 3)!;
+    const vids = s.tileToVertices[tid]!;
+    const vidA = vids[0]!, vidB = vids[1]!;
+    s = {
+      ...s,
+      expansion: 'cities_knights',
+      players: {
+        ...s.players,
+        player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 3 }, commodities: { coin: 0, cloth: 0, paper: 4 } }),
+      },
+    } as GameState;
+    // 候補が2つ（vidA, vidB）あり、新規取得（Lv3→4）となる。
+    expect(improvementTakesMetropolis(s, 'player1', 'science')).toBe(true);
+    expect(metropolisCityChoices(s, 'player1').sort()).toEqual([vidA, vidB].sort());
+    // 2つ目の都市を明示指定 → そちらがメトロポリスになる。
+    const r = buildImprovement(s, 'player1', 'science', 0, vidB);
+    expect(r.vertices[vidB]!.building!.metropolis).toBe(true);
+    expect(r.vertices[vidA]!.building!.metropolis ?? false).toBe(false);
+    expect(r.metropolis!.science!.vertexId).toBe(vidB);
+  });
+
+  it('既にそのツリーのメトロポリスを保持中は都市選択不要（improvementTakesMetropolis=false）', async () => {
+    const { improvementTakesMetropolis } = await import('../src/engine/citiesKnights');
+    let s = oneTile('mountain', [[0, 'city', 'player1']]);
+    const tid = Object.keys(s.tileToVertices).find(t => (s.tileToVertices[t]?.length ?? 0) >= 3)!;
+    const vidA = s.tileToVertices[tid]![0]!;
+    s = {
+      ...s,
+      expansion: 'cities_knights',
+      metropolis: { science: { playerId: 'player1', vertexId: vidA } },
+      vertices: { ...s.vertices, [vidA]: { ...s.vertices[vidA]!, building: { type: 'city', playerId: 'player1', metropolis: true } } },
+      players: { ...s.players, player1: makePlayer('player1', { improvements: { trade: 0, politics: 0, science: 4 } }) },
+    } as GameState;
+    // Lv4→5 だが自分が保持中 → 都市の付け替えは不要。
+    expect(improvementTakesMetropolis(s, 'player1', 'science')).toBe(false);
+  });
 });
 
 describe('C&K 蛮族防衛の報酬', () => {
@@ -1291,5 +1331,22 @@ describe('C&K 医術の手動選択', () => {
     expect(r.vertices[a]!.building!.type).toBe('settlement'); // もう一方はそのまま
     expect(r.players.player1!.hand.grain).toBe(1);          // 麦1支払い
     expect(r.players.player1!.hand.ore).toBe(1);            // 鉱石2支払い
+  });
+});
+
+describe('C&K クレーンのコスト割引', () => {
+  it('クレーンは通常より商品1個安い（trade Lv2→3: 通常3 → クレーン2）', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      players: { player1: makePlayer('player1', { progressCards: [{ id: 'cr', type: 'crane', deck: 'science' }], commodities: { coin: 0, cloth: 5, paper: 0 }, improvements: { trade: 2, politics: 0, science: 0 } }), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const cityVid = Object.keys(g.vertices)[0]!;
+    const s: GameState = { ...g, vertices: { ...g.vertices, [cityVid]: { ...g.vertices[cityVid]!, building: { type: 'city', playerId: 'player1' } } } };
+    const r = playProgress(s, 'player1', 'cr', createRng(1), { craneTrack: 'trade' });
+    expect(r.players.player1!.improvements!.trade).toBe(3);
+    expect(r.players.player1!.commodities!.cloth).toBe(3); // 5 - (improvementCost(2)=3 - 割引1 = 2)
   });
 });

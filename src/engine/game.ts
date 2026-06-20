@@ -736,7 +736,7 @@ export function applyAction(
     case 'BUILD_IMPROVEMENT': {
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_IMPROVEMENT: must be in TRADE_BUILD');
       if (!canBuildImprovement(state, pid, action.track)) throw new Error('BUILD_IMPROVEMENT: invalid');
-      return checkVictory(buildImprovement(state, pid, action.track), pid);
+      return checkVictory(buildImprovement(state, pid, action.track, 0, action.metropolisVertexId), pid);
     }
     case 'BUILD_CITY_WALL': {
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_CITY_WALL: must be in TRADE_BUILD');

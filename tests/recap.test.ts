@@ -101,3 +101,38 @@ describe('buildPlayerRecap', () => {
     }
   });
 });
+
+describe('buildPlayerRecap（騎士と商人）', () => {
+  // 都市2つ（うち1つメトロポリス）＋守護VP を持つ CK 終了 state。
+  function ckState(opts: { metropolis?: boolean; defenderVP?: number; winner?: boolean } = {}): GameState {
+    const s = makeGameState({
+      expansion: 'cities_knights',
+      players: {
+        player1: makePlayer('player1', { name: '青', defenderVP: opts.defenderVP ?? 0 }),
+        player2: makePlayer('player2', { name: '赤' }),
+      },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const vertices = { ...s.vertices };
+    const vids = Object.keys(vertices) as VertexId[];
+    vertices[vids[0]!] = { ...vertices[vids[0]!]!, building: { type: 'city', playerId: 'player1', ...(opts.metropolis ? { metropolis: true } : {}) } };
+    vertices[vids[1]!] = { ...vertices[vids[1]!]!, building: { type: 'city', playerId: 'player1' } };
+    return { ...s, vertices, winner: opts.winner ? 'player1' : null, phase: opts.winner ? 'GAME_OVER' : 'MAIN' };
+  }
+
+  it('メトロポリス/守護VP/isCk を集計する（cities はメトロポリス含む総数）', () => {
+    const r = buildPlayerRecap(ckState({ metropolis: true, defenderVP: 2 }), 'player1');
+    expect(r.isCk).toBe(true);
+    expect(r.cities).toBe(2);
+    expect(r.metropolises).toBe(1);
+    expect(r.defenderVP).toBe(2);
+  });
+
+  it('メトロポリス保持者の講評に「メトロポリス」を含む', () => {
+    expect(buildPlayerRecap(ckState({ metropolis: true, winner: true }), 'player1').comment).toContain('メトロポリス');
+  });
+
+  it('守護VPが高いと「守護」を含む講評になる（メトロポリス無し）', () => {
+    expect(buildPlayerRecap(ckState({ defenderVP: 3 }), 'player1').comment).toContain('守護');
+  });
+});

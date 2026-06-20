@@ -433,7 +433,7 @@ export type Action =
   | { type: 'BUILD_KNIGHT';        vertexId: VertexId }
   | { type: 'ACTIVATE_KNIGHT';     vertexId: VertexId }
   | { type: 'UPGRADE_KNIGHT';      vertexId: VertexId }
-  | { type: 'BUILD_IMPROVEMENT';   track: CkTrack }
+  | { type: 'BUILD_IMPROVEMENT';   track: CkTrack; metropolisVertexId?: VertexId } // metropolisVertexId: Lv4+到達時にメトロポリス化する都市を手動指定（任意）
   | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
   | { type: 'MOVE_KNIGHT';         fromVertexId: VertexId; toVertexId: VertexId }
   | { type: 'CHASE_ROBBER';        vertexId: VertexId } // 騎士で強盗を追い払う（ROBBERフェーズへ遷移）

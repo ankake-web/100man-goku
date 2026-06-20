@@ -5,7 +5,7 @@
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, CK_BARBARIAN_MAX, CK_TRACK_NAME } from './constants';
+import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, CK_BARBARIAN_MAX, CK_TRACK_NAME, PROGRESS_CARD_NAME } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements, metropolisCityChoices, improvementTakesMetropolis } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -686,6 +686,9 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'selectMedicineSettlement') {
         // 騎士と商人・医術: 都市化できる自分の開拓地を光らせる。
         opts.validVertexIds = new Set(medicineSettlements(state, pid));
+      } else if (mode === 'selectMetropolis') {
+        // 騎士と商人・メトロポリス: 化ける自分の都市を光らせて盤面で選ばせる。
+        opts.validVertexIds = new Set(metropolisCityChoices(state, pid));
       }
     }
   }
@@ -722,7 +725,12 @@ function setMoveKnightFrom(vid: string | null): void { moveKnightFrom = vid; red
 // 騎士と商人・発明家(inventorSwap)で1枚目に選んだタイルID（未選択は null）。2枚目をタップで入替。
 let inventorFirstTile: string | null = null;
 function setInventorFirst(tid: string | null): void { inventorFirstTile = tid; redraw(); }
+// メトロポリス手動選択中に「今+1する都市改善ツリー」を控える（候補2つ以上で盤面タップさせる時）。
+let pendingMetropolisTrack: CkTrack | null = null;
 let uiPhase: UIPhase = { type: 'idle' };
+// 強盗/海賊を「先に移動」してから相手選択させる時、移動先をプレビュー描画したタイル。
+// 相手確定(MOVE_ROBBER/MOVE_PIRATE)時の二重スライドを抑止するためにも使う。
+let robberPreviewedTile: string | null = null;
 let lastConfig: HomeConfig | null = null;
 
 // ---- LAN対戦（サーバ権威）----
@@ -857,6 +865,7 @@ function redraw(skipBoard = false): void {
 
   if (state.turnPhase !== 'ROBBER' && uiPhase.type === 'robberTarget') {
     uiPhase = { type: 'idle' };
+    robberPreviewedTile = null;
   }
 
   // 仮置きプレビュー(placePreview)は、配置できない局面/GAME_OVER では破棄する。
@@ -873,6 +882,11 @@ function redraw(skipBoard = false): void {
       // 商人は選んだタイル、騎士の起動/昇格は選んだ騎士頂点を青で「これを確定」と明示。
       else if (uiPhase.kind === 'placeMerchant') opts.selectedTileId = uiPhase.targetId;
       else if (uiPhase.kind === 'activateKnight' || uiPhase.kind === 'upgradeKnight') opts.selectedVertexId = uiPhase.targetId;
+    }
+    // 強盗/海賊の相手選択中は、コマを移動先タイルに先行表示（駒移動→相手選択の順序）。
+    if (uiPhase.type === 'robberTarget') {
+      if (uiPhase.kind === 'pirate') opts.previewPirateTileId = uiPhase.tileId;
+      else opts.previewRobberTileId = uiPhase.tileId;
     }
     return opts;
   };
@@ -979,6 +993,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する相手の道をタップ', alert: true };
       if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の騎士をタップ', alert: true };
       if (buildMode === 'selectMedicineSettlement') return { text: '💊 都市にする開拓地をタップ', alert: true };
+      if (buildMode === 'selectMetropolis') return { text: '🏛 メトロポリスにする都市をタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -1732,6 +1747,15 @@ function scoreChip(text: string, bonus = false): HTMLSpanElement {
   s.textContent = text;
   return s;
 }
+// 内訳チップ（先頭に素材アイコン＋テキスト）。絵文字をやめ画像で統一。icon=null はテキストのみ。
+function scoreChipIcon(icon: string | null | undefined, text: string, bonus = false, title?: string): HTMLSpanElement {
+  const s = document.createElement('span');
+  s.className = `score-chip${bonus ? ' bonus' : ''}`;
+  if (title) s.title = title;
+  if (icon) { const img = document.createElement('img'); img.className = 'score-chip-ic'; img.src = icon; img.alt = ''; img.draggable = false; s.appendChild(img); }
+  s.appendChild(document.createTextNode(text));
+  return s;
+}
 
 // 終了後スコアボード: 全員の順位・名前・最終VP・公開内訳・プレイ講評を表示する。
 // 表示VPは「自分・勝者は内部VP（VPカード込み）、それ以外は公開VPのみ」。
@@ -1777,13 +1801,21 @@ function buildVictoryScoreboard(): HTMLDivElement {
     const r = row.recap;
     const bd = document.createElement('div');
     bd.className = 'score-bd';
-    if (r.settlements > 0) bd.appendChild(scoreChip(`🏠×${r.settlements}`));
-    if (r.cities > 0)      bd.appendChild(scoreChip(`🏙×${r.cities}`));
-    if (r.hasLongestRoad)  bd.appendChild(scoreChip('🛤最長+2', true));
-    if (r.hasLargestArmy)  bd.appendChild(scoreChip('⚔最大+2', true));
+    const plainCities = Math.max(0, r.cities - r.metropolises); // メトロポリスは別チップで出すので二重計上しない
+    if (r.settlements > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.settlement, `×${r.settlements}`, false, '開拓地（各1点）'));
+    if (plainCities > 0)   bd.appendChild(scoreChipIcon(ASSETS.piece.city, `×${plainCities}`, false, '都市（各2点）'));
+    // 騎士と商人: メトロポリス（各+2点）。基本ゲームには存在しない。
+    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.metropolisGate, `×${r.metropolises}（+${r.metropolises * 2}）`, true, 'メトロポリス（各+2点）'));
+    if (r.hasLongestRoad)  bd.appendChild(scoreChipIcon(ASSETS.action.road, '最長+2', true, '最長交易路'));
+    // 最大騎士力は基本ゲームのみ（騎士と商人は騎士コマ制のため非表示）。
+    if (!r.isCk && r.hasLargestArmy) bd.appendChild(scoreChipIcon(ASSETS.knight.basic, '最大+2', true, '最大騎士力'));
+    // 騎士と商人: 蛮族撃退の守護者VP。
+    if (r.isCk && r.defenderVP > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.defenderBadge, `守護+${r.defenderVP}`, true, '蛮族を退けた守護者（各+1点）'));
+    // 航海者: 新しい島への入植（各+2点）。専用素材が無いため記号で表示。
+    if (r.islandBonus > 0) bd.appendChild(scoreChipIcon(null, `🏝+${r.islandBonus * 2}`, true, '新しい島への入植（各+2点）'));
     // VPカード枚数は自分・勝者のみ開示（他プレイヤーは秘匿のまま）。
     const vpCards = row.isRevealed ? p.devCards.filter(c => c.type === 'victory_point').length : 0;
-    if (vpCards > 0) bd.appendChild(scoreChip(`★カード×${vpCards}`));
+    if (vpCards > 0) bd.appendChild(scoreChipIcon(null, `★カード×${vpCards}`, false, '勝利点カード（各1点・秘匿）'));
     if (bd.childElementCount > 0) rowEl.appendChild(bd);
 
     const cm = document.createElement('div');
@@ -1884,9 +1916,38 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   statsBtn.addEventListener('click', () => showDiceStatsModal());
   btnRow.appendChild(statsBtn);
   modal.appendChild(btnRow);
-
   overlay.appendChild(modal);
+
+  // 優勝スプラッシュ: 蛮族襲来のように全画面の祝祭画像（島の花火）を数秒だけ見せてから
+  // 結果モーダルを出す。アニメ抑制時／画像が無い時はスプラッシュを省略してすぐ結果へ。
+  const splashMs = (prefersReducedMotion() || !ASSETS.bg.victory) ? 0 : 2600;
+  let splash: HTMLDivElement | null = null;
+  if (splashMs > 0) {
+    modal.classList.add('victory-pending');
+    splash = document.createElement('div');
+    splash.className = 'victory-splash';
+    const big = document.createElement('div');
+    big.className = 'victory-splash-title';
+    big.style.color = color;
+    const t = document.createElement('div'); t.className = 'victory-splash-trophy'; t.textContent = isHuman ? '🎉🏆🎉' : '🏆';
+    const n = document.createElement('div'); n.textContent = `${winner.name} 勝利！`;
+    big.append(t, n);
+    splash.appendChild(big);
+    overlay.appendChild(splash);
+  }
+
   document.body.appendChild(overlay);
+
+  const reveal = () => {
+    if (splash) {
+      const s = splash;
+      s.classList.add('fade-out');
+      window.setTimeout(() => s.remove(), 360);
+    }
+    modal.classList.remove('victory-pending');
+    modal.classList.add('victory-reveal');
+  };
+  if (splashMs > 0) window.setTimeout(reveal, splashMs);
   // 勝者パネルの発光は buildPlayerPanel 側で付与（再描画後も維持される）
 }
 
@@ -2242,6 +2303,35 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
   // 「解決操作」なので待たせる必要がなく、待たせると解決が固まって見える原因になる。
   const pendingPhase = newState.turnPhase === 'CITY_DOWNGRADE' || newState.turnPhase === 'PROGRESS_DISCARD';
   if (any && !pendingPhase) holdResourceAnimating(delay + RES_FLY_MS + 120);
+}
+
+// 進歩カードを使用した瞬間、盤面中央へそのカードを大きく短時間表示する（何を使ったか分かりやすく）。
+// 札種は prevState の使用者の手札から特定（公開：使うと相手にも種類が分かる）。LAN で相手の札種が
+// 秘匿されている場合は特定できないので表示しない。
+function showPlayedProgressCard(prevState: GameState, action: Action | undefined): void {
+  if (!action || action.type !== 'PLAY_PROGRESS') return;
+  if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
+  const actor = prevState.playerOrder[prevState.currentPlayerIndex];
+  if (!actor) return;
+  const card = prevState.players[actor]?.progressCards?.find(c => c.id === action.cardId);
+  if (!card) return;
+  const host = document.getElementById('board-area');
+  if (!host) return;
+  document.getElementById('played-progress')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'played-progress';
+  const img = document.createElement('img');
+  img.className = 'played-progress-img';
+  img.src = ASSETS.progressCard[card.type] ?? ASSETS.cardBack[card.deck];
+  img.alt = PROGRESS_CARD_NAME[card.type];
+  img.draggable = false;
+  const cap = document.createElement('div');
+  cap.className = 'played-progress-cap';
+  cap.textContent = `📜 ${PROGRESS_CARD_NAME[card.type]}`;
+  wrap.append(img, cap);
+  host.appendChild(wrap);
+  setTimeout(() => { wrap.classList.add('out'); }, 1250);
+  setTimeout(() => wrap.remove(), 1700);
 }
 
 // 自分のプレイヤーID（LAN=viewer、単一端末=human）。手番強調・得点演出の基準。
@@ -2752,9 +2842,12 @@ function runTransitionFx(
   robberFromTile: string | undefined,
 ): void {
   diceAnimating = false;
+  // 相手選択の前にプレビューで既にコマを移動先へ動かしている場合、確定時の再スライドは抑止する。
+  const previewedMove = robberPreviewedTile != null && (action?.type === 'MOVE_ROBBER' || action?.type === 'MOVE_PIRATE') && robberPreviewedTile === action.tileId;
+  robberPreviewedTile = null;
   redraw();
   if (action?.type === 'MOVE_ROBBER' && robberFromTile) {
-    animateRobberMove(robberFromTile, action.tileId);
+    if (!previewedMove) animateRobberMove(robberFromTile, action.tileId);
     // 略奪が成立（被害者の手札が1枚減った）なら、伏せカードが被害者→略奪者へ飛ぶ。
     // 資源の種類は出さない（秘匿）。盗賊の着地後に少し遅らせて見せる。
     const victim = action.stealFromPlayerId;
@@ -2776,6 +2869,7 @@ function runTransitionFx(
   }
   triggerResourceAnimation(prevState, state, action, diceTotal);
   triggerProgressCardAnimation(prevState, state);
+  showPlayedProgressCard(prevState, action);
   animateBuildPlacement(action);
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);
@@ -2907,6 +3001,22 @@ function dispatch(action: Action): void {
       }
     }
   }
+  // 騎士と商人: 都市改善でメトロポリスを新規獲得し、化ける都市の候補が2つ以上ある時は
+  // 自動でなく盤面で都市を選ばせる（候補1つ以下ならエンジンが自動配置）。
+  if (action.type === 'BUILD_IMPROVEMENT' && !diceAnimating && action.metropolisVertexId == null) {
+    const ipid = currentPid(state);
+    const iHuman = state.players[ipid]?.type === 'human' || ipid === selfPlayerId();
+    if (iHuman && state.turnPhase === 'TRADE_BUILD'
+        && improvementTakesMetropolis(state, ipid, action.track)
+        && metropolisCityChoices(state, ipid).length > 1) {
+      pendingMetropolisTrack = action.track;
+      document.querySelector('.help-overlay')?.remove();
+      setBuildMode('selectMetropolis');
+      scrollToBoard();
+      showBoardNotice('🏛 メトロポリスにする自分の都市をタップ（+2点）');
+      return;
+    }
+  }
   // 自分がターンを終了したら盤面へスクロールして次の状況を見せる（スマホ）。
   if (action.type === 'END_TURN') scrollToBoard();
   // LAN対戦: ローカル applyAction は禁止（正本はサーバ）。Action はサーバへ送る。
@@ -2963,9 +3073,12 @@ function dispatch(action: Action): void {
       action.type === 'UPGRADE_KNIGHT' ||
       action.type === 'BUILD_CITY_WALL' ||
       // 商人カードのタイル配置（placeMerchant）完了後もモードを残さない。
-      action.type === 'PLAY_PROGRESS'
+      action.type === 'PLAY_PROGRESS' ||
+      // メトロポリス手動選択（selectMetropolis）完了後もモードを残さない。
+      action.type === 'BUILD_IMPROVEMENT'
     ) {
       buildMode = 'idle';
+      pendingMetropolisTrack = null;
     }
 
     if (action.type === 'PLAY_ROAD_BUILDING') {
@@ -3126,7 +3239,22 @@ function updatePlaceConfirmBar(): void {
 function setUIPhase(phase: UIPhase): void {
   // 盤面SVGの入力は state / buildMode / placePreview のみ（computeHighlights は uiPhase 非参照）。
   // 仮置きプレビューの出し入れ以外の uiPhase 変更（モーダルの +/− 等）では盤面再構築を省く。
-  const skipBoard = uiPhase.type !== 'placePreview' && phase.type !== 'placePreview';
+  // 例外: robberTarget は盗賊/海賊コマを移動先へプレビュー描画するため盤面を再構築する。
+  const robberPhaseChange = phase.type === 'robberTarget' || uiPhase.type === 'robberTarget';
+  const skipBoard = !robberPhaseChange && uiPhase.type !== 'placePreview' && phase.type !== 'placePreview';
+  // 複数相手の選択に入る瞬間（または開いたまま別タイルへ選び直した時）、まずコマを移動先タイルへ
+  // 動かす（「駒移動→相手選択」の順序）。海賊はスライド演出が無いのでプレビュー描画でジャンプ。
+  if (phase.type === 'robberTarget' && state
+      && (uiPhase.type !== 'robberTarget' || uiPhase.tileId !== phase.tileId)) {
+    if (phase.kind !== 'pirate') {
+      const fromTile = uiPhase.type === 'robberTarget' ? uiPhase.tileId
+        : Object.values(state.tiles).find(t => t.hasRobber)?.id;
+      if (fromTile) animateRobberMove(fromTile, phase.tileId);
+    }
+    robberPreviewedTile = phase.tileId;
+  } else if (phase.type !== 'robberTarget') {
+    robberPreviewedTile = null;
+  }
   uiPhase = phase;
   redraw(skipBoard);
 }
@@ -3147,6 +3275,7 @@ function attachBoardEventsOnce(): void {
     () => moveShipFrom, setMoveShipFrom,
     () => moveKnightFrom, setMoveKnightFrom,
     () => inventorFirstTile, setInventorFirst,
+    () => pendingMetropolisTrack,
   );
   attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
   boardEventsAttached = true;
@@ -3306,7 +3435,7 @@ function updateZoomControls(): void {
 // ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
 function clearTransientFx(): void {
   document
-    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast, #board-notice, #barbarian-attack')
+    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast, #board-notice, #played-progress, #barbarian-attack')
     .forEach(n => n.remove());
 }
 
@@ -3583,8 +3712,9 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
     : undefined;
 
   if (action && (action.type === 'BUILD_ROAD' || action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY'
-      || action.type === 'PLAY_PROGRESS')) {
+      || action.type === 'PLAY_PROGRESS' || action.type === 'BUILD_IMPROVEMENT')) {
     buildMode = 'idle';
+    pendingMetropolisTrack = null;
   }
   // ターン終了で建設モード/船移動選択を解除（次ターンにモードが残るのを防ぐ・LAN）。
   if (action?.type === 'END_TURN' || action?.type === 'MOVE_SHIP') {

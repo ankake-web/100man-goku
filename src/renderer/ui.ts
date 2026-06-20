@@ -28,9 +28,9 @@ const IMP_IMG: Record<CkTrack, string> = ASSETS.trackIcon;
 // 各トラックの段階で得られる恩恵（Lv3=特殊建築の効果 / Lv4=メトロポリス / Lv5=最大）。
 // 「Lv3で何が起きるか」を建設ボタンに表示するために使う（エンジンの実装と一致）。
 const CK_TRACK_BENEFIT: Record<CkTrack, Record<number, string>> = {
-  trade:    { 3: '交易所：商品を銀行と2:1で交易', 4: '銀行：メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
-  politics: { 3: '要塞：騎士を最強(Lv3)に昇格可', 4: '大聖堂：メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
-  science:  { 3: '水道橋：無産出のターンに資源1枚', 4: '劇場：メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+  trade:    { 3: '商品を銀行と2:1で交易', 4: 'メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+  politics: { 3: '騎士を最強(Lv3)に昇格可', 4: 'メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+  science:  { 3: '無産出のターンに資源1枚', 4: 'メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
 };
 // 商品アイコンの <img>。
 function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
@@ -1359,14 +1359,20 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     return wrap;
   }
   if (card.type === 'crane') {
-    // クレーン: 商品1個分安く1段上げるトラックを選ぶ（払えるトラックのみ表示）。
-    label.textContent = '改善するトラックを選ぶ（商品1個分安く1段）';
+    // クレーン: 商品1個分安く1段上げるトラックを選ぶ（払えるトラックのみ・割引後コストを表示）。
+    label.textContent = '改善するトラックを選ぶ（通常より商品1個分安い）';
     const tracks = pid ? craneEligibleTracks(state, pid) : [];
     if (tracks.length === 0) {
       row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '改善できるトラックがありません（都市と商品が必要）' }));
       row.appendChild(makeBtn('効果なしで使う（カードを消費）', 'btn-end', false, () => play({})));
     } else {
-      for (const t of tracks) row.appendChild(makeImgBtn(IMP_IMG[t], CK_TRACK_NAME[t], 'btn-build', false, () => play({ craneTrack: t })));
+      const lvOf = (t: CkTrack): number => state.players[pid!]?.improvements?.[t] ?? 0;
+      for (const t of tracks) {
+        const lvl = lvOf(t);
+        const cost = Math.max(0, improvementCost(lvl) - 1); // クレーンの割引後コスト
+        const btnLabel: (string | HTMLElement)[] = [`${CK_TRACK_NAME[t]} Lv${lvl}→${lvl + 1}（`, inlineIc(COMMODITY_IMG[CK_TRACK_COMMODITY[t]], 'inline-ic'), `×${cost}）`];
+        row.appendChild(makeImgBtn(IMP_IMG[t], btnLabel, 'btn-build', false, () => play({ craneTrack: t })));
+      }
     }
     wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
     return wrap;
@@ -1688,6 +1694,7 @@ function buildActionButtons(
     selectDiplomatRoad: '📜 盤面で光った相手の端の道をタップして撤去',
     selectDeserterKnight: '🏃 盤面で光った相手の騎士をタップして消す（同じ強さの騎士を得る）',
     selectMedicineSettlement: '💊 盤面で光った自分の開拓地をタップして都市化（麦1＋鉱石2）',
+    selectMetropolis: '🏛 盤面で光った自分の都市をタップしてメトロポリス化（+2点）',
   };
   if (selectHint[buildMode]) {
     const hint = el('div', 'board-select-hint');

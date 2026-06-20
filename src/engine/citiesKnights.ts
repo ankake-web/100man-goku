@@ -261,6 +261,25 @@ function playerHasPlainCity(state: GameState, pid: PlayerId): boolean {
   return Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city' && !v.building.metropolis);
 }
 
+// メトロポリス化できる自分の都市（まだメトロポリスでない平の都市）の頂点ID一覧。
+// 手動選択（候補2つ以上で盤面タップ）と自動配置の両方で使う。
+export function metropolisCityChoices(state: GameState, pid: PlayerId): string[] {
+  return Object.keys(state.vertices).filter(id =>
+    state.vertices[id]!.building?.playerId === pid
+    && state.vertices[id]!.building?.type === 'city'
+    && !state.vertices[id]!.building?.metropolis);
+}
+
+// このツリーを今+1すると「新たにメトロポリスを獲得（先着 or 奪取）」するかを判定する。
+// 既にこのツリーのメトロポリスを保持している（=都市選択不要）場合は false。
+export function improvementTakesMetropolis(state: GameState, pid: PlayerId, track: CkTrack): boolean {
+  const p = state.players[pid]; if (!p) return false;
+  const newLvl = improvements(p)[track] + 1;
+  const holder = state.metropolis?.[track];
+  const holderLvl = holder ? improvements(state.players[holder.playerId]!)[track] : 0;
+  return newLvl >= CK_METROPOLIS_LEVEL && (!holder || (holder.playerId !== pid && newLvl > holderLvl));
+}
+
 export function canBuildImprovement(state: GameState, pid: PlayerId, track: CkTrack): boolean {
   if (!isCk(state)) return false;
   const p = state.players[pid]; if (!p) return false;
@@ -276,7 +295,7 @@ export function canBuildImprovement(state: GameState, pid: PlayerId, track: CkTr
   const c = CK_TRACK_COMMODITY[track];
   return commodities(p)[c] >= improvementCost(lvl);
 }
-export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack, discount = 0): GameState {
+export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack, discount = 0, metropolisVertexId?: string): GameState {
   const p = state.players[pid]!;
   const lvl = improvements(p)[track];
   const c = CK_TRACK_COMMODITY[track];
@@ -297,8 +316,9 @@ export function buildImprovement(state: GameState, pid: PlayerId, track: CkTrack
   const shouldTake = newLvl >= CK_METROPOLIS_LEVEL
     && (!holder || (holder.playerId !== pid && newLvl > holderLvl));
   if (shouldTake) {
-    const newVid = Object.keys(state.vertices).find(id =>
-      state.vertices[id]!.building?.playerId === pid && state.vertices[id]!.building?.type === 'city' && !state.vertices[id]!.building?.metropolis);
+    // 都市が選べる時は手動指定(metropolisVertexId)を優先。未指定/不正なら先頭の都市へ自動配置。
+    const candidates = metropolisCityChoices(state, pid);
+    const newVid = (metropolisVertexId && candidates.includes(metropolisVertexId)) ? metropolisVertexId : candidates[0];
     if (newVid) {
       // 奪取時は旧保持者のメトロポリスを平の都市へ戻す（勝利点4→2）。
       if (holder && holder.playerId !== pid) {

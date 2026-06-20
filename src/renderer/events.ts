@@ -2,9 +2,9 @@
 // src/renderer/events.ts — F-02: ボードクリックイベント処理
 // ============================================================
 
-import type { GameState, Action, PlayerId } from '../types';
+import type { GameState, Action, PlayerId, CkTrack } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements, metropolisCityChoices } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight' | 'selectMedicineSettlement';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight' | 'selectMedicineSettlement' | 'selectMetropolis';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -277,6 +277,12 @@ export function nearestMedicineVertexId(state: GameState, pid: PlayerId, x: numb
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
+/** メトロポリス: 点(x,y)に最も近い「メトロポリス化できる自分の都市頂点」を返す。なければ null。 */
+export function nearestMetropolisVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const valid = new Set(metropolisCityChoices(state, pid));
+  return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
+}
+
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -346,6 +352,8 @@ export function attachBoardEvents(
   // 騎士と商人・発明家(inventorSwap)モード: 1枚目に選んだタイルID。
   getInventorFirst: () => string | null = () => null,
   setInventorFirst: (tid: string | null) => void = () => {},
+  // 騎士と商人・メトロポリス手動選択(selectMetropolis)モード: 今+1する都市改善ツリー。
+  getMetropolisTrack: () => CkTrack | null = () => null,
 ): void {
   svg.addEventListener('click', (e) => {
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
@@ -531,6 +539,17 @@ export function attachBoardEvents(
       const vid = ptm ? nearestMedicineVertexId(state, pid, ptm.x, ptm.y) : null;
       const card = state.players[pid]?.progressCards?.find(c => c.type === 'medicine');
       if (vid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { medicineVertexId: vid } });
+      return;
+    }
+
+    // ---- 騎士と商人: メトロポリス化する都市の手動選択（光った自分の都市をタップ → BUILD_IMPROVEMENT metropolisVertexId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectMetropolis') {
+      const ptp = clickToBoardPixel(svg, e.clientX, e.clientY);
+      let vid = (e.target as SVGElement).closest('[data-vertex-id]')?.getAttribute('data-vertex-id') ?? null;
+      if (!vid && ptp) vid = nearestMetropolisVertexId(state, pid, ptp.x, ptp.y);
+      else if (vid && !new Set(metropolisCityChoices(state, pid)).has(vid)) vid = null; // 候補外の直接ヒットは無効
+      const track = getMetropolisTrack();
+      if (vid && track) dispatch({ type: 'BUILD_IMPROVEMENT', track, metropolisVertexId: vid });
       return;
     }
 
