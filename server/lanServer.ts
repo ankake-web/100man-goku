@@ -28,7 +28,7 @@ import { discardCount } from '../src/engine/robber';
 import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
 import { generateRandomPlayerName, resolveUniqueName, pickCpuName } from '../src/net/names';
-import { RESOURCE_TYPES } from '../src/constants';
+import { RESOURCE_TYPES, COMMODITY_TYPES } from '../src/constants';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer, LanOrderMode } from '../src/net/protocol';
 import type { PlayerId, PlayerColor, PlayerType, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
@@ -42,7 +42,7 @@ import type { PlayerOrderMode } from '../src/engine/setup';
 
 // LAN 同期する Action（サーバ側ホワイトリスト）。
 // MVP4 で交易・捨て札・盗賊・発展カード使用・勝利まで全主要操作を許可する。
-const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
+export const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
   // 基本操作（MVP3）
   'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
   'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
@@ -55,7 +55,26 @@ const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
   // 発展カード使用（MVP4）
   'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
   'FINISH_ROAD_BUILDING',
+  // 騎士と商人: 都市改善・騎士（建設/起動/昇格/移動）・城壁・強盗追い払い・進歩カード使用
+  'BUILD_IMPROVEMENT', 'BUILD_KNIGHT', 'ACTIVATE_KNIGHT', 'UPGRADE_KNIGHT',
+  'BUILD_CITY_WALL', 'MOVE_KNIGHT', 'CHASE_ROBBER', 'PLAY_PROGRESS',
 ]);
+
+// 捨て札 Action の正当性検証（サーバ正本でのみ判定。資源＋商品＝騎士と商人）。
+// 「ちょうど required 枚」「各資源/商品が所持範囲内」を満たすときのみ true。
+export function isValidDiscard(state: GameState, action: Extract<Action, { type: 'DISCARD_RESOURCES' }>): boolean {
+  const p = state.players[action.playerId];
+  if (!p) return false;
+  const required = discardCount(state, action.playerId);
+  const res = (action.resources ?? {}) as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
+  const com = (action.commodities ?? {}) as Partial<Record<typeof COMMODITY_TYPES[number], number>>;
+  const discardSum =
+    RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0) +
+    COMMODITY_TYPES.reduce((s, c) => s + (com[c] ?? 0), 0);
+  const resWithin = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
+  const comWithin = COMMODITY_TYPES.every(c => (com[c] ?? 0) >= 0 && (com[c] ?? 0) <= (p.commodities?.[c] ?? 0));
+  return required !== 0 && discardSum === required && resWithin && comWithin;
+}
 
 // その Action を実行してよいプレイヤー（actor）。送信者の id と一致せねば拒否。
 export function requiredActor(state: GameState, action: Action): PlayerId | null {
@@ -580,19 +599,12 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
                 return;
               }
             }
-            // 捨て札は「手札の半分(切り捨て)を、所持範囲内で」のみ許可（不足/過剰を拒否）
-            if (action.type === 'DISCARD_RESOURCES') {
-              const p = room.state.players[action.playerId];
-              if (!p) { send(ws, { t: 'error', message: '不明なプレイヤーです' }); return; }
-              // 捨て札枚数ルール(floor(手札/2))の正本はエンジンの discardCount を再利用（重複実装を排除）。
-              const required = discardCount(room.state, action.playerId);
-              const res = action.resources as Partial<Record<typeof RESOURCE_TYPES[number], number>>;
-              const discardSum = RESOURCE_TYPES.reduce((s, r) => s + (res[r] ?? 0), 0);
-              const withinHand = RESOURCE_TYPES.every(r => (res[r] ?? 0) >= 0 && (res[r] ?? 0) <= p.hand[r]);
-              if (required === 0 || discardSum !== required || !withinHand) {
-                send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
-                return;
-              }
+            // 捨て札は「手札の半分(切り捨て)を、所持範囲内で」のみ許可（不足/過剰を拒否）。
+            // 騎士と商人では商品も手札枚数に含まれる（資源だけ数えると商品込みの捨て札が常に
+            // 拒否され、オンラインで捨てられなくなる）。判定は isValidDiscard に集約。
+            if (action.type === 'DISCARD_RESOURCES' && !isValidDiscard(room.state, action)) {
+              send(ws, { t: 'error', message: '捨て札の枚数が正しくありません' });
+              return;
             }
             // 金タイル選択は「ちょうど owed 枚・各資源はバンク在庫の範囲内」のみ許可。
             if (action.type === 'CHOOSE_GOLD') {

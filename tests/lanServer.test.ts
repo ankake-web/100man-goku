@@ -16,11 +16,11 @@ import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
-import { attachLanServer, requiredActor, redactActionFor, genCode, __resetRoomsForTest } from '../server/lanServer';
+import { attachLanServer, requiredActor, redactActionFor, genCode, __resetRoomsForTest, isValidDiscard, LAN_ALLOWED_ACTIONS } from '../server/lanServer';
 import type { LanServerOptions } from '../server/lanServer';
 import { LAN_WS_PATH } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
-import { makeGameState } from './helpers';
+import { makeGameState, makePlayer } from './helpers';
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -193,6 +193,40 @@ describe('lanServer integration (M8)', () => {
     expect(requiredActor(s, { type: 'ROLL_DICE' })).toBe('player1');
     expect(requiredActor(s, { type: 'DISCARD_RESOURCES', playerId: 'player2', resources: {} })).toBe('player2');
     expect(requiredActor(s, { type: 'RESPOND_TRADE', response: { playerId: 'player2', status: 'REJECT' } })).toBe('player2');
+  });
+
+  it('LAN allowlist が騎士と商人の操作を全て許可する（回帰: オンラインでCKアクションが押せない）', () => {
+    const ckActions = ['BUILD_IMPROVEMENT', 'BUILD_KNIGHT', 'ACTIVATE_KNIGHT', 'UPGRADE_KNIGHT',
+      'BUILD_CITY_WALL', 'MOVE_KNIGHT', 'CHASE_ROBBER', 'PLAY_PROGRESS'] as const;
+    for (const t of ckActions) expect(LAN_ALLOWED_ACTIONS.has(t)).toBe(true);
+  });
+
+  it('isValidDiscard: 騎士と商人は資源＋商品を数える（商品込みの捨て札が拒否されない＝回帰）', () => {
+    const ck = makeGameState({
+      expansion: 'cities_knights',
+      players: {
+        player1: makePlayer('player1', { hand: { wood: 2, brick: 1, wool: 1, grain: 1, ore: 0 }, commodities: { coin: 2, cloth: 2, paper: 1 } }),
+        player2: makePlayer('player2'),
+      },
+    });
+    // 手札10枚(資源5+商品5) → 捨て5枚。資源3＋商品2の組合せは正当。
+    expect(isValidDiscard(ck, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 2, brick: 1 }, commodities: { coin: 1, cloth: 1 } })).toBe(true);
+    // 資源だけ3枚では required(5) に満たない（旧実装は商品を数えず常に拒否＝捨てられない原因）。
+    expect(isValidDiscard(ck, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 2, brick: 1 } })).toBe(false);
+    // 所持を超える商品は不可。
+    expect(isValidDiscard(ck, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: {}, commodities: { coin: 3, cloth: 2 } })).toBe(false);
+  });
+
+  it('isValidDiscard: 基本ルールは資源のみで従来どおり判定', () => {
+    const base = makeGameState({
+      players: {
+        player1: makePlayer('player1', { hand: { wood: 3, brick: 3, wool: 2, grain: 0, ore: 0 } }),
+        player2: makePlayer('player2'),
+      },
+    });
+    // 8枚 → 捨て4枚。
+    expect(isValidDiscard(base, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 3, brick: 1 } })).toBe(true);
+    expect(isValidDiscard(base, { type: 'DISCARD_RESOURCES', playerId: 'player1', resources: { wood: 3 } })).toBe(false);
   });
 
   it('redactActionFor: 捨て札/金タイル選択の資源は本人以外には秘匿（種類漏洩防止）', () => {
