@@ -2313,22 +2313,30 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
     sub.textContent = info.attacked ? '騎士で防衛判定！' : `蛮族 ${info.barbPos} / ${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来）' : ''}`;
     panel.appendChild(sub);
   } else {
+    // 色ゲート（交易/政治/科学）の進歩カード抽選。スマホで見切れないよう、全員の
+    // しきい値詳細は出さず「誰が貰えたか」だけを簡潔に出す（誰も貰えなければ1行）。
     const color = info.eventDie;
     const title = document.createElement('div');
     title.className = `dep-title ev-${color}`;
-    title.textContent = `${EVENT_LABEL[color]} ${CK_TRACK_NAME[color]}の抽選（赤=${info.redDie} ≤ Lv+1?）`;
+    title.textContent = `${EVENT_LABEL[color]} ${CK_TRACK_NAME[color]}の進歩カード`;
     panel.appendChild(title);
-    const list = document.createElement('div');
-    list.className = 'dep-draws';
-    for (const r of info.draws ?? []) {
-      const rowEl = document.createElement('div');
-      rowEl.className = `dep-draw-row${r.eligible ? ' ok' : ''}`;
-      const cond = r.level < 1 ? '未改良' : `Lv${r.level}（赤≤${r.threshold}）`;
-      const mark = r.drew ? '🎴 +1' : r.eligible ? '引ける' : '✗';
-      rowEl.textContent = `${r.name}：${cond} → ${mark}`;
-      list.appendChild(rowEl);
+    const winners = (info.draws ?? []).filter(r => r.drew);
+    if (winners.length === 0) {
+      const sub = document.createElement('div');
+      sub.className = 'dep-sub';
+      sub.textContent = '誰ももらえませんでした';
+      panel.appendChild(sub);
+    } else {
+      const list = document.createElement('div');
+      list.className = 'dep-draws';
+      for (const r of winners) {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'dep-draw-row ok';
+        rowEl.textContent = `🎴 ${r.name} が獲得`;
+        list.appendChild(rowEl);
+      }
+      panel.appendChild(list);
     }
-    panel.appendChild(list);
   }
   return panel;
 }
