@@ -1900,6 +1900,10 @@ h1 {
 /* アイコン付きボタン（改善トラックなど） */
 .action-btn.has-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-icon-img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+/* 騎士の起動/昇格アイコンは一回り小さく（見切れ防止）。 */
+.btn-knight-op .btn-icon-img { width: 21px; height: 21px; }
+/* 都市改善ボタンの2行目に出す「その段の恩恵」。小さめ・折り返し可で全文見せる。 */
+.imp-benefit { display: block; width: 100%; font-size: 0.66rem; font-weight: 600; opacity: 0.92; white-space: normal; line-height: 1.2; margin-top: 1px; }
 /* 長いラベル（「プレイヤー間交易」等）はボタン内で折り返し、はみ出さないようにする。 */
 .btn-icon-label { min-width: 0; white-space: normal; line-height: 1.15; }
 /* ターン操作ボタンの高さを揃える（「ターン終了」など1行ボタンが他より低く見える崩れを防ぐ）。

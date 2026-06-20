@@ -25,6 +25,13 @@ const knightImg = ASSETS.knight.basic;
 const COMMODITY_IMG: Record<CommodityType, string> = ASSETS.commodity;
 // 騎士と商人: 都市改善トラックのアイコン画像。
 const IMP_IMG: Record<CkTrack, string> = ASSETS.trackIcon;
+// 各トラックの段階で得られる恩恵（Lv3=特殊建築の効果 / Lv4=メトロポリス / Lv5=最大）。
+// 「Lv3で何が起きるか」を建設ボタンに表示するために使う（エンジンの実装と一致）。
+const CK_TRACK_BENEFIT: Record<CkTrack, Record<number, string>> = {
+  trade:    { 3: '交易所：商品を銀行と2:1で交易', 4: '銀行：メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+  politics: { 3: '要塞：騎士を最強(Lv3)に昇格可', 4: '大聖堂：メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+  science:  { 3: '水道橋：無産出のターンに資源1枚', 4: '劇場：メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+};
 // 商品アイコンの <img>。
 function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
   const img = document.createElement('img');
@@ -1577,10 +1584,15 @@ function appendCkBuildSection(
     const label: (string | HTMLElement)[] = lvl >= 5
       ? [`${CK_TRACK_NAME[track]} Lv5（最大）`]
       : [`${CK_TRACK_NAME[track]} Lv${lvl}→${nextLvl}（`, inlineIc(COMMODITY_IMG[c], 'inline-ic'), `×${improvementCost(lvl)}）`];
+    // その段で得られる恩恵（科学Lv3=水道橋 等）を2行目に出して「Lv3で何が起きるか」を分かるようにする。
+    const benefit = lvl >= 5 ? CK_TRACK_BENEFIT[track][5] : CK_TRACK_BENEFIT[track][nextLvl];
+    if (benefit) label.push(Object.assign(el('div', 'imp-benefit'), { textContent: benefit }));
     // 改良建築: Lv3/Lv4 へ進む時はその建築画像（交易所/銀行/要塞/大聖堂/水道橋/劇場）、他はトラックアイコン。
     const icon = (nextLvl === 3 || nextLvl === 4) ? ASSETS.building[track][nextLvl as 3 | 4] : IMP_IMG[track];
-    impRow.appendChild(makeImgBtn(icon, label, can ? 'btn-build' : 'btn-disabled', !can,
-      () => dispatch({ type: 'BUILD_IMPROVEMENT', track })));
+    const btn = makeImgBtn(icon, label, can ? 'btn-build' : 'btn-disabled', !can,
+      () => dispatch({ type: 'BUILD_IMPROVEMENT', track }));
+    if (benefit) btn.title = benefit;
+    impRow.appendChild(btn);
   }
   sec.appendChild(impRow);
 
@@ -1594,10 +1606,15 @@ function appendCkBuildSection(
   const canBuildKn = !!firstV(v => canBuildKnight(state, pid, v));
   knightRow.appendChild(modeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], 'buildKnight', canBuildKn, buildMode, setBuildMode));
   // 起動・昇格も対象の騎士を盤面で選ぶ（騎士が複数いるとき自分で選べるように）。
+  // 起動(雷)・昇格(矢印)のアイコンはやや大きく見切れるため、専用クラスで一回り小さく表示する。
   const canActKn = !!firstV(v => canActivateKnight(state, pid, v));
-  knightRow.appendChild(modeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], 'activateKnight', canActKn, buildMode, setBuildMode));
+  const actKnBtn = modeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], 'activateKnight', canActKn, buildMode, setBuildMode);
+  actKnBtn.classList.add('btn-knight-op');
+  knightRow.appendChild(actKnBtn);
   const canUpKn = !!firstV(v => canUpgradeKnight(state, pid, v));
-  knightRow.appendChild(modeImgBtn(ASSETS.action.knightUpgrade, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], 'upgradeKnight', canUpKn, buildMode, setBuildMode));
+  const upKnBtn = modeImgBtn(ASSETS.action.knightUpgrade, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], 'upgradeKnight', canUpKn, buildMode, setBuildMode);
+  upKnBtn.classList.add('btn-knight-op');
+  knightRow.appendChild(upKnBtn);
   // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
     knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
