@@ -690,6 +690,31 @@ describe('C&K 追加進歩カード', () => {
     expect(next.tiles[b]!.number).toBe(nA);
   });
 
+  it('発明家: 2と12のタイルは入替対象に含めない（公式制限・6/8と同様）', async () => {
+    const { inventorTiles } = await import('../src/engine/citiesKnights');
+    const g = makeGameState({ expansion: 'cities_knights' } as Partial<GameState>);
+    for (const t of inventorTiles(g)) expect([2, 12, 6, 8].includes(g.tiles[t]!.number!)).toBe(false);
+  });
+
+  it('LAN: 相手参照系の進歩カード使用条件はマスク済みでも count で正しく判定（回帰）', async () => {
+    const { canPlayProgress } = await import('../src/engine/citiesKnights');
+    const { makeHand } = await import('../src/constants');
+    // 相手の中身はマスクで空/0、枚数だけ count に入る状態（LAN視点）。
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      players: {
+        player1: makePlayer('player1', { progressCards: [
+          { id: 'sp', type: 'spy', deck: 'politics' },
+          { id: 'rm', type: 'resource_monopoly', deck: 'trade' },
+        ] }),
+        player2: makePlayer('player2', { hand: makeHand(), handCount: 5, progressCards: [], progressCardCount: 2 }),
+      },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    expect(canPlayProgress(g, 'player1', 'sp')).toBe(true); // 相手 progressCardCount=2
+    expect(canPlayProgress(g, 'player1', 'rm')).toBe(true); // 相手 handCount=5
+  });
+
   it('spy: 手札4枚(spy含む)でも使え、使用後はちょうど4枚（5枚にならない）', async () => {
     const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');

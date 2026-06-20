@@ -517,6 +517,12 @@ function drawProgressCards(state: GameState, color: CkTrack, redDie: number): Ga
 function handTotalRes(p: Player): number {
   return RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0);
 }
+// LAN(マスク済みstate)では相手の hand/commodities/progressCards の中身は秘匿され 0/空になる。
+// 進歩カードの使用可否は「枚数」で決まるので、マスク時は count フィールドを優先して判定する
+// （これが無いとオンラインでスパイ/独占/大商人等が常に使えないと誤判定される）。
+function oppResCount(p: Player): number { return p.handCount ?? handTotalRes(p); }
+function oppComCount(p: Player): number { return p.commodityCount ?? COMMODITY_TYPES.reduce((s, c) => s + commodities(p)[c], 0); }
+function oppProgCount(p: Player): number { return p.progressCardCount ?? (p.progressCards?.length ?? 0); }
 function adjacentTerrainCount(state: GameState, pid: PlayerId, type: TileType): number {
   const tiles = new Set<string>();
   for (const v of Object.values(state.vertices)) {
@@ -598,11 +604,11 @@ function medicineSettlement(state: GameState, pid: PlayerId): string | null {
   return best;
 }
 
-/** inventor: 入替可能なタイル（数字あり・6/8以外）。UIの選択肢にも使う。 */
+/** inventor: 入替可能なタイル（数字あり・2/12/6/8以外＝公式制限）。UIの選択肢にも使う。 */
 export function inventorTiles(state: GameState): string[] {
   return Object.keys(state.tiles).filter(t => {
     const n = state.tiles[t]!.number;
-    return n != null && n !== 6 && n !== 8;
+    return n != null && n !== 2 && n !== 12 && n !== 6 && n !== 8;
   });
 }
 
@@ -816,12 +822,12 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
     case 'engineer': return wallCount(state, pid) < CK_MAX_WALLS && Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city' && !v.building.metropolis && !(v.building as { wall?: boolean }).wall);
     case 'irrigation': return adjacentTerrainCount(state, pid, 'field') > 0;
     case 'mining':     return adjacentTerrainCount(state, pid, 'mountain') > 0;
-    case 'resource_monopoly': return opps.some(o => handTotalRes(state.players[o]!) > 0);
-    case 'trade_monopoly':    return opps.some(o => COMMODITY_TYPES.reduce((s, c) => s + commodities(state.players[o]!)[c], 0) > 0);
-    case 'master_merchant':   return opps.some(o => handTotalRes(state.players[o]!) > 0 && calcVP(state, o) > myVp); // 公式: 自分よりVPが高い相手のみ
+    case 'resource_monopoly': return opps.some(o => oppResCount(state.players[o]!) > 0);
+    case 'trade_monopoly':    return opps.some(o => oppComCount(state.players[o]!) > 0);
+    case 'master_merchant':   return opps.some(o => oppResCount(state.players[o]!) > 0 && calcVP(state, o) > myVp); // 公式: 自分よりVPが高い相手のみ
     case 'warlord':  return Object.values(state.vertices).some(v => v.knight?.playerId === pid && !v.knight.active);
-    case 'saboteur': return opps.some(o => calcVP(state, o) >= myVp && handTotalRes(state.players[o]!) > 0);
-    case 'wedding':  return opps.some(o => calcVP(state, o) > myVp && handTotalRes(state.players[o]!) > 0);
+    case 'saboteur': return opps.some(o => calcVP(state, o) >= myVp && oppResCount(state.players[o]!) > 0);
+    case 'wedding':  return opps.some(o => calcVP(state, o) > myVp && oppResCount(state.players[o]!) > 0);
     // ---- 追加分 ----
     case 'alchemist': return state.turnPhase === 'PRE_ROLL'; // ダイスを振る前のみ
     case 'crane':     return craneTrack(state, pid) != null;
@@ -832,7 +838,7 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
       const free = { ...state, roadBuildingRoadsRemaining: 1 }; // コスト無視で接続性のみ判定
       return p.remainingRoads > 0 && Object.keys(state.edges).some(e => canBuildRoad(free, pid, e));
     }
-    case 'commercial_harbor': return RESOURCE_TYPES.some(r => p.hand[r] > 0) && opps.some(o => COMMODITY_TYPES.some(c => commodities(state.players[o]!)[c] > 0));
+    case 'commercial_harbor': return RESOURCE_TYPES.some(r => p.hand[r] > 0) && opps.some(o => oppComCount(state.players[o]!) > 0);
     case 'merchant':      return bestResourceTileForPlayer(state, pid) != null;
     case 'merchant_fleet': return RESOURCE_TYPES.some(r => p.hand[r] > 0) || COMMODITY_TYPES.some(c => commodities(p)[c] > 0);
     case 'bishop': { // 盗賊は初回の蛮族襲来まで凍結。移動可能な陸タイル（現在地以外）が必要。
@@ -843,7 +849,7 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
     case 'deserter':  return knightCountOf(state, pid) < PIECE_LIMITS.knights && strongestOpponentKnight(state, pid) != null && knightPlacementVertex(state, pid) != null;
     case 'diplomat':  return removableOpponentRoad(state, pid) != null;
     case 'intrigue':  return enemyKnightAdjacentToMyRoad(state, pid) != null;
-    case 'spy':       return opps.some(o => (state.players[o]!.progressCards?.length ?? 0) > 0);
+    case 'spy':       return opps.some(o => oppProgCount(state.players[o]!) > 0);
     default: return false;
   }
 }

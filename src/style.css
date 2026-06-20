@@ -2511,9 +2511,10 @@ h1 {
   display: flex; align-items: center; justify-content: center;
   animation: barbAttackIn 0.35s ease-out, barbShake 0.5s ease-in-out, barbAttackOut 0.6s ease-in 1.4s forwards;
 }
+/* 画像は普通に見せ、赤マスクはやめる。見出しの可読性のため四隅だけ控えめに暗くする中立ビネット。 */
 #barbarian-attack::before {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(circle at 50% 45%, rgba(150,10,10,0.30), rgba(50,0,0,0.78));
+  background: radial-gradient(circle at 50% 50%, transparent 44%, rgba(0,0,0,0.42));
 }
 #barbarian-attack.reduced { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 1.5s forwards; }
 .barbarian-attack-title {
@@ -2542,7 +2543,12 @@ h1 {
   animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
 }
 .dep-ship { width: 44px; height: 44px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
-/* 蛮族襲来バナー（横長16:9の帯。襲来テキストを下部スクリムに重ねて可読に） */
+/* ダイス時イベント結果パネルの「蛮族 襲来！」見出し（画像なし・全画面演出と重複させない） */
+.dep-attack-title {
+  text-align: center; font-size: 1.2rem; font-weight: 900; color: #ff6b5a; letter-spacing: 0.04em;
+  text-shadow: 0 0 10px rgba(255,60,30,0.8), 0 2px 6px rgba(0,0,0,0.85); margin-bottom: 6px;
+}
+/* 蛮族襲来バナー（横長16:9の帯。襲来テキストを下部スクリムに重ねて可読に）。現在は未使用。 */
 .dep-banner {
   width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; margin-bottom: 8px;
   background-size: cover; background-position: center; background-repeat: no-repeat;
