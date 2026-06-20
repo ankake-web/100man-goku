@@ -525,6 +525,22 @@ function renderVertices(
       if (opts?.downgradeVertexIds?.has(vertex.id)) img.classList.add('building-downgrade');
       else if (isValid) img.classList.add('building-valid');
       vg.appendChild(img);
+      // 騎士と商人: 城壁付きの都市は黒い枠で囲い「壁あり」を一目で分かるようにする。
+      const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
+      if (hasWall) {
+        const fw = w * 0.96, fh = w * 0.66;
+        const fx = vx - fw / 2, fy = by - w * 0.66;
+        // 外側の太い黒枠＋内側の細い石色枠で「城壁」らしく見せる。
+        const outer = svgEl('rect');
+        setAttrs(outer, { x: fx, y: fy, width: fw, height: fh, rx: w * 0.11,
+          fill: 'none', stroke: '#0a0a0a', 'stroke-width': 3.4 * bs, 'stroke-linejoin': 'round' });
+        outer.classList.add('city-wall-frame');
+        vg.appendChild(outer);
+        const inner = svgEl('rect');
+        setAttrs(inner, { x: fx + 1.4 * bs, y: fy + 1.4 * bs, width: fw - 2.8 * bs, height: fh - 2.8 * bs, rx: w * 0.09,
+          fill: 'none', stroke: '#7d736a', 'stroke-width': 1.2 * bs, 'stroke-linejoin': 'round', opacity: 0.85 });
+        vg.appendChild(inner);
+      }
     } else if (vertex.knight) {
       // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
       // 起動=くっきり、非起動=薄め。

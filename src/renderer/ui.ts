@@ -2272,14 +2272,16 @@ function buildPlayerPanel(
     }
   }
 
-  // 騎士と商人: 都市改善レベルと騎士（全員・公開情報）。
+  // 騎士と商人: 都市改善レベルと騎士・城壁（全員・公開情報）。
   // 「改善」ラベルは省き、騎士は「起動済みの数」だけ表示する（テストプレイ要望）。
   if (isCk(state)) {
     const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
     const kActive = Object.values(state.vertices)
       .filter(v => v.knight?.playerId === pId && v.knight.active).length;
+    const walls = Object.values(state.vertices)
+      .filter(v => v.building?.playerId === pId && (v.building as { wall?: boolean }).wall).length;
     const ck = el('div', 'ck-status');
-    ck.textContent = `交${imp.trade}/政${imp.politics}/科${imp.science}　🛡騎士${kActive}`;
+    ck.textContent = `交${imp.trade}/政${imp.politics}/科${imp.science}　🛡騎士${kActive}${walls > 0 ? `　🧱城壁${walls}` : ''}`;
     div.appendChild(ck);
   }
 

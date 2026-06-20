@@ -130,7 +130,7 @@ export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   irrigation: '建物に隣接する畑1つにつき麦2',
   mining: '建物に隣接する山1つにつき鉱石2',
   alchemist: '次のダイスの目を自分で決めてから振る',
-  crane: '都市改善を商品1個安く即建設',
+  crane: '都市改善（交易/政治/科学）を1段、商品1個分安く建設できる',
   inventor: '数字トークン2枚を入れ替え（自分に有利に）',
   medicine: '麦1鉱石2で開拓地を都市化',
   printer: '即座に+1勝利点',
