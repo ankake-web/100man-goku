@@ -583,8 +583,8 @@ function medicineSettlement(state: GameState, pid: PlayerId): string | null {
   return best;
 }
 
-/** inventor: 入替可能なタイル（数字あり・6/8以外）。 */
-function inventorTiles(state: GameState): string[] {
+/** inventor: 入替可能なタイル（数字あり・6/8以外）。UIの選択肢にも使う。 */
+export function inventorTiles(state: GameState): string[] {
   return Object.keys(state.tiles).filter(t => {
     const n = state.tiles[t]!.number;
     return n != null && n !== 6 && n !== 8;
@@ -666,14 +666,22 @@ function chooseFleetType(state: GameState, pid: PlayerId): TradeKind {
   return best;
 }
 
-function playInventor(state: GameState, pid: PlayerId): GameState {
+function playInventor(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
   const eligible = inventorTiles(state);
   if (eligible.length < 2) return state;
-  const adjCount = (tid: string): number => (state.tileToVertices[tid] ?? []).filter(v => state.vertices[v]?.building?.playerId === pid).length;
-  // 自分に最も隣接し低pipのタイルを、自分に無関係で高pipのタイルと入替（自分有利）。
-  const tileA = [...eligible].sort((a, b) => (adjCount(b) - adjCount(a)) || (pip(state.tiles[a]!.number) - pip(state.tiles[b]!.number)))[0]!;
-  const tileB = [...eligible].filter(t => t !== tileA).sort((a, b) => (adjCount(a) - adjCount(b)) || (pip(state.tiles[b]!.number) - pip(state.tiles[a]!.number)))[0];
-  if (!tileB || tileA === tileB) return state;
+  let tileA: string | undefined;
+  let tileB: string | undefined;
+  // 公式: 入れ替える2タイルを自分で選ぶ（choice.inventorTiles）。両方が入替可能タイルで別物なら採用。
+  const ch = choice?.inventorTiles;
+  if (ch && ch.length === 2 && ch[0] !== ch[1] && eligible.includes(ch[0]) && eligible.includes(ch[1])) {
+    tileA = ch[0]; tileB = ch[1];
+  } else {
+    // 未指定/不正なら自動最善（CPU/フォールバック）: 自分に最も隣接し低pipのタイルを、無関係で高pipのタイルと入替。
+    const adjCount = (tid: string): number => (state.tileToVertices[tid] ?? []).filter(v => state.vertices[v]?.building?.playerId === pid).length;
+    tileA = [...eligible].sort((a, b) => (adjCount(b) - adjCount(a)) || (pip(state.tiles[a]!.number) - pip(state.tiles[b]!.number)))[0]!;
+    tileB = [...eligible].filter(t => t !== tileA).sort((a, b) => (adjCount(a) - adjCount(b)) || (pip(state.tiles[b]!.number) - pip(state.tiles[a]!.number)))[0];
+  }
+  if (!tileA || !tileB || tileA === tileB) return state;
   const nA = state.tiles[tileA]!.number, nB = state.tiles[tileB]!.number;
   return { ...state, tiles: { ...state.tiles, [tileA]: { ...state.tiles[tileA]!, number: nB }, [tileB]: { ...state.tiles[tileB]!, number: nA } } };
 }
@@ -851,7 +859,7 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
       return track ? buildImprovement(removed, pid, track, 1) : removed;
     }
     case 'medicine':         return playMedicine(removed, pid);
-    case 'inventor':         return playInventor(removed, pid);
+    case 'inventor':         return playInventor(removed, pid, choice);
     case 'merchant':         return playMerchant(removed, pid);
     case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: chooseFleetType(removed, pid) } } };
     case 'commercial_harbor': return playCommercialHarbor(removed, pid);

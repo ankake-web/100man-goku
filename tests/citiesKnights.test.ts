@@ -630,6 +630,23 @@ describe('C&K 追加進歩カード', () => {
     expect(a2.alchemistForcedDice).not.toBeNull();
   });
 
+  it('inventor: choice.inventorTiles で入れ替える2タイルを自分で指定できる', async () => {
+    const { playProgress, inventorTiles } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const g = makeGameState({
+      expansion: 'cities_knights', phase: 'MAIN', turnPhase: 'TRADE_BUILD', currentPlayerIndex: 0,
+      players: { player1: makePlayer('player1', { progressCards: [{ id: 'iv', type: 'inventor', deck: 'science' }] }), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const elig = inventorTiles(g);
+    const a = elig[0]!;
+    const b = elig.find(t => g.tiles[t]!.number !== g.tiles[a]!.number)!;
+    const nA = g.tiles[a]!.number, nB = g.tiles[b]!.number;
+    const next = playProgress(g, 'player1', 'iv', createRng(1), { inventorTiles: [a, b] });
+    expect(next.tiles[a]!.number).toBe(nB); // 数字トークンが入れ替わる
+    expect(next.tiles[b]!.number).toBe(nA);
+  });
+
   it('spy: 手札4枚(spy含む)でも使え、使用後はちょうど4枚（5枚にならない）', async () => {
     const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');

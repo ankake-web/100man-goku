@@ -11,9 +11,9 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
-  playerHasMovableKnight, playerHasChasableKnight,
+  playerHasMovableKnight, playerHasChasableKnight, inventorTiles,
 } from '../engine/citiesKnights';
-import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS } from '../constants';
+import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
 import type { BuildMode } from './events';
 
@@ -1289,6 +1289,34 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     );
     return wrap;
   }
+  if (card.type === 'inventor') {
+    // 発明家: 入れ替える2つの数字タイルを選ぶ（同じ数字でも別タイル）。
+    label.textContent = '入れ替える2つのタイルを選ぶ';
+    const eligible = inventorTiles(state);
+    const sel: string[] = [];
+    const grid = el('div', 'pc-tile-row');
+    // disabled=false で生成して onClick を確実に束縛（有効/無効は render で切替）。クリックは sel.length===2 を内部ガード。
+    const confirm = makeBtn('▶ 入れ替える', 'btn-disabled', false, () => { if (sel.length === 2) play({ inventorTiles: [sel[0]!, sel[1]!] }); });
+    const render = (): void => {
+      grid.textContent = '';
+      for (const tid of eligible) {
+        const tile = state.tiles[tid]!;
+        const res = TILE_RESOURCE_MAP[tile.type];
+        const isSel = sel.includes(tid);
+        const btn = makeImgBtn(res ? RESOURCE_IMG[res] : glyph('ic-cards'), String(tile.number ?? ''), isSel ? 'btn-active pc-tile' : 'btn-build pc-tile', false, () => {
+          const i = sel.indexOf(tid);
+          if (i >= 0) sel.splice(i, 1); else if (sel.length < 2) sel.push(tid);
+          render();
+        });
+        grid.appendChild(btn);
+      }
+      confirm.disabled = sel.length !== 2;
+      confirm.className = `action-btn ${sel.length === 2 ? 'btn-primary' : 'btn-disabled'}`;
+    };
+    render();
+    wrap.append(label, Object.assign(el('div', 'pc-choice-sub'), { textContent: '同じ数字でも別のタイルです（2つ選ぶ）' }), grid, confirm, makeBtn('やめる', 'btn-end', false, cancel));
+    return wrap;
+  }
   if (card.type === 'resource_monopoly') {
     label.textContent = '奪う資源を選ぶ';
     for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ resource: r })));
@@ -1338,7 +1366,7 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   box.appendChild(desc);
 
   // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
-  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist';
+  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist' || card.type === 'inventor';
   const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
 
   const actions = el('div', 'pc-info-actions');

@@ -1868,6 +1868,10 @@ h1 {
 .pc-die { min-width: 40px; padding: 8px 0; font-size: 1.05rem; font-weight: 900; }
 .pc-die.red.btn-active { background: linear-gradient(150deg, #e44b3f, #b21d16); color: #fff; }
 .pc-die.yellow.btn-active { background: linear-gradient(150deg, #f1c33a, #c8920f); color: #3a2a06; }
+/* 発明家: 入れ替えるタイル選択（資源アイコン＋数字） */
+.pc-tile-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pc-tile { font-size: 1rem; font-weight: 900; padding: 6px 8px; }
+.pc-tile.btn-active { background: #7aee40; color: #1a3300; box-shadow: 0 0 8px #7aee4088; }
 /* 名前＋コスト素材アイコンを縦に積んだボタンラベル（何の素材で作れるか常時表示） */
 .btn-stacked { display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1.15; min-width: 0; }
 .btn-name { font-weight: 700; white-space: nowrap; }
