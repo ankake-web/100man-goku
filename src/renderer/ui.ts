@@ -553,14 +553,15 @@ function buildProgressDiscardUI(state: GameState, pid: PlayerId, dispatch: (a: A
   header.textContent = '📜 進歩カードが5枚：捨てる1枚を選ぶ';
   div.appendChild(header);
   div.appendChild(Object.assign(el('div', 'modal-section-label'),
-    { textContent: '手札上限は4枚です。捨てるカードを1枚選んでください' }));
+    { textContent: 'カードをタップして効果を確認し、捨てるか決めてください（手札上限4枚）' }));
   const candidates = new Set(progressDiscardCandidates(state, pid));
   const row = el('div', 'ck-pc-row');
   for (const c of state.players[pid]?.progressCards ?? []) {
     if (!candidates.has(c.id)) continue; // VPカードは捨てられない
     const icon = ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck];
+    // タップで即捨てず、効果確認画面（捨てる/やめる）を開く（誤って捨てるのを防ぐ）。
     const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], 'btn-build', false,
-      () => dispatch({ type: 'DISCARD_PROGRESS', playerId: pid, cardId: c.id }));
+      () => showProgressCardInfo(c, false, dispatch, state, pid, 'discard'));
     btn.title = PROGRESS_CARD_DESC[c.type];
     row.appendChild(btn);
   }
@@ -1371,7 +1372,7 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
   return wrap;
 }
 
-function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a: Action) => void, state?: GameState, pid?: PlayerId): void {
+function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a: Action) => void, state?: GameState, pid?: PlayerId, mode: 'play' | 'discard' = 'play'): void {
   document.querySelector('.help-overlay')?.remove();
   const overlay = document.createElement('div');
   overlay.className = 'help-overlay';
@@ -1404,20 +1405,37 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
 
   const actions = el('div', 'pc-info-actions');
-  const useBtn = document.createElement('button');
-  useBtn.className = `action-btn ${canPlay ? 'btn-primary' : 'btn-disabled'}`;
-  useBtn.textContent = canPlay ? (needsChoice ? '▶ 使う（選ぶ）' : '▶ 使う') : '今は使えません';
-  useBtn.disabled = !canPlay;
-  if (canPlay) useBtn.addEventListener('click', () => {
-    if (needsChoice && state) { actions.remove(); box.appendChild(buildProgressChoicePicker(card, state, pid, play, () => overlay.remove())); }
-    else play();
-  });
-  actions.appendChild(useBtn);
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'action-btn btn-end';
-  closeBtn.textContent = canPlay ? 'やめる' : '閉じる';
-  closeBtn.addEventListener('click', () => overlay.remove());
-  actions.appendChild(closeBtn);
+  if (mode === 'discard') {
+    // 進歩カード上限超過: ここで効果を確認してから「捨てる/やめる」を選べる（誤って即捨てを防ぐ）。
+    const discardBtn = document.createElement('button');
+    discardBtn.className = 'action-btn btn-danger';
+    discardBtn.textContent = '🗑 捨てる';
+    discardBtn.addEventListener('click', () => {
+      overlay.remove();
+      if (pid) dispatch({ type: 'DISCARD_PROGRESS', playerId: pid, cardId: card.id });
+    });
+    actions.appendChild(discardBtn);
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'action-btn btn-end';
+    cancelBtn.textContent = 'やめる';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    actions.appendChild(cancelBtn);
+  } else {
+    const useBtn = document.createElement('button');
+    useBtn.className = `action-btn ${canPlay ? 'btn-primary' : 'btn-disabled'}`;
+    useBtn.textContent = canPlay ? (needsChoice ? '▶ 使う（選ぶ）' : '▶ 使う') : '今は使えません';
+    useBtn.disabled = !canPlay;
+    if (canPlay) useBtn.addEventListener('click', () => {
+      if (needsChoice && state) { actions.remove(); box.appendChild(buildProgressChoicePicker(card, state, pid, play, () => overlay.remove())); }
+      else play();
+    });
+    actions.appendChild(useBtn);
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'action-btn btn-end';
+    closeBtn.textContent = canPlay ? 'やめる' : '閉じる';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    actions.appendChild(closeBtn);
+  }
   box.appendChild(actions);
 
   overlay.appendChild(box);

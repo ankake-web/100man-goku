@@ -814,6 +814,14 @@ h1 {
 }
 .btn-end:hover:not(:disabled) { background: #8a5828; }
 
+/* 危険操作（進歩カードを捨てる等）。赤系で誤操作と区別する。 */
+.btn-danger {
+  background: #9a2f24;
+  color: #ffe2dc;
+  border: 1px solid #d4554a;
+}
+.btn-danger:hover:not(:disabled) { background: #b8392c; }
+
 .btn-disabled {
   background: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.32);
