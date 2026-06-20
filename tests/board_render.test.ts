@@ -65,4 +65,17 @@ describe('盤面描画（jsdom）: 騎士と商人のコマ', () => {
     expect(metro?.tagName.toLowerCase()).toBe('image');
     expect(metro?.getAttribute('href')).toBeTruthy();
   });
+
+  it('state.merchant があれば該当タイルに .merchant-piece（画像）を描く', () => {
+    const s: GameState = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'cities_knights');
+    // 任意の資源タイルに商人コマを置く。
+    const landTile = Object.values(s.tiles).find(t => t.type !== 'sea' && t.type !== 'desert')!.id;
+    const s2: GameState = { ...s, merchant: { playerId: 'player1', tileId: landTile } };
+    const svg = svgEl();
+    renderBoard(svg, s2, {});
+    const mp = svg.querySelector('.merchant-piece');
+    expect(mp).not.toBeNull();
+    const img = mp?.querySelector('image');
+    expect(img?.getAttribute('href')).toBeTruthy();
+  });
 });

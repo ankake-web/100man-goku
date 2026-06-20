@@ -12,7 +12,7 @@
 // 枯渇を扱わない（公式でも商品が尽きることは稀）。基本/航海者には一切影響しない純粋関数。
 
 import type {
-  GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, CkTrack, Player,
+  GameState, ResourceType, CommodityType, CommodityHand, ResourceHand, PlayerId, VertexId, TileId, CkTrack, Player,
   ProgressCard, ProgressCardType, TileType, Knight, TradeKind, ProgressChoice,
 } from '../types';
 
@@ -719,8 +719,27 @@ function playMedicine(state: GameState, pid: PlayerId): GameState {
   };
 }
 
-function playMerchant(state: GameState, pid: PlayerId): GameState {
-  const tid = bestResourceTileForPlayer(state, pid);
+/** pid の建物に隣接する資源産出タイルID一覧（商人コマを置ける候補・盤面選択用）。 */
+export function merchantTileIds(state: GameState, pid: PlayerId): TileId[] {
+  const out: TileId[] = [];
+  const seen = new Set<string>();
+  for (const v of Object.values(state.vertices)) {
+    if (v.building?.playerId !== pid) continue;
+    for (const tid of v.adjacentTileIds) {
+      if (seen.has(tid)) continue; seen.add(tid);
+      const t = state.tiles[tid];
+      if (!t || TILE_RESOURCE_MAP[t.type] == null) continue;
+      out.push(tid as TileId);
+    }
+  }
+  return out;
+}
+
+function playMerchant(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
+  // 手動選択（choice.merchantTileId）が候補に含まれていればそれを優先。なければ自動（pip最大）。
+  const valid = new Set(merchantTileIds(state, pid));
+  const chosen = choice?.merchantTileId;
+  const tid = (chosen && valid.has(chosen)) ? chosen : bestResourceTileForPlayer(state, pid);
   if (!tid) return state;
   return { ...state, merchant: { playerId: pid, tileId: tid } };
 }
@@ -900,7 +919,7 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
     }
     case 'medicine':         return playMedicine(removed, pid);
     case 'inventor':         return playInventor(removed, pid, choice);
-    case 'merchant':         return playMerchant(removed, pid);
+    case 'merchant':         return playMerchant(removed, pid, choice);
     case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: chooseFleetType(removed, pid) } } };
     case 'commercial_harbor': return playCommercialHarbor(removed, pid);
     case 'bishop':           return playBishop(removed, pid, rng);
