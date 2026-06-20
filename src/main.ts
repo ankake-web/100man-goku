@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -674,6 +674,15 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
         const all = inventorTiles(state);
         opts.validTileIds = new Set(inventorFirstTile == null ? all : all.filter(t => t !== inventorFirstTile));
         if (inventorFirstTile) opts.selectedTileId = inventorFirstTile; // 1枚目を青で確定強調
+      } else if (mode === 'placeBishop') {
+        // 騎士と商人・僧正: 盗賊を置ける陸タイルを光らせる。
+        opts.validTileIds = new Set(bishopTileIds(state));
+      } else if (mode === 'selectDiplomatRoad') {
+        // 騎士と商人・外交官: 撤去できる相手の端の道を光らせる。
+        opts.validEdgeIds = new Set(diplomatRemovableRoads(state, pid));
+      } else if (mode === 'selectDeserterKnight') {
+        // 騎士と商人・脱走兵: 消せる相手の騎士頂点を光らせる。
+        opts.validVertexIds = new Set(deserterTargets(state, pid));
       }
     }
   }
@@ -963,6 +972,9 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'upgradeKnight') return { text: '⬆ 昇格する騎士をタップ', alert: false };
       if (buildMode === 'placeMerchant') return { text: '🏪 商人を置く資源タイルをタップ', alert: true };
       if (buildMode === 'inventorSwap') return { text: inventorFirstTile ? '🔄 入れ替え先のタイルをタップ' : '🔄 入れ替える1つ目のタイルをタップ', alert: true };
+      if (buildMode === 'placeBishop') return { text: '⛪ 盗賊を置くタイルをタップ', alert: true };
+      if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する相手の道をタップ', alert: true };
+      if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の騎士をタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -2848,6 +2860,33 @@ function dispatch(action: Action): void {
       setBuildMode('inventorSwap');
       scrollToBoard();                                    // 盤面（光った候補）を見せる
       showBoardNotice('🔄 数字を入れ替える1つ目のタイルをタップ');
+      return;
+    }
+    // 僧正: 盗賊を置くタイルを盤面で選ぶ（隣接する全相手から1枚ずつ奪う）。
+    if (pcard?.type === 'bishop' && pHuman && !action.choice?.bishopTileId
+        && state.turnPhase === 'TRADE_BUILD' && bishopTileIds(state).length > 0) {
+      document.querySelector('.help-overlay')?.remove();
+      setBuildMode('placeBishop');
+      scrollToBoard();
+      showBoardNotice('⛪ 盗賊を置くタイルをタップ（隣接の全相手から1枚ずつ奪う）');
+      return;
+    }
+    // 外交官: 撤去する相手の端の道を盤面で選ぶ。
+    if (pcard?.type === 'diplomat' && pHuman && !action.choice?.diplomatEdgeId
+        && state.turnPhase === 'TRADE_BUILD' && diplomatRemovableRoads(state, ppid).length > 0) {
+      document.querySelector('.help-overlay')?.remove();
+      setBuildMode('selectDiplomatRoad');
+      scrollToBoard();
+      showBoardNotice('📜 撤去する相手の端の道をタップ');
+      return;
+    }
+    // 脱走兵: 消す相手の騎士を盤面で選ぶ（同強度の騎士を自分が得る）。
+    if (pcard?.type === 'deserter' && pHuman && !action.choice?.deserterVertexId
+        && state.turnPhase === 'TRADE_BUILD' && deserterTargets(state, ppid).length > 0) {
+      document.querySelector('.help-overlay')?.remove();
+      setBuildMode('selectDeserterKnight');
+      scrollToBoard();
+      showBoardNotice('🏃 消す相手の騎士をタップ（同じ強さの騎士を得る）');
       return;
     }
   }

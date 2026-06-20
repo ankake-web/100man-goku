@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -233,6 +233,42 @@ export function nearestInventorTileId(
     if (d <= bestD) { bestD = d; best = tid; }
   }
   return best;
+}
+
+/** 僧正(bishop): 点(x,y)に最も近い「盗賊を置ける陸タイル」を返す。なければ null。 */
+export function nearestBishopTileId(state: GameState, x: number, y: number, maxDist = 70): string | null {
+  const valid = new Set(bishopTileIds(state));
+  let best: string | null = null; let bestD = maxDist * maxDist;
+  for (const tid of valid) {
+    const vids = state.tileToVertices[tid] ?? [];
+    let cx = 0, cy = 0, n = 0;
+    for (const vid of vids) { const v = state.vertices[vid]; if (v) { cx += v.pixel.x; cy += v.pixel.y; n++; } }
+    if (n === 0) continue;
+    cx /= n; cy /= n;
+    const d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+    if (d <= bestD) { bestD = d; best = tid; }
+  }
+  return best;
+}
+
+/** 外交官(diplomat): 点(x,y)に最も近い「撤去できる相手の端の道」辺IDを返す。なければ null。 */
+export function nearestDiplomatEdgeId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = EDGE_TAP_RADIUS): string | null {
+  const valid = new Set(diplomatRemovableRoads(state, pid));
+  let best: string | null = null; let bestD = maxDist * maxDist;
+  for (const eid of valid) {
+    const e = state.edges[eid]; if (!e) continue;
+    const a = state.vertices[e.vertexIds[0]]; const b = state.vertices[e.vertexIds[1]];
+    if (!a || !b) continue;
+    const d = distToSegmentSq(x, y, a.pixel.x, a.pixel.y, b.pixel.x, b.pixel.y);
+    if (d <= bestD) { bestD = d; best = eid; }
+  }
+  return best;
+}
+
+/** 脱走兵(deserter): 点(x,y)に最も近い「消せる相手の騎士頂点」を返す。なければ null。 */
+export function nearestDeserterVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const valid = new Set(deserterTargets(state, pid));
+  return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
@@ -449,6 +485,37 @@ export function attachBoardEvents(
       const card = state.players[pid]?.progressCards?.find(c => c.type === 'inventor');
       if (card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { inventorTiles: [first, tid] } });
       setInventorFirst(null);
+      return;
+    }
+
+    // ---- 騎士と商人: 僧正カードの盗賊配置（光ったタイルをタップ → PLAY_PROGRESS bishopTileId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'placeBishop') {
+      const ptb = clickToBoardPixel(svg, e.clientX, e.clientY);
+      let tid = (e.target as SVGElement).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
+      if (!tid && ptb) tid = nearestBishopTileId(state, ptb.x, ptb.y);
+      else if (tid && !new Set(bishopTileIds(state)).has(tid)) tid = null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'bishop');
+      if (tid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { bishopTileId: tid } });
+      return;
+    }
+
+    // ---- 騎士と商人: 外交官カードの道撤去（光った相手の端の道をタップ → PLAY_PROGRESS diplomatEdgeId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectDiplomatRoad') {
+      const ptd = clickToBoardPixel(svg, e.clientX, e.clientY);
+      let eid = (e.target as SVGElement).closest('[data-edge-id]')?.getAttribute('data-edge-id') ?? null;
+      if (!eid && ptd) eid = nearestDiplomatEdgeId(state, pid, ptd.x, ptd.y);
+      else if (eid && !new Set(diplomatRemovableRoads(state, pid)).has(eid)) eid = null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'diplomat');
+      if (eid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { diplomatEdgeId: eid } });
+      return;
+    }
+
+    // ---- 騎士と商人: 脱走兵カードの騎士除去（光った相手の騎士をタップ → PLAY_PROGRESS deserterVertexId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectDeserterKnight') {
+      const ptk = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = ptk ? nearestDeserterVertexId(state, pid, ptk.x, ptk.y) : null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'deserter');
+      if (vid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { deserterVertexId: vid } });
       return;
     }
 

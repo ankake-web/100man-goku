@@ -399,6 +399,14 @@ export interface ProgressChoice {
   inventorTiles?: readonly [TileId, TileId];
   // 商人: 商人コマを置く資源タイルのID（自分の建物に隣接する陸タイル）。
   merchantTileId?: TileId;
+  // クレーン: 1段安く改善するトラック（交易/政治/科学）。
+  craneTrack?: CkTrack;
+  // 僧正(bishop): 盗賊を置くタイルのID（隣接する全相手から1枚ずつ奪う）。
+  bishopTileId?: TileId;
+  // 外交官(diplomat): 撤去する相手の「端の道」の辺ID。
+  diplomatEdgeId?: EdgeId;
+  // 脱走兵(deserter): 消す相手の騎士の頂点ID（同強度の騎士を自分が得る）。
+  deserterVertexId?: VertexId;
 }
 
 export type Action =

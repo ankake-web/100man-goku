@@ -11,7 +11,7 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgressLoose,
-  playerHasMovableKnight, playerHasChasableKnight, robberAdjacentChasableVertexIds, inventorTiles, progressDiscardCandidates,
+  playerHasMovableKnight, playerHasChasableKnight, robberAdjacentChasableVertexIds, inventorTiles, progressDiscardCandidates, craneEligibleTracks,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
@@ -1351,6 +1351,19 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     wrap.append(label, Object.assign(el('div', 'pc-choice-sub'), { textContent: '同じ数字でも別のタイルです（2つ選ぶ）' }), grid, confirm, makeBtn('やめる', 'btn-end', false, cancel));
     return wrap;
   }
+  if (card.type === 'crane') {
+    // クレーン: 商品1個分安く1段上げるトラックを選ぶ（払えるトラックのみ表示）。
+    label.textContent = '改善するトラックを選ぶ（商品1個分安く1段）';
+    const tracks = pid ? craneEligibleTracks(state, pid) : [];
+    if (tracks.length === 0) {
+      row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '改善できるトラックがありません（都市と商品が必要）' }));
+      row.appendChild(makeBtn('効果なしで使う（カードを消費）', 'btn-end', false, () => play({})));
+    } else {
+      for (const t of tracks) row.appendChild(makeImgBtn(IMP_IMG[t], CK_TRACK_NAME[t], 'btn-build', false, () => play({ craneTrack: t })));
+    }
+    wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
+    return wrap;
+  }
   if (card.type === 'resource_monopoly') {
     label.textContent = '奪う資源を選ぶ';
     for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ resource: r })));
@@ -1406,7 +1419,7 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
   // 商人・発明家は「使う」後に盤面でタイルを選ぶ（dispatch 側で placeMerchant/inventorSwap へ）ため
   // モーダルの選択UIは出さない（needsChoice から除外）。
-  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist';
+  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist' || card.type === 'crane';
   const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
 
   const actions = el('div', 'pc-info-actions');
@@ -1649,13 +1662,18 @@ function buildActionButtons(
   if (state.phase !== 'MAIN') return null;
   const div = el('div', 'action-buttons');
 
-  // 商人/発明家の盤面選択中は「何をタップするか」を操作パネルに常駐表示する
+  // 進歩カードの盤面選択中は「何をタップするか」を操作パネルに常駐表示する
   // （board-notice は2.2秒で消えてしまい、迷っている間に指示が無くなるため）。
-  if (buildMode === 'placeMerchant' || buildMode === 'inventorSwap') {
+  const selectHint: Partial<Record<BuildMode, string>> = {
+    placeMerchant: '🏪 盤面で光った資源タイルをタップして商人を置く',
+    inventorSwap: '🔄 盤面で光ったタイルを2つ選んで数字を入れ替える',
+    placeBishop: '⛪ 盤面で光ったタイルをタップして盗賊を置く（隣接の全相手から1枚ずつ奪う）',
+    selectDiplomatRoad: '📜 盤面で光った相手の端の道をタップして撤去',
+    selectDeserterKnight: '🏃 盤面で光った相手の騎士をタップして消す（同じ強さの騎士を得る）',
+  };
+  if (selectHint[buildMode]) {
     const hint = el('div', 'board-select-hint');
-    hint.textContent = buildMode === 'placeMerchant'
-      ? '🏪 盤面で光った資源タイルをタップして商人を置く'
-      : '🔄 盤面で光ったタイルを2つ選んで数字を入れ替える';
+    hint.textContent = selectHint[buildMode]!;
     div.appendChild(hint);
   }
 

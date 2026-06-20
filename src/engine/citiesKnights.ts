@@ -611,15 +611,20 @@ function bestResourceTileForPlayer(state: GameState, pid: PlayerId): string | nu
 }
 
 /** crane: 改善でき、商品が (cost-1) で足りるトラック（lvl最大優先）。 */
-function craneTrack(state: GameState, pid: PlayerId): CkTrack | null {
-  const p = state.players[pid]; if (!p) return null;
-  if (!Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city')) return null;
+/** crane: 割引(商品1個)後に改善できるトラック一覧（未最大＆割引後コストを払える）。UI/自動選択用。 */
+export function craneEligibleTracks(state: GameState, pid: PlayerId): CkTrack[] {
+  const p = state.players[pid]; if (!p) return [];
+  if (!Object.values(state.vertices).some(v => v.building?.playerId === pid && v.building.type === 'city')) return [];
   const tracks: CkTrack[] = ['trade', 'politics', 'science'];
-  const ok = tracks.filter(t => {
+  return tracks.filter(t => {
     const lvl = improvements(p)[t];
     return lvl < CK_MAX_IMPROVEMENT && commodities(p)[CK_TRACK_COMMODITY[t]] >= Math.max(0, improvementCost(lvl) - 1);
   });
-  ok.sort((a, b) => improvements(p)[b] - improvements(p)[a]);
+}
+function craneTrack(state: GameState, pid: PlayerId): CkTrack | null {
+  const ok = [...craneEligibleTracks(state, pid)];
+  const p = state.players[pid];
+  if (p) ok.sort((a, b) => improvements(p)[b] - improvements(p)[a]);
   return ok[0] ?? null;
 }
 
@@ -648,6 +653,13 @@ function knightCountOf(state: GameState, pid: PlayerId): number {
 function knightPlacementVertex(state: GameState, pid: PlayerId): string | null {
   return Object.keys(state.vertices).find(vid => canPlaceKnightVertex(state, pid, vid)) ?? null;
 }
+/** deserter: 消せる相手の騎士頂点ID一覧（盤面選択の候補）。 */
+export function deserterTargets(state: GameState, pid: PlayerId): string[] {
+  return Object.keys(state.vertices).filter(vid => {
+    const k = state.vertices[vid]?.knight;
+    return !!k && k.playerId !== pid;
+  });
+}
 /** deserter: 相手の最強の騎士頂点。 */
 function strongestOpponentKnight(state: GameState, pid: PlayerId): { vid: string; strength: number } | null {
   let best: { vid: string; strength: number } | null = null;
@@ -672,8 +684,9 @@ function enemyKnightAdjacentToMyRoad(state: GameState, pid: PlayerId): string | 
   }
   return best;
 }
-/** diplomat: 撤去できる相手の「端の道」（端点の一方に建物無し・同色の他の道が続かない）。 */
-function removableOpponentRoad(state: GameState, pid: PlayerId): string | null {
+/** diplomat: 撤去できる相手の「端の道」一覧（端点の一方に建物無し・同色の他の道が続かない）。盤面選択の候補。 */
+export function diplomatRemovableRoads(state: GameState, pid: PlayerId): string[] {
+  const out: string[] = [];
   for (const [eid, e] of Object.entries(state.edges)) {
     const owner = e.road?.playerId;
     if (!owner || owner === pid) continue;
@@ -684,9 +697,12 @@ function removableOpponentRoad(state: GameState, pid: PlayerId): string | null {
         eid2 !== eid && (state.edges[eid2]?.road?.playerId === owner || state.edges[eid2]?.ship?.playerId === owner));
       return !continues;
     });
-    if (isOpen) return eid;
+    if (isOpen) out.push(eid);
   }
-  return null;
+  return out;
+}
+function removableOpponentRoad(state: GameState, pid: PlayerId): string | null {
+  return diplomatRemovableRoads(state, pid)[0] ?? null;
 }
 
 // ---- 効果適用（追加分。いずれも自動最善選択で即時解決＝保留状態なし＝ソフトロックなし） ----
@@ -793,18 +809,30 @@ function playCommercialHarbor(state: GameState, pid: PlayerId): GameState {
   return { ...state, players };
 }
 
-function playBishop(state: GameState, pid: PlayerId, rng: () => number): GameState {
+/** bishop: 盗賊を置ける陸タイル（海・現在地以外）。盤面選択の候補。 */
+export function bishopTileIds(state: GameState): TileId[] {
   const current = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
-  let bestTid: string | null = null; let bestScore = -1;
-  for (const [tid, t] of Object.entries(state.tiles)) {
-    if (t.type === 'sea' || tid === current) continue;
-    const opps = new Set<PlayerId>();
-    for (const vid of state.tileToVertices[tid] ?? []) {
-      const o = state.vertices[vid]?.building?.playerId;
-      if (o && o !== pid) opps.add(o);
+  return Object.keys(state.tiles).filter(t => state.tiles[t]!.type !== 'sea' && t !== current) as TileId[];
+}
+function playBishop(state: GameState, pid: PlayerId, rng: () => number, choice?: ProgressChoice): GameState {
+  const current = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
+  // 手動でタイルを選べる（choice.bishopTileId）。海・現在地でなければ採用。なければ自動最善。
+  let bestTid: string | null = null;
+  const chosen = choice?.bishopTileId;
+  if (chosen && state.tiles[chosen] && state.tiles[chosen]!.type !== 'sea' && chosen !== current) {
+    bestTid = chosen;
+  } else {
+    let bestScore = -1;
+    for (const [tid, t] of Object.entries(state.tiles)) {
+      if (t.type === 'sea' || tid === current) continue;
+      const opps = new Set<PlayerId>();
+      for (const vid of state.tileToVertices[tid] ?? []) {
+        const o = state.vertices[vid]?.building?.playerId;
+        if (o && o !== pid) opps.add(o);
+      }
+      const score = [...opps].reduce((s, o) => s + robbableCardCount(state, o), 0);
+      if (score > bestScore) { bestScore = score; bestTid = tid; }
     }
-    const score = [...opps].reduce((s, o) => s + robbableCardCount(state, o), 0);
-    if (score > bestScore) { bestScore = score; bestTid = tid; }
   }
   if (!bestTid) return state;
   let s = moveRobber(state, bestTid);
@@ -817,8 +845,13 @@ function playBishop(state: GameState, pid: PlayerId, rng: () => number): GameSta
   return s;
 }
 
-function playDeserter(state: GameState, pid: PlayerId): GameState {
-  const target = strongestOpponentKnight(state, pid);
+function playDeserter(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
+  // 手動で消す相手の騎士を選べる（choice.deserterVertexId）。相手の騎士頂点なら採用。なければ自動(最強)。
+  const chosen = choice?.deserterVertexId;
+  const ck = chosen ? state.vertices[chosen]?.knight : null;
+  const target = (chosen && ck && ck.playerId !== pid)
+    ? { vid: chosen, strength: ck.strength }
+    : strongestOpponentKnight(state, pid);
   if (!target) return state;
   let vertices = { ...state.vertices, [target.vid]: { ...state.vertices[target.vid]!, knight: null } };
   const place = knightPlacementVertex({ ...state, vertices }, pid);
@@ -834,8 +867,10 @@ function playIntrigue(state: GameState, pid: PlayerId): GameState {
   return { ...state, vertices: { ...state.vertices, [vid]: { ...state.vertices[vid]!, knight: null } } };
 }
 
-function playDiplomat(state: GameState, pid: PlayerId): GameState {
-  const eid = removableOpponentRoad(state, pid);
+function playDiplomat(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
+  // 手動で撤去する相手の端の道を選べる（choice.diplomatEdgeId）。候補内なら採用。なければ自動。
+  const chosen = choice?.diplomatEdgeId;
+  const eid = (chosen && diplomatRemovableRoads(state, pid).includes(chosen)) ? chosen : removableOpponentRoad(state, pid);
   if (!eid) return state;
   return updateLongestRoad({ ...state, edges: { ...state.edges, [eid]: { ...state.edges[eid]!, road: null } } });
 }
@@ -944,7 +979,9 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
     case 'road_building_progress':
       return { ...removed, roadBuildingRoadsRemaining: Math.min(2, removed.players[pid]!.remainingRoads) };
     case 'crane': {
-      const track = craneTrack(removed, pid);
+      // 手動でトラックを選べる（choice.craneTrack）。割引後に払える＆未最大なら採用。なければ自動。
+      const chosen = choice?.craneTrack;
+      const track = (chosen && craneEligibleTracks(removed, pid).includes(chosen)) ? chosen : craneTrack(removed, pid);
       return track ? buildImprovement(removed, pid, track, 1) : removed;
     }
     case 'medicine':         return playMedicine(removed, pid);
@@ -952,9 +989,9 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
     case 'merchant':         return playMerchant(removed, pid, choice);
     case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: chooseFleetType(removed, pid) } } };
     case 'commercial_harbor': return playCommercialHarbor(removed, pid);
-    case 'bishop':           return playBishop(removed, pid, rng);
-    case 'deserter':         return playDeserter(removed, pid);
-    case 'diplomat':         return playDiplomat(removed, pid);
+    case 'bishop':           return playBishop(removed, pid, rng, choice);
+    case 'deserter':         return playDeserter(removed, pid, choice);
+    case 'diplomat':         return playDiplomat(removed, pid, choice);
     case 'intrigue':         return playIntrigue(removed, pid);
     case 'spy':              return playSpy(removed, pid, rng);
   }

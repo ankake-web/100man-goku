@@ -1194,3 +1194,74 @@ describe('C&K 商人カード: 手動タイル選択', () => {
     expect(valid.has(r.merchant!.tileId)).toBe(true); // 候補内に自動配置
   });
 });
+
+describe('C&K 進歩カードの手動選択（クレーン/僧正/外交官/脱走兵）', () => {
+  function ck(extra: (g: GameState) => GameState): GameState {
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    return extra(g);
+  }
+
+  it('crane: choice.craneTrack で指定したトラックを1段上げる', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck(g => {
+      const cityVid = Object.keys(g.vertices)[0]!;
+      return {
+        ...g,
+        players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'cr', type: 'crane', deck: 'science' }], commodities: { coin: 9, cloth: 9, paper: 9 }, improvements: { trade: 0, politics: 0, science: 0 } }) },
+        vertices: { ...g.vertices, [cityVid]: { ...g.vertices[cityVid]!, building: { type: 'city', playerId: 'player1' } } },
+      };
+    });
+    const r = playProgress(s, 'player1', 'cr', createRng(1), { craneTrack: 'politics' });
+    expect(r.players.player1!.improvements!.politics).toBe(1);
+    expect(r.players.player1!.improvements!.trade).toBe(0);
+  });
+
+  it('deserter: choice.deserterVertexId で指定した相手の騎士を消す', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck(g => {
+      const kv = Object.keys(g.vertices)[3]!;
+      return {
+        ...g,
+        players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'de', type: 'deserter', deck: 'politics' }] }) },
+        vertices: { ...g.vertices, [kv]: { ...g.vertices[kv]!, knight: { playerId: 'player2', strength: 2, active: false } } },
+      };
+    });
+    const kv = Object.keys(s.vertices).find(v => s.vertices[v]!.knight?.playerId === 'player2')!;
+    const r = playProgress(s, 'player1', 'de', createRng(1), { deserterVertexId: kv });
+    expect(r.vertices[kv]!.knight ?? null).toBeNull();
+  });
+
+  it('diplomat: choice.diplomatEdgeId で指定した相手の端の道を撤去', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck(g => {
+      const eid = Object.keys(g.edges)[0]!;
+      return {
+        ...g,
+        players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'dp', type: 'diplomat', deck: 'politics' }] }) },
+        edges: { ...g.edges, [eid]: { ...g.edges[eid]!, road: { playerId: 'player2' } } },
+      };
+    });
+    const eid = Object.keys(s.edges).find(e => s.edges[e]!.road?.playerId === 'player2')!;
+    const r = playProgress(s, 'player1', 'dp', createRng(1), { diplomatEdgeId: eid });
+    expect(r.edges[eid]!.road ?? null).toBeNull();
+  });
+
+  it('bishop: choice.bishopTileId で指定したタイルへ盗賊を置く', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ck(g => ({
+      ...g,
+      players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'bp', type: 'bishop', deck: 'politics' }] }) },
+    }));
+    const tid = Object.values(s.tiles).find(t => t.type !== 'sea' && !t.hasRobber)!.id;
+    const r = playProgress(s, 'player1', 'bp', createRng(1), { bishopTileId: tid });
+    expect(r.tiles[tid]!.hasRobber).toBe(true);
+  });
+});
