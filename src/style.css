@@ -1861,6 +1861,13 @@ h1 {
 .pc-choice-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .pc-choice-row .action-btn { flex: 0 1 auto; }
 .pc-choice-empty { color: rgba(255,255,255,0.6); padding: 6px; }
+/* 錬金術師: ダイス目を選ぶ数字パネル */
+.pc-choice-sub { font-size: 0.82rem; color: rgba(255,255,255,0.7); text-align: center; margin-top: 2px; }
+.pc-dice-sum { font-weight: 900; color: #ffe24a; text-align: center; font-size: 1.05rem; }
+.pc-dice-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pc-die { min-width: 40px; padding: 8px 0; font-size: 1.05rem; font-weight: 900; }
+.pc-die.red.btn-active { background: linear-gradient(150deg, #e44b3f, #b21d16); color: #fff; }
+.pc-die.yellow.btn-active { background: linear-gradient(150deg, #f1c33a, #c8920f); color: #3a2a06; }
 /* 名前＋コスト素材アイコンを縦に積んだボタンラベル（何の素材で作れるか常時表示） */
 .btn-stacked { display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1.15; min-width: 0; }
 .btn-name { font-weight: 700; white-space: nowrap; }

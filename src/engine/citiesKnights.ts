@@ -836,8 +836,14 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
   switch (card.type) {
     case 'printer': case 'constitution':
       return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, progressVP: (removed.players[pid]!.progressVP ?? 0) + 1 } } };
-    case 'alchemist':
-      return { ...removed, alchemistForcedDice: chooseAlchemistDice(removed, pid) };
+    case 'alchemist': {
+      // 公式: 次のダイス目を自分で指定（choice.dice）。未指定/不正なら自動最善（CPU/フォールバック）。
+      const d = choice?.dice;
+      const dice: [number, number] = (d && Number.isInteger(d[0]) && Number.isInteger(d[1]) && d[0] >= 1 && d[0] <= 6 && d[1] >= 1 && d[1] <= 6)
+        ? [d[0], d[1]]
+        : chooseAlchemistDice(removed, pid);
+      return { ...removed, alchemistForcedDice: dice };
+    }
     case 'road_building_progress':
       return { ...removed, roadBuildingRoadsRemaining: Math.min(2, removed.players[pid]!.remainingRoads) };
     case 'crane': {

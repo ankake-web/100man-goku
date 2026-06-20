@@ -1266,6 +1266,29 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
   const wrap = el('div', 'pc-choice');
   const label = el('div', 'pc-choice-label');
   const row = el('div', 'pc-choice-row');
+  if (card.type === 'alchemist') {
+    // 錬金術師: 次のダイス目（赤・黄 各1〜6）を自分で指定する数字パネル。
+    label.textContent = '次のダイス目を指定（赤＋黄）';
+    let red = 3, yellow = 4;
+    const sumEl = el('div', 'pc-dice-sum');
+    const redRow = el('div', 'pc-dice-row');
+    const yellowRow = el('div', 'pc-dice-row');
+    const render = (): void => {
+      sumEl.textContent = `赤 ${red} ＋ 黄 ${yellow} ＝ ${red + yellow}`;
+      redRow.textContent = ''; yellowRow.textContent = '';
+      for (let n = 1; n <= 6; n++) redRow.appendChild(makeBtn(String(n), red === n ? 'btn-active pc-die red' : 'btn-build pc-die', false, () => { red = n; render(); }));
+      for (let n = 1; n <= 6; n++) yellowRow.appendChild(makeBtn(String(n), yellow === n ? 'btn-active pc-die yellow' : 'btn-build pc-die', false, () => { yellow = n; render(); }));
+    };
+    render();
+    wrap.append(
+      label, sumEl,
+      Object.assign(el('div', 'pc-choice-sub'), { textContent: '赤ダイス' }), redRow,
+      Object.assign(el('div', 'pc-choice-sub'), { textContent: '黄ダイス' }), yellowRow,
+      makeBtn('▶ この目で確定', 'btn-primary', false, () => play({ dice: [red, yellow] })),
+      makeBtn('やめる', 'btn-end', false, cancel),
+    );
+    return wrap;
+  }
   if (card.type === 'resource_monopoly') {
     label.textContent = '奪う資源を選ぶ';
     for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ resource: r })));
@@ -1315,7 +1338,7 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   box.appendChild(desc);
 
   // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
-  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant';
+  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist';
   const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
 
   const actions = el('div', 'pc-info-actions');
