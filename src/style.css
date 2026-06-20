@@ -2501,7 +2501,7 @@ h1 {
   box-shadow: 0 14px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
 }
-.dep-ship { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+.dep-ship { width: 44px; height: 44px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
 /* 蛮族襲来バナー（横長16:9の帯。襲来テキストを下部スクリムに重ねて可読に） */
 .dep-banner {
   width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; margin-bottom: 8px;
@@ -2528,6 +2528,14 @@ h1 {
 .dep-draws { display: flex; flex-direction: column; gap: 3px; }
 .dep-draw-row { font-size: 0.86rem; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,0.05); opacity: 0.62; }
 .dep-draw-row.ok { background: rgba(110,200,120,0.2); opacity: 1; font-weight: 700; }
+/* 低い画面（スマホ横/小型縦）ではイベント結果パネルをさらに圧縮して見切れを防ぐ。 */
+@media (max-height: 740px) {
+  .dice-event-panel { padding: 8px 12px; }
+  .dep-ship { width: 36px; height: 36px; }
+  .dep-title { font-size: 0.95rem; margin-bottom: 4px; }
+  .dep-track { margin: 4px 0; }
+  .dep-pip { width: 12px; height: 12px; }
+}
 
 /* ターンパネルの常時ダイス読み取り（赤/黄/イベントの小チップ） */
 .dice-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 6px; font-weight: 900; font-size: 0.95rem; margin: 0 2px; vertical-align: middle; }
