@@ -750,6 +750,14 @@ let cpuPlayerTradeOfferedThisTurn = false;
 
 // ダイスのロール演出中フラグ。演出中は新たなアクションを無視（多重ロール等を防止）。
 let diceAnimating = false;
+// 蛮族襲来の全画面演出が盤面を覆っている間は、資源/進歩カードの配布アニメを流さない
+// （演出が消えて盤面が見えてから飛ばす＝被りを防ぐ）。clearAt は演出の終了予定時刻(performance.now基準)。
+const BARB_OVERLAY_MS = 4200;
+let barbarianOverlayClearAt = 0;
+function pendingOverlayDelay(): number {
+  const now = typeof performance !== 'undefined' ? performance.now() : 0;
+  return Math.max(0, barbarianOverlayClearAt - now);
+}
 // 資源/商品の分配アニメ中フラグ。CPUの次手（特に次のダイス）を待たせ、サイコロと飛行アニメの被りを防ぐ。
 let resourceAnimating = false;
 let _resAnimTimer: number | null = null;
@@ -2144,7 +2152,10 @@ function triggerResourceAnimation(
   const baseProd = (animateDiceProd && !ck) ? computeDiceProduction(newState, prodTotal!) : null;
 
   const MAX_PER_PLAYER = 8; // スマホで重くならないよう1人あたりの上限（商品分を見込み少し増やす）
-  let delay = 0;
+  // 蛮族襲来の全画面演出が出ている間は、それが消えて盤面が見えてから飛ばす（被り防止）。
+  // delay は演出の残り時間から始めるため「飛ばしたか」は spawned で別に判定する。
+  let delay = pendingOverlayDelay();
+  let spawned = false;
   for (const pid of newState.playerOrder) {
     // 飛ばすアイコン群（資源・商品を統一して扱う）。
     const flyables: Array<{ img: string; origin: { x: number; y: number }; n: number }> = [];
@@ -2172,12 +2183,12 @@ function triggerResourceAnimation(
         const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
         spawnResFlyer(img, target, jitter, delay, targetEl);
         delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
-        count++;
+        count++; spawned = true;
       }
     }
   }
   // 飛行が出た場合は完了までCPUの次手（特に次のダイス）を待たせ、サイコロと飛行の被りを防ぐ。
-  if (delay > 0) holdResourceAnimating(delay + RES_FLY_MS + 120);
+  if (spawned) holdResourceAnimating(delay + RES_FLY_MS + 120);
 }
 
 // 騎士と商人: 進歩カードを得たプレイヤーへ、デッキ色の札がパネルへ飛ぶ演出（資源と同じ仕組み）。
@@ -2189,7 +2200,8 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
   const eventDeck = (ev === 'trade' || ev === 'politics' || ev === 'science') ? ev : null;
   const me = selfPlayerId();
   const origin = getBoardCenter();
-  let delay = 0;
+  // 蛮族襲来の全画面演出が出ている間（撃退同点でカードが出る等）は、消えてから飛ばす。
+  let delay = pendingOverlayDelay();
   let any = false;
   for (const pid of newState.playerOrder) {
     const before = oldState.players[pid]?.progressCardCount ?? oldState.players[pid]?.progressCards?.length ?? 0;
@@ -2563,7 +2575,9 @@ function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): voi
   }
   document.body.appendChild(ov);
   // 結果（撃退/敗北・誰が格下げ）を読めるよう長めに表示（タップは透過するので操作は妨げない）。
-  setTimeout(() => ov.remove(), 4200);
+  // この演出が消えるまで資源/進歩カードの配布アニメは待たせる（pendingOverlayDelay）。
+  barbarianOverlayClearAt = (typeof performance !== 'undefined' ? performance.now() : 0) + BARB_OVERLAY_MS;
+  setTimeout(() => { ov.remove(); barbarianOverlayClearAt = 0; }, BARB_OVERLAY_MS);
 }
 
 /** イベント結果を演出へ接続: 船=蛮族前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。
