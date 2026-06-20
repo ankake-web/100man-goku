@@ -2028,7 +2028,16 @@ export function clipByWidth(s: string, maxWidth = 8): string {
   return out;
 }
 
-// 盤面に重ねるミニプレイヤーパネル（縦持ちスマホ専用）。自分=上段大／他=下段小の横並び。
+// スマホ縦持ち用ミニパネルの四隅割り当て（人数別にバランスよく配置）。
+const MINI_CORNERS: Record<number, string[]> = {
+  1: ['corner-tl'],
+  2: ['corner-tl', 'corner-tr'],
+  3: ['corner-tl', 'corner-tr', 'corner-bl'],
+  4: ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'],
+};
+
+// 盤面四隅のミニプレイヤーパネルを #board-area に重ねて描画する（縦持ちスマホ専用）。
+// 「自分=大・他=小」の並びは盤面下の大きい .player-panel 側で表現するため、ミニは四隅に戻す。
 // 表示する公開情報のみ: 名前 / VP / 手札枚数 / 現手番 / 最長・最大の小アイコン。
 // 他プレイヤーの手札内訳・発展カード内容は出さない（手札は枚数のみ＝公開情報）。
 function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
@@ -2037,13 +2046,12 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
   boardArea.querySelector('.mini-panels')?.remove();
 
   const order = state.playerOrder;
+  const corners = MINI_CORNERS[order.length] ?? MINI_CORNERS[4]!;
   const currentPid = state.playerOrder[state.currentPlayerIndex];
   const selfPid = viewerId ?? state.playerOrder.find(p => state.players[p]?.type === 'human');
 
-  // レイアウト: 自分のパネルを大きく上に、他プレイヤーを小さく下段に横並び（人数で自動分割）。
   const wrap = el('div', 'mini-panels');
-  const oppsWrap = el('div', 'mini-opps');
-  order.forEach((pid) => {
+  order.forEach((pid, i) => {
     const p = state.players[pid];
     if (!p) return;
     const isSelf = viewerId != null ? pid === viewerId : p.type === 'human';
@@ -2056,7 +2064,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     const mine = pid === selfPid;
     const color = PLAYER_COLORS[pid] ?? '#aaa';
 
-    const panel = el('div', `mini-panel ${mine ? 'mini-self' : 'mini-opp'}${isCurrent ? ' current' : ''}${isCurrent && mine ? ' mine' : ''}`);
+    const panel = el('div', `mini-panel ${corners[i] ?? 'corner-tl'}${isCurrent ? ' current' : ''}${isCurrent && mine ? ' mine' : ''}`);
     panel.dataset.pid = pid;
     panel.style.setProperty('--mini-color', color);
 
@@ -2085,11 +2093,8 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     }
 
     panel.append(row1, row2);
-    // 自分は上段（大）、他プレイヤーは下段の横並び（小）。
-    if (mine) wrap.appendChild(panel);
-    else oppsWrap.appendChild(panel);
+    wrap.appendChild(panel);
   });
-  wrap.appendChild(oppsWrap);
   boardArea.appendChild(wrap);
 }
 
@@ -2110,7 +2115,8 @@ function buildPlayerPanel(
   // 単一端末プレイ（viewerId 未指定）では従来どおり human=自分。
   const isSelf = viewerId != null ? (pId === viewerId) : (player.type === 'human');
 
-  const div = el('div', `player-panel${isActive ? ' active' : ''}${isActive && isSelf && state.phase !== 'GAME_OVER' ? ' your-turn' : ''}${isWinner ? ' winner-glow' : ''}`);
+  // スマホ縦持ちでは自分のパネルを大きく上段・他を小さく下段横並びにするため自他を区別する。
+  const div = el('div', `player-panel${isSelf ? ' panel-self' : ' panel-opp'}${isActive ? ' active' : ''}${isActive && isSelf && state.phase !== 'GAME_OVER' ? ' your-turn' : ''}${isWinner ? ' winner-glow' : ''}`);
   div.dataset.pid = pId;  // リソースアニメーション用
   const color = PLAYER_COLORS[pId] ?? '#aaa';
   // プレイヤーカラーを反映（控えめ）：暖色寄りの暗いベースに淡い着色＋濃い枠線。
