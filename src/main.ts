@@ -751,6 +751,21 @@ let cpuPlayerTradeOfferedThisTurn = false;
 let diceAnimating = false;
 // 資源/商品の分配アニメ中フラグ。CPUの次手（特に次のダイス）を待たせ、サイコロと飛行アニメの被りを防ぐ。
 let resourceAnimating = false;
+let _resAnimTimer: number | null = null;
+let _resAnimEndAt = 0;
+// 資源/進歩カードの飛行が出ている間、CPUの次手を待たせる。複数の飛行（資源＋進歩カード）が
+// 重なっても「最も遅く着地する」時刻までゲートを延長する（早い方の解除で先走らないように）。
+function holdResourceAnimating(ms: number): void {
+  resourceAnimating = true;
+  const end = (typeof performance !== 'undefined' ? performance.now() : 0) + ms;
+  if (end <= _resAnimEndAt) return; // 既により長く確保済み
+  _resAnimEndAt = end;
+  if (_resAnimTimer != null) clearTimeout(_resAnimTimer);
+  _resAnimTimer = window.setTimeout(() => {
+    resourceAnimating = false; _resAnimTimer = null; _resAnimEndAt = 0;
+    scheduleAiTurn();
+  }, ms);
+}
 
 // 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
 let gameMenuOpen = false;
@@ -1505,6 +1520,7 @@ function spawnResFlyer(
   origin: { x: number; y: number },
   delay: number,
   landEl?: HTMLElement | null,        // 着地時にポップさせるパネル（C-2）
+  imgClass = 'res-fly-img',           // 飛ばす画像のクラス（進歩カードは札形の 'pc-fly-img'）
 ): void {
   // 遅延スポーンは世代ガード必須: delay は最大数秒あり、ホーム復帰/新ゲーム開始後に
   // 旧ゲームのアイコンが画面上を飛び続けるのを防ぐ（clearTransientFx は未発火タイマーを消せない）。
@@ -1515,7 +1531,7 @@ function spawnResFlyer(
     span.className = 'res-fly';
     // 手札カードと同じ画像で飛ばす（資源・商品とも。絵文字→画像で見た目を統一）。
     const img = document.createElement('img');
-    img.className = 'res-fly-img';
+    img.className = imgClass;
     img.src = imgSrc;
     img.alt = '';
     img.draggable = false;
@@ -2124,10 +2140,40 @@ function triggerResourceAnimation(
     }
   }
   // 飛行が出た場合は完了までCPUの次手（特に次のダイス）を待たせ、サイコロと飛行の被りを防ぐ。
-  if (delay > 0) {
-    resourceAnimating = true;
-    setTimeout(() => { resourceAnimating = false; scheduleAiTurn(); }, delay + RES_FLY_MS + 120);
+  if (delay > 0) holdResourceAnimating(delay + RES_FLY_MS + 120);
+}
+
+// 騎士と商人: 進歩カードを得たプレイヤーへ、デッキ色の札がパネルへ飛ぶ演出（資源と同じ仕組み）。
+// 公開情報の progressCardCount 差分で全員分（自分・相手）を出す。種類は秘匿なので札裏で飛ばす。
+function triggerProgressCardAnimation(oldState: GameState, newState: GameState): void {
+  if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
+  if (!isCk(newState)) return;
+  const ev = newState.lastEventDie;
+  const eventDeck = (ev === 'trade' || ev === 'politics' || ev === 'science') ? ev : null;
+  const me = selfPlayerId();
+  const origin = getBoardCenter();
+  let delay = 0;
+  let any = false;
+  for (const pid of newState.playerOrder) {
+    const before = oldState.players[pid]?.progressCardCount ?? oldState.players[pid]?.progressCards?.length ?? 0;
+    const after = newState.players[pid]?.progressCardCount ?? newState.players[pid]?.progressCards?.length ?? 0;
+    const gained = after - before;
+    if (gained <= 0) continue;
+    const targetEl = flyTargetFor(pid);
+    if (!targetEl) continue;
+    const tr = targetEl.getBoundingClientRect();
+    if (tr.width === 0 && tr.height === 0) continue;
+    const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
+    // デッキ色: 色イベントはその色、それ以外は自分は実カードのデッキ、相手は中立(政治)。
+    const selfNewDecks = pid === me ? (newState.players[pid]?.progressCards ?? []).slice(-gained).map(c => c.deck) : null;
+    for (let i = 0; i < gained && i < 4; i++) {
+      const deck = eventDeck ?? selfNewDecks?.[i] ?? 'politics';
+      spawnResFlyer(ASSETS.cardBack[deck], target, origin, delay, targetEl, 'pc-fly-img');
+      delay += RES_FLY_STAGGER;
+      any = true;
+    }
   }
+  if (any) holdResourceAnimating(delay + RES_FLY_MS + 120);
 }
 
 // 自分のプレイヤーID（LAN=viewer、単一端末=human）。手番強調・得点演出の基準。
@@ -2656,6 +2702,7 @@ function runTransitionFx(
     highlightProducingTiles(diceTotal);
   }
   triggerResourceAnimation(prevState, state, action, diceTotal);
+  triggerProgressCardAnimation(prevState, state);
   animateBuildPlacement(action);
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);

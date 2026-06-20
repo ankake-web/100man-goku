@@ -1962,7 +1962,7 @@ export function renderUI(
   for (const pId of state.playerOrder) {
     const p = state.players[pId];
     if (!p) continue;
-    allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid, viewerId));
+    allPanels.appendChild(buildPlayerPanel(p, pId as PlayerId, state, pId === pid, dispatch, viewerId));
   }
 
   // 広い画面・横持ちスマホでは盤面ラッパー(#board-area)の四隅にパネルを配置し、
@@ -2103,6 +2103,7 @@ function buildPlayerPanel(
   pId: PlayerId,
   state: GameState,
   isActive: boolean,
+  dispatch: (a: Action) => void,
   viewerId?: PlayerId,
 ): HTMLDivElement {
   // GAME_OVER時の勝者はVPカード・内訳のみ開示。資源・他発展カードは非公開のまま。
@@ -2294,6 +2295,27 @@ function buildPlayerPanel(
       devPanel.appendChild(chip);
     }
     div.appendChild(devPanel);
+  }
+
+  // 騎士と商人: 自分の進歩カードはパネルにも常時表示（他プレイヤーのターン中でも確認できるように）。
+  // タップで効果説明＝詳細を開く。使用は自分のターン(TRADE_BUILD等)のみ有効、他人のターンは閲覧のみ。
+  if (isSelf && isCk(state)) {
+    const pcards = player.progressCards ?? [];
+    if (pcards.length > 0) {
+      const myTurn = state.playerOrder[state.currentPlayerIndex] === pId;
+      const pcWrap = el('div', 'panel-pc-row');
+      const lbl = el('span', 'panel-pc-label'); lbl.textContent = `📜${pcards.length}`;
+      pcWrap.appendChild(lbl);
+      for (const c of pcards) {
+        const can = myTurn && canPlayProgressLoose(state, pId, c.id);
+        const icon = ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck];
+        const btn = makeImgBtn(icon, '', 'panel-pc-card', false,
+          () => showProgressCardInfo(c, can, dispatch, state, pId));
+        btn.title = `${PROGRESS_CARD_NAME[c.type]}：${PROGRESS_CARD_DESC[c.type]}`;
+        pcWrap.appendChild(btn);
+      }
+      div.appendChild(pcWrap);
+    }
   }
 
   return div;
