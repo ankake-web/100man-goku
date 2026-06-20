@@ -549,7 +549,7 @@ function buildCityDowngradeUI(state: GameState, pid: PlayerId, dispatch: (a: Act
   const header = el('div', 'modal-header');
   header.textContent = '⚔ 蛮族に敗北：格下げする都市を選ぶ';
   div.appendChild(header);
-  div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: 'あなたの都市が1つ開拓地に格下げされます' }));
+  div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '盤面で光っている都市をタップ、または下から選択（1つ開拓地に格下げ）' }));
   const row = el('div', 'modal-res-row');
   for (const vid of plainCityVertexIds(state, pid)) {
     const nums: number[] = [];

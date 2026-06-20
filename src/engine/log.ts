@@ -10,7 +10,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, LogEntry, ResourceType, TradeKind } from '../types';
-import { RESOURCE_TYPES, PROGRESS_CARD_NAME } from '../constants';
+import { RESOURCE_TYPES, PROGRESS_CARD_NAME, CK_TRACK_NAME } from '../constants';
 
 export const RES_EMOJI: Record<ResourceType, string> = {
   wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
@@ -60,23 +60,29 @@ export function buildActionLog(
         : next.lastEventDie === 'trade' ? '🟡商業' : next.lastEventDie === 'politics' ? '🔵政治'
         : next.lastEventDie === 'science' ? '🟢科学' : '';
       push(actor, 'DICE_ROLL', `🎲 ${nm(actor)} がダイス ${d1}+${d2}=${d1 + d2}${evMsg ? `（${evMsg}）` : ''}`);
-      // 騎士と商人: 蛮族襲来が起きたら結果を記録（誰が守護VPを得た/都市を失ったか）。
+      // 騎士と商人: 蛮族襲来が起きたら結果を記録（撃退/敗北・誰が守護VP/誰が都市格下げ予定か）。
       if ((next.barbarianAttacks ?? 0) > (prev.barbarianAttacks ?? 0)) {
-        const losers: string[] = [];
-        const defenders: string[] = [];
-        for (const pid of next.playerOrder) {
-          const dv = (next.players[pid]?.defenderVP ?? 0) - (prev.players[pid]?.defenderVP ?? 0);
-          if (dv > 0) defenders.push(nm(pid));
-          const cityCount = (st: GameState): number => Object.values(st.vertices).filter(v => v.building?.playerId === pid && v.building.type === 'city').length;
-          if (cityCount(next) < cityCount(prev)) losers.push(nm(pid));
-        }
-        if (losers.length > 0) {
-          push(actor, 'ROBBER', `⚔ 蛮族襲来！防衛失敗 — ${losers.join('・')} の都市が略奪され開拓地に格下げ`);
+        const defenders = next.playerOrder
+          .filter(pid => (next.players[pid]?.defenderVP ?? 0) > (prev.players[pid]?.defenderVP ?? 0))
+          .map(nm);
+        const willDowngrade = next.pendingCityDowngrade ?? [];
+        if (willDowngrade.length > 0) {
+          push(actor, 'ROBBER', `⚔ 蛮族に敗北！ ${willDowngrade.map(nm).join('・')} が都市を1つ開拓地に格下げします`);
         } else if (defenders.length > 0) {
           push(actor, 'DEV_CARD', `🛡 蛮族を撃退！ ${defenders.join('・')} が「カタンの守護者」VP+1`);
         } else {
-          push(actor, 'DEV_CARD', '🛡 蛮族を撃退！（最大貢献が同点 — 各自が進歩カードを1枚獲得）');
+          push(actor, 'DEV_CARD', '🛡 蛮族を撃退！（最大貢献が同点）');
         }
+      }
+      // 進歩カードの獲得（色イベント／撃退同点など。種類は秘匿、獲得の事実だけ公開）。
+      {
+        const drew: string[] = [];
+        for (const pid of next.playerOrder) {
+          const before = prev.players[pid]?.progressCardCount ?? prev.players[pid]?.progressCards?.length ?? 0;
+          const after = next.players[pid]?.progressCardCount ?? next.players[pid]?.progressCards?.length ?? 0;
+          if (after > before) drew.push(`${isMe(pid) ? 'あなた' : nm(pid)}×${after - before}`);
+        }
+        if (drew.length > 0) push(actor, 'DEV_CARD', `📜 進歩カード獲得: ${drew.join('　')}`);
       }
       // ダイス生産は「盤面＋出目」から誰でも導出できる公開情報。全プレイヤーの
       // 「このロールで得た分」を1行にまとめて出す（自分は「あなた」表記）。
@@ -103,6 +109,24 @@ export function buildActionLog(
     case 'MOVE_SHIP':        push(actor, 'BUILD', `⛵ ${nm(actor)} が船を移動`); break;
     case 'BUILD_SETTLEMENT': push(actor, 'BUILD', `🏠 ${nm(actor)} が開拓地を建設`); break;
     case 'BUILD_CITY':       push(actor, 'BUILD', `🏙 ${nm(actor)} が都市を建設`); break;
+    case 'BUILD_KNIGHT':     push(actor, 'BUILD', `🛡 ${nm(actor)} が騎士を配置`); break;
+    case 'ACTIVATE_KNIGHT':  push(actor, 'BUILD', `⚔ ${nm(actor)} が騎士を起動`); break;
+    case 'UPGRADE_KNIGHT':   push(actor, 'BUILD', `⏫ ${nm(actor)} が騎士を昇格`); break;
+    case 'MOVE_KNIGHT':      push(actor, 'BUILD', `🐎 ${nm(actor)} が騎士を移動`); break;
+    case 'BUILD_CITY_WALL':  push(actor, 'BUILD', `🧱 ${nm(actor)} が城壁を建設`); break;
+    case 'CHASE_ROBBER':     push(actor, 'ROBBER', `🐎 ${nm(actor)} が騎士で盗賊を追い払った`); break;
+    case 'BUILD_IMPROVEMENT': {
+      const lv = next.players[actor]?.improvements?.[action.track] ?? 0;
+      push(actor, 'BUILD', `📈 ${nm(actor)} が${CK_TRACK_NAME[action.track]}を Lv${lv} に改善`);
+      // メトロポリス到達（Lv4で建設・公開情報）。
+      const newMetro = next.metropolis?.[action.track];
+      const oldMetro = prev.metropolis?.[action.track];
+      if (newMetro && newMetro.playerId === actor && (!oldMetro || oldMetro.playerId !== actor)) {
+        push(actor, 'BONUS_CHANGE', `🏛 ${nm(actor)} が${CK_TRACK_NAME[action.track]}のメトロポリスを獲得（+2勝利点）`);
+      }
+      break;
+    }
+    case 'DOWNGRADE_CITY':   push(action.playerId, 'ROBBER', `🏚 ${nm(action.playerId)} が都市を1つ開拓地に格下げ`); break;
     case 'BUY_DEV_CARD':     push(actor, 'DEV_CARD', `🃏 ${nm(actor)} が発展カードを購入`); break;
     case 'PLAY_KNIGHT':
     case 'PLAY_ROAD_BUILDING':

@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -617,6 +617,15 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       return opts;
     }
 
+    // 騎士と商人: 都市格下げは、対象（LAN=viewer/ローカル=人間）の平の都市を光らせて盤面でタップ選択。
+    if (state.turnPhase === 'CITY_DOWNGRADE') {
+      const pending = state.pendingCityDowngrade ?? [];
+      const me = selfPlayerId();
+      const acting = me && pending.includes(me) ? me : pending.find(p => state.players[p]?.type === 'human');
+      if (acting) opts.validVertexIds = new Set(plainCityVertexIds(state, acting));
+      return opts;
+    }
+
     if (state.turnPhase === 'TRADE_BUILD') {
       if (mode === 'road') {
         opts.validEdgeIds = new Set(
@@ -900,6 +909,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
     }
     if (state.turnPhase === 'PRE_ROLL') return { text: '🎲 ダイス', alert: false };
     if (state.turnPhase === 'ROBBER')   return { text: '🦹 盗賊を移動するタイルをタップ', alert: true };
+    if (state.turnPhase === 'CITY_DOWNGRADE') return { text: '⚔ 格下げする自分の都市をタップ', alert: true };
     if (state.turnPhase === 'TRADE_BUILD') {
       if (buildMode === 'road')       return { text: '🛤 道を配置', alert: false };
       if (buildMode === 'ship')       return { text: '🚢 船を配置', alert: false };
@@ -3015,6 +3025,12 @@ function currentPid(s: GameState): PlayerId {
 // startGame / startLanGame のどちらで登録されても同一の述語で両モードを判定する。
 function boardCanAct(): boolean {
   if (!state) return false;
+  // 騎士と商人: 都市格下げは多人数解決。対象（LAN=viewer/ローカル=人間）は手番外でも盤面操作可。
+  if (state.turnPhase === 'CITY_DOWNGRADE') {
+    const pending = state.pendingCityDowngrade ?? [];
+    if (netMode) return viewerPlayerId != null && pending.includes(viewerPlayerId);
+    return pending.some(p => state.players[p]?.type === 'human');
+  }
   if (netMode) return viewerPlayerId != null && viewerPlayerId === currentPid(state);
   return state.players[currentPid(state)]?.type === 'human';
 }
