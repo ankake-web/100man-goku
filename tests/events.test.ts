@@ -6,10 +6,10 @@
 // DOM/CTM 変換は実機目視（命中率そのもの）に委ね、ここでは幾何ロジックを担保する。
 
 import { describe, it, expect } from 'vitest';
-import { nearestValidVertexId, nearestValidEdgeId, nearestBuildKnightVertexId, resolvePlacePreviewAction, clampViewport } from '../src/renderer/events';
+import { nearestValidVertexId, nearestValidEdgeId, nearestBuildKnightVertexId, nearestActivateKnightVertexId, resolvePlacePreviewAction, clampViewport } from '../src/renderer/events';
 import { applyAction } from '../src/engine/game';
 import { canBuildRoad } from '../src/engine/actions';
-import { canBuildKnight } from '../src/engine/citiesKnights';
+import { canBuildKnight, canActivateKnight } from '../src/engine/citiesKnights';
 import { makeGameState, makePlayer } from './helpers';
 import { makeHand } from '../src/constants';
 import type { GameState } from '../src/types';
@@ -74,6 +74,19 @@ describe('nearestBuildKnightVertexId (騎士の手動配置)', () => {
     const broke: GameState = { ...s, players: { ...s.players, player1: makePlayer('player1', { hand: makeHand({}) }) } };
     const { x, y } = broke.vertices[vid]!.pixel;
     expect(nearestBuildKnightVertexId(broke, 'player1', x, y)).toBeNull();
+  });
+
+  it('起動できる自分の騎士をタップすると起動先として返す', () => {
+    const base = makeGameState({ phase: 'MAIN', turnPhase: 'TRADE_BUILD', expansion: 'cities_knights' });
+    const vid = Object.keys(base.vertices)[0]!;
+    const s: GameState = {
+      ...base,
+      players: { ...base.players, player1: makePlayer('player1', { hand: makeHand({ grain: 1 }) }) },
+      vertices: { ...base.vertices, [vid]: { ...base.vertices[vid]!, knight: { playerId: 'player1', strength: 1, active: false } } },
+    };
+    expect(canActivateKnight(s, 'player1', vid)).toBe(true);
+    const { x, y } = s.vertices[vid]!.pixel;
+    expect(nearestActivateKnightVertexId(s, 'player1', x, y)).toBe(vid);
   });
 });
 
