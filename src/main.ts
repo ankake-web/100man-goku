@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -648,6 +648,9 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'chaseRobber') {
         // 騎士と商人・強盗追い払い: 強盗に隣接した自分のアクティブ騎士頂点を光らせる。
         opts.validVertexIds = new Set(robberAdjacentChasableVertexIds(state, pid));
+      } else if (mode === 'buildKnight') {
+        // 騎士と商人・騎士の手動配置: 建てられる合法頂点を光らせる。
+        opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canBuildKnight(state, pid, vid)));
       }
     }
   }
@@ -895,6 +898,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'moveShip')   return { text: moveShipFrom ? '⛵ 移動先をタップ' : '⛵ 動かす船を選択', alert: false };
       if (buildMode === 'moveKnight') return { text: moveKnightFrom ? '🛡 移動先をタップ' : '🛡 動かす騎士を選択', alert: false };
       if (buildMode === 'chaseRobber') return { text: '🦹 追い払う騎士を選択', alert: false };
+      if (buildMode === 'buildKnight') return { text: '🛡 騎士を置く頂点をタップ', alert: false };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
