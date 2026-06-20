@@ -857,8 +857,9 @@ function redraw(skipBoard = false): void {
   // 自分の手番のときだけ出す。CPUスケジュール/ウォッチドッグは動かさない。
   if (netMode) {
     if (!skipBoard) {
+      // 手番のハイライトに加え、多人数解決（都市格下げ等）で viewer が対象の時も出す（boardCanAct）。
       const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
-      const opts: BoardRenderOptions = myTurn ? withPreview(computeHighlights(state, buildMode)) : {};
+      const opts: BoardRenderOptions = (myTurn || boardCanAct()) ? withPreview(computeHighlights(state, buildMode)) : {};
       opts.viewport = boardViewport;
       if (state.piratePosition) opts.piratePosition = state.piratePosition;
       renderBoard(svgBoard, state, opts);
@@ -877,8 +878,11 @@ function redraw(skipBoard = false): void {
   if (!skipBoard) {
     // ローカル: 配置/盗賊ハイライトは人間の手番のみ（CPUの手番に緑ハイライトを出すと
     // 「人間が代わりに操作できる」ように見え、実際にクリックを誘発していた）。
+    // 例外: 都市格下げ(CITY_DOWNGRADE)など多人数解決は手番に関係なく対象の人間が操作する。
+    // この時もハイライト（赤い格下げ対象）を出さないと「光る都市が無く選べない」状態になる。
+    // boardCanAct() が true を返すのは「今ローカル人間が操作してよい場面」なので、それで判定する。
     const humanTurn = state.players[currentPid(state)]?.type === 'human';
-    const opts: BoardRenderOptions = humanTurn ? withPreview(computeHighlights(state, buildMode)) : {};
+    const opts: BoardRenderOptions = (humanTurn || boardCanAct()) ? withPreview(computeHighlights(state, buildMode)) : {};
     opts.viewport = boardViewport;
     if (state.piratePosition) opts.piratePosition = state.piratePosition;
     renderBoard(svgBoard, state, opts);
@@ -2552,7 +2556,8 @@ function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): voi
     ov.appendChild(res);
   }
   document.body.appendChild(ov);
-  setTimeout(() => ov.remove(), 2600);
+  // 結果（撃退/敗北・誰が格下げ）を読めるよう長めに表示（タップは透過するので操作は妨げない）。
+  setTimeout(() => ov.remove(), 4200);
 }
 
 /** イベント結果を演出へ接続: 船=蛮族前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。

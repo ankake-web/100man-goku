@@ -2226,15 +2226,17 @@ function buildPlayerPanel(
     ? `最長交易路 保持中（${lrLen}本）`
     : `最長道路 ${lrLen}本（獲得は${LONGEST_ROAD_MIN}本以上）`;
   meta.appendChild(lrItem);
-  const knItem = el('span', `panel-meta-item${player.hasLargestArmy ? ' held' : ''}`);
-  { const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false; knItem.append(kn, Object.assign(el('span'), { textContent: String(player.knightsPlayed) })); }
-  knItem.title = player.hasLargestArmy
-    ? `最大騎士力 保持中（騎士${player.knightsPlayed}回）`
-    : `騎士使用 ${player.knightsPlayed}回（獲得は${LARGEST_ARMY_MIN}回以上）`;
-  meta.appendChild(knItem);
-  const sep = el('span', 'panel-meta-sep');
-  sep.textContent = '·';
-  meta.appendChild(sep);
+  // 最大騎士力（Largest Army）は基本ルールのみ。騎士と商人には存在しない（基本の騎士発展カードが
+  // 廃され、騎士は盤上コマ＋蛮族防衛になるため）。C&K では誤解を招くので騎士アイコンを出さない。
+  if (!isCk(state)) {
+    const knItem = el('span', `panel-meta-item${player.hasLargestArmy ? ' held' : ''}`);
+    { const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false; knItem.append(kn, Object.assign(el('span'), { textContent: String(player.knightsPlayed) })); }
+    knItem.title = player.hasLargestArmy
+      ? `最大騎士力 保持中（騎士${player.knightsPlayed}回）`
+      : `騎士使用 ${player.knightsPlayed}回（獲得は${LARGEST_ARMY_MIN}回以上）`;
+    meta.appendChild(knItem);
+  }
+  // 区切りの「·」は分かりにくいとの指摘により廃止（flexのgapで間隔を確保）。
   const pieces = el('span', 'panel-meta-item');
   pieces.textContent = `道${player.remainingRoads} 家${player.remainingSettlements} 都${player.remainingCities}`;
   pieces.title = '残り 道 / 開拓地 / 都市';

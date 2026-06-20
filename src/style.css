@@ -2560,7 +2560,7 @@ h1 {
   background-size: cover; background-position: center;
   pointer-events: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-  animation: barbAttackIn 0.35s ease-out, barbShake 0.5s ease-in-out, barbAttackOut 0.6s ease-in 2.0s forwards;
+  animation: barbAttackIn 0.35s ease-out, barbShake 0.5s ease-in-out, barbAttackOut 0.6s ease-in 3.6s forwards;
 }
 /* 防衛結果（撃退/同点=金、敗北=赤）。襲来見出しの下に大きく表示。 */
 .barbarian-attack-result {
@@ -2577,7 +2577,7 @@ h1 {
   content: ''; position: absolute; inset: 0;
   background: radial-gradient(circle at 50% 50%, transparent 44%, rgba(0,0,0,0.42));
 }
-#barbarian-attack.reduced { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 1.5s forwards; }
+#barbarian-attack.reduced { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 3.7s forwards; }
 .barbarian-attack-title {
   position: relative; z-index: 1; text-align: center;
   font-size: clamp(2rem, 12vw, 5.5rem); font-weight: 900; color: #fff;
@@ -2590,7 +2590,7 @@ h1 {
 @keyframes barbTitlePulse { 0% { transform: scale(0.55); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
 @keyframes barbShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-8px); } 40% { transform: translateX(7px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(4px); } }
 @media (prefers-reduced-motion: reduce) {
-  #barbarian-attack { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 1.5s forwards; }
+  #barbarian-attack { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 3.7s forwards; }
   .barbarian-attack-title { animation: none; }
 }
 
