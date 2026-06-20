@@ -1687,6 +1687,7 @@ function buildActionButtons(
     placeBishop: '⛪ 盤面で光ったタイルをタップして盗賊を置く（隣接の全相手から1枚ずつ奪う）',
     selectDiplomatRoad: '📜 盤面で光った相手の端の道をタップして撤去',
     selectDeserterKnight: '🏃 盤面で光った相手の騎士をタップして消す（同じ強さの騎士を得る）',
+    selectMedicineSettlement: '💊 盤面で光った自分の開拓地をタップして都市化（麦1＋鉱石2）',
   };
   if (selectHint[buildMode]) {
     const hint = el('div', 'board-select-hint');

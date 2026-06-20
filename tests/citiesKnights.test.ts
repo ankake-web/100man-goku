@@ -1265,3 +1265,31 @@ describe('C&K 進歩カードの手動選択（クレーン/僧正/外交官/脱
     expect(r.tiles[tid]!.hasRobber).toBe(true);
   });
 });
+
+describe('C&K 医術の手動選択', () => {
+  it('medicine: choice.medicineVertexId で指定した開拓地を都市に格上げ（麦1鉱石2）', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const { makeHand } = await import('../src/constants');
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      players: { player1: makePlayer('player1', { progressCards: [{ id: 'md', type: 'medicine', deck: 'science' }], hand: makeHand({ grain: 2, ore: 3 }) }), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const vids = Object.keys(g.vertices);
+    const a = vids[2]!, b = vids[8]!;
+    const s: GameState = {
+      ...g,
+      vertices: {
+        ...g.vertices,
+        [a]: { ...g.vertices[a]!, building: { type: 'settlement', playerId: 'player1' } },
+        [b]: { ...g.vertices[b]!, building: { type: 'settlement', playerId: 'player1' } },
+      },
+    };
+    const r = playProgress(s, 'player1', 'md', createRng(1), { medicineVertexId: b });
+    expect(r.vertices[b]!.building!.type).toBe('city');     // 指定した開拓地が都市に
+    expect(r.vertices[a]!.building!.type).toBe('settlement'); // もう一方はそのまま
+    expect(r.players.player1!.hand.grain).toBe(1);          // 麦1支払い
+    expect(r.players.player1!.hand.ore).toBe(1);            // 鉱石2支払い
+  });
+});

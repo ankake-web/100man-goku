@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight' | 'selectMedicineSettlement';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -271,6 +271,12 @@ export function nearestDeserterVertexId(state: GameState, pid: PlayerId, x: numb
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
+/** 医術(medicine): 点(x,y)に最も近い「都市化できる自分の開拓地頂点」を返す。なければ null。 */
+export function nearestMedicineVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const valid = new Set(medicineSettlements(state, pid));
+  return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
+}
+
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -516,6 +522,15 @@ export function attachBoardEvents(
       const vid = ptk ? nearestDeserterVertexId(state, pid, ptk.x, ptk.y) : null;
       const card = state.players[pid]?.progressCards?.find(c => c.type === 'deserter');
       if (vid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { deserterVertexId: vid } });
+      return;
+    }
+
+    // ---- 騎士と商人: 医術カードの都市化（光った自分の開拓地をタップ → PLAY_PROGRESS medicineVertexId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectMedicineSettlement') {
+      const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = ptm ? nearestMedicineVertexId(state, pid, ptm.x, ptm.y) : null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'medicine');
+      if (vid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { medicineVertexId: vid } });
       return;
     }
 

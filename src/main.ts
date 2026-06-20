@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -683,6 +683,9 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'selectDeserterKnight') {
         // 騎士と商人・脱走兵: 消せる相手の騎士頂点を光らせる。
         opts.validVertexIds = new Set(deserterTargets(state, pid));
+      } else if (mode === 'selectMedicineSettlement') {
+        // 騎士と商人・医術: 都市化できる自分の開拓地を光らせる。
+        opts.validVertexIds = new Set(medicineSettlements(state, pid));
       }
     }
   }
@@ -975,6 +978,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'placeBishop') return { text: '⛪ 盗賊を置くタイルをタップ', alert: true };
       if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する相手の道をタップ', alert: true };
       if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の騎士をタップ', alert: true };
+      if (buildMode === 'selectMedicineSettlement') return { text: '💊 都市にする開拓地をタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -2888,6 +2892,19 @@ function dispatch(action: Action): void {
       scrollToBoard();
       showBoardNotice('🏃 消す相手の騎士をタップ（同じ強さの騎士を得る）');
       return;
+    }
+    // 医術: 都市化する自分の開拓地を盤面で選ぶ（麦1＋鉱石2を払える＆開拓地があるとき）。
+    if (pcard?.type === 'medicine' && pHuman && !action.choice?.medicineVertexId
+        && state.turnPhase === 'TRADE_BUILD' && medicineSettlements(state, ppid).length > 0) {
+      const me = state.players[ppid];
+      const affordable = !!me && me.hand.grain >= 1 && me.hand.ore >= 2 && me.remainingCities > 0;
+      if (affordable) {
+        document.querySelector('.help-overlay')?.remove();
+        setBuildMode('selectMedicineSettlement');
+        scrollToBoard();
+        showBoardNotice('💊 都市にする自分の開拓地をタップ（麦1＋鉱石2）');
+        return;
+      }
     }
   }
   // 自分がターンを終了したら盤面へスクロールして次の状況を見せる（スマホ）。

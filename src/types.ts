@@ -407,6 +407,8 @@ export interface ProgressChoice {
   diplomatEdgeId?: EdgeId;
   // 脱走兵(deserter): 消す相手の騎士の頂点ID（同強度の騎士を自分が得る）。
   deserterVertexId?: VertexId;
+  // 医術(medicine): 都市に格上げする自分の開拓地の頂点ID。
+  medicineVertexId?: VertexId;
 }
 
 export type Action =

@@ -628,6 +628,13 @@ function craneTrack(state: GameState, pid: PlayerId): CkTrack | null {
   return ok[0] ?? null;
 }
 
+/** medicine: 都市化できる自分の開拓地頂点ID一覧（盤面選択の候補）。 */
+export function medicineSettlements(state: GameState, pid: PlayerId): string[] {
+  return Object.keys(state.vertices).filter(vid => {
+    const b = state.vertices[vid]?.building;
+    return b?.playerId === pid && b.type === 'settlement';
+  });
+}
 /** medicine: 都市化できる自分の開拓地頂点（隣接pip合計が最大）。 */
 function medicineSettlement(state: GameState, pid: PlayerId): string | null {
   let best: string | null = null; let bestPip = -1;
@@ -753,8 +760,11 @@ function playInventor(state: GameState, pid: PlayerId, choice?: ProgressChoice):
   return { ...state, tiles: { ...state.tiles, [tileA]: { ...state.tiles[tileA]!, number: nB }, [tileB]: { ...state.tiles[tileB]!, number: nA } } };
 }
 
-function playMedicine(state: GameState, pid: PlayerId): GameState {
-  const vid = medicineSettlement(state, pid);
+function playMedicine(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
+  // 手動で都市化する開拓地を選べる（choice.medicineVertexId）。自分の開拓地なら採用。なければ自動(最大pip)。
+  const chosen = choice?.medicineVertexId;
+  const cb = chosen ? state.vertices[chosen]?.building : null;
+  const vid = (chosen && cb?.playerId === pid && cb.type === 'settlement') ? chosen : medicineSettlement(state, pid);
   const p = state.players[pid]!;
   if (!vid || p.hand.grain < 1 || p.hand.ore < 2 || p.remainingCities <= 0) return state;
   return {
@@ -984,7 +994,7 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
       const track = (chosen && craneEligibleTracks(removed, pid).includes(chosen)) ? chosen : craneTrack(removed, pid);
       return track ? buildImprovement(removed, pid, track, 1) : removed;
     }
-    case 'medicine':         return playMedicine(removed, pid);
+    case 'medicine':         return playMedicine(removed, pid, choice);
     case 'inventor':         return playInventor(removed, pid, choice);
     case 'merchant':         return playMerchant(removed, pid, choice);
     case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: chooseFleetType(removed, pid) } } };
