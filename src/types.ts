@@ -229,6 +229,7 @@ export type TurnPhase =
   | 'ROBBER'      // 強盗処理中
   | 'DISCARD'     // 手札8枚以上の捨て処理
   | 'GOLD'        // 航海者: 金タイル産出の資源選択待ち（DISCARD と同様の多人数解決）
+  | 'CITY_DOWNGRADE' // 騎士と商人: 蛮族敗北で格下げする都市の選択待ち（DISCARD と同様の多人数解決）
   | 'TRADE_BUILD' // 交易・建設
   | 'END';
 
@@ -351,6 +352,11 @@ export interface GameState {
   // TRADE_BUILD へ進む（DISCARD と同様の多人数解決）。基本ゲームでは常に未使用。
   pendingGoldChoice?: Record<string, number>;
 
+  // 騎士と商人: 蛮族敗北で「都市1つを格下げする」必要があるプレイヤー（最弱・平の都市持ち）。
+  // turnPhase==='CITY_DOWNGRADE' の間だけ非空。各自 DOWNGRADE_CITY で解決し、全員空になると
+  // 生産/捨て札など本来の続きへ進む（DISCARD と同様の多人数解決）。
+  pendingCityDowngrade?: PlayerId[];
+
   pendingTrade: PendingTrade | null;
   winner: PlayerId | null;
 
@@ -393,6 +399,7 @@ export type Action =
   | { type: 'MOVE_ROBBER';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'MOVE_PIRATE';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand>; commodities?: Partial<CommodityHand> }
+  | { type: 'DOWNGRADE_CITY';      playerId: PlayerId; vertexId: VertexId } // 蛮族敗北で都市を格下げ
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
   | { type: 'BUILD_SHIP';          edgeId: EdgeId }
   | { type: 'MOVE_SHIP';           fromEdgeId: EdgeId; toEdgeId: EdgeId }

@@ -8,7 +8,7 @@ import { discardCount, robbableCardCount } from './robber';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
   isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight, canPlayProgress,
-  robberAdjacentChasableVertexIds,
+  robberAdjacentChasableVertexIds, plainCityVertexIds,
 } from './citiesKnights';
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
@@ -467,6 +467,11 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
     return chooseGold(state, pid);
   }
 
+  // 騎士と商人: 蛮族敗北での都市格下げ（手番に関わらず対象プレイヤーが解決する）。
+  if (state.turnPhase === 'CITY_DOWNGRADE') {
+    return chooseCityDowngrade(state, pid);
+  }
+
   if (state.playerOrder[state.currentPlayerIndex] !== pid) return null;
 
   const player = state.players[pid];
@@ -651,6 +656,24 @@ function chooseGold(state: GameState, pid: PlayerId): Action | null {
   const owed = (state.pendingGoldChoice ?? {})[pid] ?? 0;
   if (owed <= 0) return null;
   return { type: 'CHOOSE_GOLD', playerId: pid, resources: chooseGoldResources(state, pid, owed) };
+}
+
+// 蛮族敗北での都市格下げ（対象 CPU）。最も価値の低い都市（隣接タイルのpip合計が最小）を選ぶ。
+function chooseCityDowngrade(state: GameState, pid: PlayerId): Action | null {
+  if (!(state.pendingCityDowngrade ?? []).includes(pid)) return null;
+  const cities = plainCityVertexIds(state, pid);
+  if (cities.length === 0) return null;
+  const cityPips = (vid: string): number => {
+    let s = 0;
+    for (const [tid, vids] of Object.entries(state.tileToVertices)) {
+      if (!vids.includes(vid)) continue;
+      const n = state.tiles[tid]?.number;
+      if (n != null) s += 6 - Math.abs(7 - n); // 6/8=5pip … 2/12=1pip
+    }
+    return s;
+  };
+  const vid = [...cities].sort((a, b) => cityPips(a) - cityPips(b))[0]!;
+  return { type: 'DOWNGRADE_CITY', playerId: pid, vertexId: vid };
 }
 
 // ============================================================

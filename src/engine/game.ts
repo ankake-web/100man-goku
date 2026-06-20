@@ -22,6 +22,7 @@ import {
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
   canPlayProgress, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber, ckSetupSecondCity,
+  downgradeCity,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
@@ -94,6 +95,21 @@ export function buildDevDeck(rng: () => number = Math.random): DevCard[] {
 // ============================================================
 
 /**
+ * 騎士と商人: 蛮族解決(applyEventDie)後の「生産 or 7の捨て札/盗賊」への遷移。
+ * ROLL_DICE 本体と、都市格下げ(CITY_DOWNGRADE)解決後の再開の両方から呼ぶ（重複排除＋一貫性）。
+ */
+function resolveCkRollOutcome(next: GameState, total: number): GameState {
+  if (total === 7) {
+    const needsDiscard = next.playerOrder.some(p => discardCount(next, p) > 0); // 資源＋商品で判定
+    // 初回の蛮族襲来までは盗賊が凍結＝7は手札破棄のみ（盗賊移動・盗みなし）。
+    const robberActive = (next.barbarianAttacks ?? 0) >= 1;
+    const afterDiscard = robberActive ? 'ROBBER' : 'TRADE_BUILD';
+    return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : afterDiscard };
+  }
+  return distributeCkProduction({ ...next, turnPhase: 'TRADE_BUILD' }, total);
+}
+
+/**
  * アクションを GameState に適用して新しい GameState を返す純粋関数。
  * バリデーション失敗時は例外を投げる（呼び出し側で can* チェック済み前提）。
  *
@@ -127,14 +143,12 @@ export function applyAction(
       // ---- 騎士と商人: 毎ターン イベントダイス(蛮族)も振り、産出は資源＋商品。----
       if (isCk(state)) {
         next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で進歩カード抽選
-        if (total === 7) {
-          const needsDiscard = state.playerOrder.some(p => discardCount(next, p) > 0); // 資源＋商品で判定
-          // 初回の蛮族襲来までは盗賊が凍結＝7は手札破棄のみ（盗賊移動・盗みなし）。
-          const robberActive = (next.barbarianAttacks ?? 0) >= 1;
-          const afterDiscard = robberActive ? 'ROBBER' : 'TRADE_BUILD';
-          return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : afterDiscard };
+        // 蛮族敗北で都市格下げの選択が要る場合は、まず格下げ（CITY_DOWNGRADE）を解決してから
+        // 生産/捨て札へ（イベントダイスは生産ダイスより先に解決する公式順序とも一致）。
+        if ((next.pendingCityDowngrade?.length ?? 0) > 0) {
+          return { ...next, turnPhase: 'CITY_DOWNGRADE' };
         }
-        return distributeCkProduction({ ...next, turnPhase: 'TRADE_BUILD' }, total);
+        return resolveCkRollOutcome(next, total);
       }
 
       if (total === 7) {
@@ -242,6 +256,24 @@ export function applyAction(
       }
 
       return next;
+    }
+
+    // ----------------------------------------------------------
+    // DOWNGRADE_CITY（騎士と商人: 蛮族敗北で格下げする都市を選ぶ。DISCARDと同様の多人数解決）
+    // ----------------------------------------------------------
+    case 'DOWNGRADE_CITY': {
+      if (state.turnPhase !== 'CITY_DOWNGRADE') throw new Error('DOWNGRADE_CITY: not in CITY_DOWNGRADE phase');
+      const { playerId, vertexId } = action;
+      const pending = state.pendingCityDowngrade ?? [];
+      if (!pending.includes(playerId)) throw new Error('DOWNGRADE_CITY: not a pending player');
+      const after = downgradeCity(state, playerId, vertexId);
+      if (after === state) throw new Error('DOWNGRADE_CITY: must downgrade your own plain city'); // 違法な頂点
+      const newPending = pending.filter(p => p !== playerId);
+      if (newPending.length > 0) return { ...after, pendingCityDowngrade: newPending }; // 他の対象者を待つ
+      // 全員解決 → 保留していた本来の続き（生産 or 7の捨て札/盗賊）を再開する。pending は除去。
+      const total = (state.lastDiceRoll?.[0] ?? 0) + (state.lastDiceRoll?.[1] ?? 0);
+      const { pendingCityDowngrade: _done, ...cleared } = after;
+      return resolveCkRollOutcome(cleared, total);
     }
 
     // ----------------------------------------------------------
