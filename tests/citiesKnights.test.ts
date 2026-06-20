@@ -613,6 +613,23 @@ describe('C&K 追加進歩カード', () => {
     expect(a2.alchemistForcedDice ?? null).toBeNull();  // 消費済み
   });
 
+  it('alchemist: choice.dice で次のダイス目を自分で指定できる（不正値は自動最善）', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const g = makeGameState({
+      expansion: 'cities_knights', phase: 'MAIN', turnPhase: 'PRE_ROLL', diceRolledThisTurn: false, currentPlayerIndex: 0,
+      players: { player1: makePlayer('player1', { progressCards: [{ id: 'al', type: 'alchemist', deck: 'science' }] }), player2: makePlayer('player2') },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    // 指定した目で固定される
+    const a1 = applyAction(g, { type: 'PLAY_PROGRESS', cardId: 'al', choice: { dice: [6, 5] } }, createRng(5));
+    expect(a1.alchemistForcedDice).toEqual([6, 5]);
+    // 範囲外（不正）は自動最善にフォールバック（[7,0]にはならない）
+    const a2 = applyAction(g, { type: 'PLAY_PROGRESS', cardId: 'al', choice: { dice: [7, 0] as unknown as readonly [number, number] } }, createRng(5));
+    expect(a2.alchemistForcedDice).not.toEqual([7, 0]);
+    expect(a2.alchemistForcedDice).not.toBeNull();
+  });
+
   it('spy: 手札4枚(spy含む)でも使え、使用後はちょうど4枚（5枚にならない）', async () => {
     const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');

@@ -382,6 +382,10 @@ export interface ProgressChoice {
   resource?: ResourceType;
   commodity?: CommodityType;
   targetPlayerId?: PlayerId;
+  // 錬金術師: 次のダイス目（赤・黄 各1〜6）を自分で指定。
+  dice?: readonly [number, number];
+  // 発明家: 数字トークンを入れ替える2タイルのID。
+  inventorTiles?: readonly [TileId, TileId];
 }
 
 export type Action =

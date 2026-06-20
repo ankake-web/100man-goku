@@ -281,6 +281,11 @@ export function redactActionFor(action: Action, viewerId: PlayerId, byPid: Playe
   if (action.type === 'CHOOSE_GOLD') {
     return { ...action, resources: {} };
   }
+  // 錬金術師: 指定した次のダイス目は秘匿情報（相手に先読みさせない）。choice.dice を隠す。
+  if (action.type === 'PLAY_PROGRESS' && action.choice?.dice) {
+    const { dice: _dice, ...restChoice } = action.choice;
+    return { ...action, choice: restChoice };
+  }
   return action;
 }
 
