@@ -617,12 +617,12 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       return opts;
     }
 
-    // 騎士と商人: 都市格下げは、対象（LAN=viewer/ローカル=人間）の平の都市を光らせて盤面でタップ選択。
+    // 騎士と商人: 都市格下げは、対象（LAN=viewer/ローカル=人間）の平の都市を赤く光らせて盤面でタップ選択。
     if (state.turnPhase === 'CITY_DOWNGRADE') {
       const pending = state.pendingCityDowngrade ?? [];
       const me = selfPlayerId();
       const acting = me && pending.includes(me) ? me : pending.find(p => state.players[p]?.type === 'human');
-      if (acting) opts.validVertexIds = new Set(plainCityVertexIds(state, acting));
+      if (acting) opts.downgradeVertexIds = new Set(plainCityVertexIds(state, acting));
       return opts;
     }
 
@@ -2308,6 +2308,8 @@ interface DiceEventInfo {
   barbPos: number;
   attacked: boolean;    // この前進で襲来したか
   advanced: boolean;    // 蛮族船が前進したか
+  // 襲来したときの防衛結果（撃退単独勝利/同点/敗北＝格下げ）。attacked=false のときは null。
+  attackResult: { kind: 'win' | 'tie' | 'defeat'; names: string[] } | null;
   // 色ゲートのとき、現手番から時計回り順の各プレイヤーの抽選照合。船のときは null。
   draws: Array<{ name: string; level: number; threshold: number; eligible: boolean; drew: boolean }> | null;
 }
@@ -2324,8 +2326,19 @@ function buildDiceEventInfo(prev: GameState, next: GameState): DiceEventInfo | n
     barbPos: next.barbarianPosition ?? 0,
     attacked: (next.barbarianAttacks ?? 0) > (prev.barbarianAttacks ?? 0),
     advanced: (next.barbarianPosition ?? 0) > (prev.barbarianPosition ?? 0),
+    attackResult: null,
     draws: null,
   };
+  // 襲来した場合の防衛結果を導出（撃退で守護VP獲得 / 同点 / 敗北＝都市格下げ予定）。
+  if (info.attacked) {
+    const defenders = next.playerOrder
+      .filter(p => (next.players[p]?.defenderVP ?? 0) > (prev.players[p]?.defenderVP ?? 0))
+      .map(p => next.players[p]?.name ?? p);
+    const downgraders = (next.pendingCityDowngrade ?? []).map(p => next.players[p]?.name ?? p);
+    info.attackResult = downgraders.length > 0 ? { kind: 'defeat', names: downgraders }
+      : defenders.length > 0 ? { kind: 'win', names: defenders }
+      : { kind: 'tie', names: [] };
+  }
   if (ev !== 'ship') {
     const n = next.playerOrder.length;
     const start = next.currentPlayerIndex ?? 0;
@@ -2356,16 +2369,20 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
       bt.textContent = '⚔ 蛮族 襲来！';
       panel.appendChild(bt);
     } else {
-      // 前進: 蛮族船コマの画像＋見出し。
+      // 前進: 蛮族船コマの画像と見出しを「横並び」にする（縦に積むと画面が見切れるため）。
+      // 見出しの船絵文字(🛶)はアイコンと重複するので外す。
+      const head = document.createElement('div');
+      head.className = 'dep-advance-head';
       if (ASSETS.piece.barbarianShip) {
         const ship = document.createElement('img');
         ship.className = 'dep-ship'; ship.src = ASSETS.piece.barbarianShip; ship.alt = '蛮族船'; ship.draggable = false;
-        panel.appendChild(ship);
+        head.appendChild(ship);
       }
       const title = document.createElement('div');
       title.className = 'dep-title';
-      title.textContent = '🛶 蛮族船が前進';
-      panel.appendChild(title);
+      title.textContent = '蛮族船が前進';
+      head.appendChild(title);
+      panel.appendChild(head);
     }
     const danger = info.barbPos >= CK_BARBARIAN_MAX - 2;
     const track = document.createElement('div');
@@ -2377,8 +2394,18 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
     }
     panel.appendChild(track);
     const sub = document.createElement('div');
-    sub.className = 'dep-sub';
-    sub.textContent = info.attacked ? '騎士で防衛判定！' : `蛮族 ${info.barbPos} / ${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来）' : ''}`;
+    if (info.attacked && info.attackResult) {
+      // 襲来時は防衛の結果（撃退/同点/敗北＝誰が格下げ・誰がVP）を明示する。
+      const r = info.attackResult;
+      sub.className = `dep-sub dep-result ${r.kind}`;
+      sub.textContent =
+        r.kind === 'win'    ? `🛡 撃退成功！ ${r.names.join('・')} が +1 勝利点（カタンの守護者）` :
+        r.kind === 'tie'    ? '🛡 撃退成功！（最大貢献が同点 — 各自が進歩カードを獲得）' :
+                              `⚔ 防衛失敗！ ${r.names.join('・')} が都市を1つ開拓地に格下げ`;
+    } else {
+      sub.className = 'dep-sub';
+      sub.textContent = `蛮族 ${info.barbPos} / ${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来）' : ''}`;
+    }
     panel.appendChild(sub);
   } else {
     // 色ゲート（交易/政治/科学）の進歩カード抽選。スマホで見切れないよう、全員の
@@ -2425,7 +2452,7 @@ function showDiceSum(sum: HTMLElement, d1: number, d2: number): void {
 }
 
 // 蛮族襲来: 画面全体を覆う襲来演出＋SE（重要イベントなので reduced-motion でも出す）。
-function showBarbarianAttackOverlay(): void {
+function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): void {
   playSE('barbarianAttack');
   document.getElementById('barbarian-attack')?.remove();
   const ov = document.createElement('div');
@@ -2436,8 +2463,18 @@ function showBarbarianAttackOverlay(): void {
   title.className = 'barbarian-attack-title';
   title.textContent = '⚔ 蛮族 襲来！';
   ov.appendChild(title);
+  // 防衛の結果（撃退/同点/敗北）を襲来見出しの下に大きく表示する。
+  if (result) {
+    const res = document.createElement('div');
+    res.className = `barbarian-attack-result ${result.kind}`;
+    res.textContent =
+      result.kind === 'win'    ? `🛡 撃退成功！ ${result.names.join('・')} が +1勝利点` :
+      result.kind === 'tie'    ? '🛡 撃退成功！（同点 — 各自が進歩カード）' :
+                                 `防衛失敗… ${result.names.join('・')} が都市を格下げ`;
+    ov.appendChild(res);
+  }
   document.body.appendChild(ov);
-  setTimeout(() => ov.remove(), 2000);
+  setTimeout(() => ov.remove(), 2600);
 }
 
 /** イベント結果を演出へ接続: 船=蛮族前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。
@@ -2445,7 +2482,7 @@ function showBarbarianAttackOverlay(): void {
  * オーバーレイのフラッシュ（非レイアウト・GPU合成のみ）で表現する。 */
 function applyEventFlourish(info: DiceEventInfo): void {
   // 蛮族襲来は重要イベントなので、演出OFF/reduced-motion でも全画面演出＋SEを出す。
-  if (info.eventDie === 'ship' && info.attacked) showBarbarianAttackOverlay();
+  if (info.eventDie === 'ship' && info.attacked) showBarbarianAttackOverlay(info.attackResult);
   if (prefersReducedMotion() || fxSpeed() === 'instant') return;
   const board = document.getElementById('board-area') ?? document.body;
   if (info.eventDie === 'ship') {
@@ -2623,6 +2660,24 @@ function runTransitionFx(
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);
   maybeScrollToTradeOffer(prevState, state);
+  maybeNoticeCityDowngrade(prevState, state);
+}
+
+// 騎士と商人: 蛮族敗北で自分（LAN=viewer/ローカル=人間）が都市格下げ対象になったら、
+// 全画面の襲来演出が消えた頃に盤面へスクロール＋通知して「都市をタップ」と気づかせる。
+function maybeNoticeCityDowngrade(prevState: GameState, newState: GameState): void {
+  const me = selfPlayerId();
+  if (!me) return;
+  const amPending = (s: GameState): boolean =>
+    s.turnPhase === 'CITY_DOWNGRADE' && (s.pendingCityDowngrade ?? []).includes(me);
+  if (!amPending(newState) || amPending(prevState)) return;
+  const gen = gameGeneration;
+  // 襲来オーバーレイ(約2.6s)が消えてから案内（重ならないように）。
+  setTimeout(() => {
+    if (gen !== gameGeneration || !state || !amPending(state)) return;
+    showBoardNotice('⚔ 盤面で光っている自分の都市をタップして格下げ', '#ff8a5a');
+    scrollToBoard();
+  }, 2700);
 }
 
 // 建設フィードバック(C-4): 開拓地/都市はスケールインのポップ、道は辺をなぞる描画。

@@ -11,7 +11,7 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgressLoose,
-  playerHasMovableKnight, playerHasChasableKnight, robberAdjacentChasableVertexIds, inventorTiles, plainCityVertexIds, progressDiscardCandidates,
+  playerHasMovableKnight, playerHasChasableKnight, robberAdjacentChasableVertexIds, inventorTiles, progressDiscardCandidates,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
@@ -543,27 +543,7 @@ function buildBankTradeUI(
 // ============================================================
 // 騎士と商人: 蛮族敗北での都市格下げ選択
 // ============================================================
-// 自分の「平の都市」一覧から1つ選んで開拓地へ格下げ。どの都市かは隣接タイルの数字で識別。
-function buildCityDowngradeUI(state: GameState, pid: PlayerId, dispatch: (a: Action) => void): HTMLDivElement {
-  const div = el('div', 'modal-panel');
-  const header = el('div', 'modal-header');
-  header.textContent = '⚔ 蛮族に敗北：格下げする都市を選ぶ';
-  div.appendChild(header);
-  div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '盤面で光っている都市をタップ、または下から選択（1つ開拓地に格下げ）' }));
-  const row = el('div', 'modal-res-row');
-  for (const vid of plainCityVertexIds(state, pid)) {
-    const nums: number[] = [];
-    for (const [tid, vids] of Object.entries(state.tileToVertices)) {
-      const n = state.tiles[tid]?.number;
-      if (vids.includes(vid) && n != null) nums.push(n);
-    }
-    const label = `都市（隣接 ${nums.sort((a, b) => a - b).join('・') || '—'}）`;
-    row.appendChild(makeImgBtn(cityImg(PLAYER_COLOR_KEY[pid] ?? 'red'), label, 'btn-build', false,
-      () => dispatch({ type: 'DOWNGRADE_CITY', playerId: pid, vertexId: vid })));
-  }
-  div.appendChild(row);
-  return div;
-}
+// （蛮族敗北の都市格下げは盤面の都市タップで選ぶ方式に変更。専用モーダルは廃止。）
 
 // 騎士と商人: 進歩カード上限超過（5枚目を引いた）→ 捨てる1枚を選ぶモーダル。
 // 勝利点カード(憲法/印刷機)は上限対象外なので候補に出さない。
@@ -1668,13 +1648,19 @@ function buildActionButtons(
     return div;
   }
 
-  // ---- 騎士と商人: 蛮族敗北での都市格下げ選択（DISCARD と同様の多人数解決）----
+  // ---- 騎士と商人: 蛮族敗北での都市格下げ（ボタンは出さず、盤面で自分の都市をタップして選ぶ）----
   if (state.turnPhase === 'CITY_DOWNGRADE') {
     const pending = state.pendingCityDowngrade ?? [];
-    // 自分（LAN=viewer / ローカル=最初の人間対象）が対象なら格下げUIを出す。CPU分は自動解決。
     const me = lanMode && viewerId != null ? viewerId : pending.find(p => state.players[p]?.type === 'human');
     if (!me || !pending.includes(me)) return null;
-    div.appendChild(buildCityDowngradeUI(state, me, dispatch));
+    // ボタンは廃止し、盤面の光った都市をタップする案内だけ出す（駒で選択する方式）。
+    const panel = el('div', 'modal-panel');
+    const header = el('div', 'modal-header');
+    header.textContent = '⚔ 蛮族に敗北';
+    panel.appendChild(header);
+    panel.appendChild(Object.assign(el('div', 'modal-section-label'),
+      { textContent: '盤面で光っている自分の都市をタップして、1つを開拓地に格下げしてください' }));
+    div.appendChild(panel);
     return div;
   }
 
@@ -2267,15 +2253,14 @@ function buildPlayerPanel(
     }
   }
 
-  // 騎士と商人: 都市改善レベルと騎士力（全員・公開情報）。
+  // 騎士と商人: 都市改善レベルと騎士（全員・公開情報）。
+  // 「改善」ラベルは省き、騎士は「起動済みの数」だけ表示する（テストプレイ要望）。
   if (isCk(state)) {
     const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
-    const kStr = Object.values(state.vertices)
-      .filter(v => v.knight?.playerId === pId)
-      .reduce((s, v) => s + (v.knight!.active ? v.knight!.strength : 0), 0);
-    const kTotal = Object.values(state.vertices).filter(v => v.knight?.playerId === pId).length;
+    const kActive = Object.values(state.vertices)
+      .filter(v => v.knight?.playerId === pId && v.knight.active).length;
     const ck = el('div', 'ck-status');
-    ck.textContent = `改善 交${imp.trade}/政${imp.politics}/科${imp.science}　🛡騎士${kTotal}(力${kStr})`;
+    ck.textContent = `交${imp.trade}/政${imp.politics}/科${imp.science}　🛡騎士${kActive}`;
     div.appendChild(ck);
   }
 

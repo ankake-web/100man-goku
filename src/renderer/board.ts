@@ -53,6 +53,8 @@ export interface BoardRenderOptions {
   // 騎士と商人: 商人コマのいる陸タイルID＋所有者の色（盤面に商人フィギュアを描く）。
   merchantTileId?: string;
   merchantColor?: string;
+  // 騎士と商人: 蛮族敗北で格下げ対象の都市頂点（赤い危険ハイライトで「タップで格下げ」を示す）。
+  downgradeVertexIds?: Set<string>;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
 }
@@ -519,7 +521,9 @@ function renderVertices(
       img.setAttribute('href', href);
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
       img.classList.add('building-img');
-      if (isValid) img.classList.add('building-valid');   // 都市化など有効ターゲット
+      // 蛮族敗北の格下げ対象は赤い危険ハイライト、それ以外の有効ターゲット（都市化等）は緑。
+      if (opts?.downgradeVertexIds?.has(vertex.id)) img.classList.add('building-downgrade');
+      else if (isValid) img.classList.add('building-valid');
       vg.appendChild(img);
     } else if (vertex.knight) {
       // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。

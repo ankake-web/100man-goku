@@ -404,6 +404,15 @@ h1 {
 /* 建物フィギュア画像。都市化など有効ターゲットは緑の発光で示す。 */
 .building-img { pointer-events: none; }
 .building-valid { filter: drop-shadow(0 0 3px #00ff88) drop-shadow(0 0 6px #00ff88); }
+/* 蛮族敗北の格下げ対象都市: 赤く点滅させて「タップで格下げ」を強く示す。 */
+.building-downgrade { animation: bldgDowngradePulse 1s ease-in-out infinite; }
+@keyframes bldgDowngradePulse {
+  0%,100% { filter: drop-shadow(0 0 3px #ff5a3a) drop-shadow(0 0 6px #ff5a3a); }
+  50%     { filter: drop-shadow(0 0 6px #ff3a1a) drop-shadow(0 0 13px #ff3a1a); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .building-downgrade { animation: none; filter: drop-shadow(0 0 5px #ff3a1a) drop-shadow(0 0 10px #ff3a1a); }
+}
 
 /* ---- 港 ---- */
 .harbor-line {
@@ -880,25 +889,25 @@ h1 {
 .panel-stat-row {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  /* 幅が狭い時は1行に詰め込まず折り返す（他プレイヤーの手札枚数が見切れるのを防ぐ）。 */
+  flex-wrap: wrap;
+  row-gap: 3px;
   gap: clamp(3px, 1.4vw, 6px);
   font-size: clamp(0.66rem, 3vw, 0.8rem);
   min-width: 0;
-  overflow: hidden;
 }
 .panel-stat-row .panel-vp,
 .panel-stat-row .rank-badge { flex: 0 0 auto; }
-/* 開拓地/都市/手札枚数のコンパクト統計（1行固定・右寄せ・はみ出しは省略） */
+/* 開拓地/都市/手札枚数のコンパクト統計（狭い時は折り返してすべて見えるようにする） */
 .stat-counts {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 2px;
   gap: clamp(3px, 1.4vw, 7px);
   margin-left: auto;
   flex: 0 1 auto;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
 }
 .stat-count { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; }
 /* パネルの小アイコン（コマ/騎士の素材画像）と数値。絵文字を排し素材で統一。 */
@@ -2525,9 +2534,19 @@ h1 {
   position: fixed; inset: 0; z-index: 200;
   background-size: cover; background-position: center;
   pointer-events: none;
-  display: flex; align-items: center; justify-content: center;
-  animation: barbAttackIn 0.35s ease-out, barbShake 0.5s ease-in-out, barbAttackOut 0.6s ease-in 1.4s forwards;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  animation: barbAttackIn 0.35s ease-out, barbShake 0.5s ease-in-out, barbAttackOut 0.6s ease-in 2.0s forwards;
 }
+/* 防衛結果（撃退/同点=金、敗北=赤）。襲来見出しの下に大きく表示。 */
+.barbarian-attack-result {
+  position: relative; z-index: 1; text-align: center;
+  font-size: clamp(1.1rem, 5.4vw, 2.2rem); font-weight: 900;
+  padding: 0 16px; letter-spacing: 0.02em;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.95);
+  animation: barbTitlePulse 0.55s cubic-bezier(0.2,1.5,0.4,1) 0.12s both;
+}
+.barbarian-attack-result.win, .barbarian-attack-result.tie { color: #ffe06a; }
+.barbarian-attack-result.defeat { color: #ff8a7a; }
 /* 画像は普通に見せ、赤マスクはやめる。見出しの可読性のため四隅だけ控えめに暗くする中立ビネット。 */
 #barbarian-attack::before {
   content: ''; position: absolute; inset: 0;
@@ -2559,7 +2578,10 @@ h1 {
   box-shadow: 0 14px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: dicePop 0.4s cubic-bezier(0.2,1.5,0.5,1);
 }
-.dep-ship { width: 44px; height: 44px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+.dep-ship { width: 44px; height: 44px; object-fit: contain; display: block; flex: 0 0 auto; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+/* 蛮族前進: 船アイコンと見出しを横並びにして縦の高さを抑える（画面の見切れ防止）。 */
+.dep-advance-head { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 4px; }
+.dep-advance-head .dep-title { margin-bottom: 0; }
 /* ダイス時イベント結果パネルの「蛮族 襲来！」見出し（画像なし・全画面演出と重複させない） */
 .dep-attack-title {
   text-align: center; font-size: 1.2rem; font-weight: 900; color: #ff6b5a; letter-spacing: 0.04em;
@@ -2588,6 +2610,10 @@ h1 {
 .dep-track.danger .dep-pip.on { background: #ff5a5a; box-shadow: 0 0 7px rgba(255,80,80,0.85); }
 .dep-pip.just { transform: scale(1.4); box-shadow: 0 0 9px rgba(255,210,80,0.95); }
 .dep-sub { text-align: center; font-size: 0.85rem; opacity: 0.92; }
+/* 蛮族襲来の防衛結果（撃退/同点=金・敗北=赤）。サブ行を強調する。 */
+.dep-result { font-size: 0.95rem; font-weight: 800; opacity: 1; line-height: 1.35; }
+.dep-result.win, .dep-result.tie { color: #ffd24d; }
+.dep-result.defeat { color: #ff7a6a; }
 .dep-draws { display: flex; flex-direction: column; gap: 3px; }
 .dep-draw-row { font-size: 0.86rem; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,0.05); opacity: 0.62; }
 .dep-draw-row.ok { background: rgba(110,200,120,0.2); opacity: 1; font-weight: 700; }

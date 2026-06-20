@@ -328,10 +328,22 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 蛮族敗北の都市格下げ。盤面で（自分の）光った都市をタップ → DOWNGRADE_CITY ----
+    // ---- 騎士と商人: 蛮族敗北の都市格下げ。盤面で（格下げ対象の）光った都市をタップ → DOWNGRADE_CITY ----
+    // 駒（都市画像）を直接タップした場合を最優先。外しても広めの距離でスナップして取りこぼさない。
     if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
-      const ptd = clickToBoardPixel(svg, e.clientX, e.clientY);
-      const vid = ptd ? nearestDowngradableCityId(state, ptd.x, ptd.y) : null;
+      const pendingSet = new Set(state.pendingCityDowngrade ?? []);
+      const isDowngradable = (vid: string | null): boolean => {
+        const b = vid ? state.vertices[vid]?.building : null;
+        return !!b && b.type === 'city' && !b.metropolis && pendingSet.has(b.playerId);
+      };
+      // 1) 直接ヒット（建物/頂点要素）。
+      let vid = (e.target as SVGElement).closest('[data-vertex-id]')?.getAttribute('data-vertex-id') ?? null;
+      if (!isDowngradable(vid)) vid = null;
+      // 2) 近傍スナップ（広め=60px。都市は疎なので誤爆しにくい）。
+      if (!vid) {
+        const ptd = clickToBoardPixel(svg, e.clientX, e.clientY);
+        vid = ptd ? nearestDowngradableCityId(state, ptd.x, ptd.y, 60) : null;
+      }
       const owner = vid ? state.vertices[vid]?.building?.playerId : null;
       if (vid && owner) dispatch({ type: 'DOWNGRADE_CITY', playerId: owner, vertexId: vid });
       return;
