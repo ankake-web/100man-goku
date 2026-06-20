@@ -1646,7 +1646,8 @@ function buildActionButtons(
 
   // F-05: プレイヤー間交易（相手が2人以上いる場合のみ）
   if (state.playerOrder.length > 1) {
-    div.appendChild(makeImgBtn(ASSETS.action.playerTrade, 'プレイヤー間交易', 'btn-build', false,
+    // ラベルは「プレイヤー」で改行して2行に（プレイヤー / 間交易）。
+    div.appendChild(makeImgBtn(ASSETS.action.playerTrade, ['プレイヤー', document.createElement('br'), '間交易'], 'btn-build', false,
       () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
   }
 
