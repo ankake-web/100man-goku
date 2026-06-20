@@ -673,6 +673,7 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
         // 騎士と商人・発明家: 入替可能タイルを光らせる。1枚目選択後はそれ以外を入替先候補に。
         const all = inventorTiles(state);
         opts.validTileIds = new Set(inventorFirstTile == null ? all : all.filter(t => t !== inventorFirstTile));
+        if (inventorFirstTile) opts.selectedTileId = inventorFirstTile; // 1枚目を青で確定強調
       }
     }
   }
@@ -2747,6 +2748,10 @@ function runTransitionFx(
   maybeYourTurnCue(prevState, state);
   maybeScrollToTradeOffer(prevState, state);
   maybeNoticeCityDowngrade(prevState, state);
+  // 発明家: 数字入替が成立したら「効いた」ことを明示（数字トークンが入れ替わるだけで気づきにくいため）。
+  if (action?.type === 'PLAY_PROGRESS' && action.choice?.inventorTiles) {
+    showBoardNotice('🔄 タイルの数字を入れ替えました', '#7fb0ff');
+  }
 }
 
 // 騎士と商人: 蛮族敗北で自分（LAN=viewer/ローカル=人間）が都市格下げ対象になったら、
@@ -2813,17 +2818,19 @@ function dispatch(action: Action): void {
     if (pcard?.type === 'merchant' && pHuman && !action.choice?.merchantTileId
         && state.turnPhase === 'TRADE_BUILD' && merchantTileIds(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove(); // カード詳細モーダルを閉じる
-      showBoardNotice('🏪 商人を置く資源タイルをタップしてください');
       setBuildMode('placeMerchant');
+      scrollToBoard();                                    // 盤面（光った候補）を見せる
+      showBoardNotice('🏪 商人を置く資源タイルをタップしてください');
       return;
     }
     // 発明家: 入替候補が2つ以上ある時、盤面で2タイルを順にタップして数字を入れ替える。
     if (pcard?.type === 'inventor' && pHuman && !action.choice?.inventorTiles
         && state.turnPhase === 'TRADE_BUILD' && inventorTiles(state).length >= 2) {
       document.querySelector('.help-overlay')?.remove();
-      showBoardNotice('🔄 数字を入れ替える2つのタイルを順にタップ');
       inventorFirstTile = null;
       setBuildMode('inventorSwap');
+      scrollToBoard();                                    // 盤面（光った候補）を見せる
+      showBoardNotice('🔄 数字を入れ替える1つ目のタイルをタップ');
       return;
     }
   }

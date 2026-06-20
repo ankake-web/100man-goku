@@ -525,6 +525,11 @@ h1 {
   50%     { stroke-width: 8; filter: brightness(1.6)  drop-shadow(0 0 16px #ffe24a) drop-shadow(0 0 30px #ffd02a); }
 }
 .hex-tile.valid-robber:hover { filter: brightness(1.7) drop-shadow(0 0 18px #ffe24a); }
+/* 発明家: 1枚目に確定したタイルは青い太枠＋発光で「選択済み」を示す（候補の黄と区別）。 */
+.hex-tile.tile-chosen {
+  cursor: pointer; stroke: #4ea3ff; stroke-width: 7;
+  filter: brightness(1.5) drop-shadow(0 0 12px #4ea3ff) drop-shadow(0 0 24px #2f7fff);
+}
 @media (prefers-reduced-motion: reduce) {
   .hex-tile.valid-robber { animation: none; filter: brightness(1.5) drop-shadow(0 0 14px #ffe24a) drop-shadow(0 0 26px #ffd02a); }
 }

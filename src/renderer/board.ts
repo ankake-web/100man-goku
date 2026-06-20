@@ -55,6 +55,8 @@ export interface BoardRenderOptions {
   merchantColor?: string;
   // 騎士と商人: 蛮族敗北で格下げ対象の都市頂点（赤い危険ハイライトで「タップで格下げ」を示す）。
   downgradeVertexIds?: Set<string>;
+  // 騎士と商人・発明家: 1枚目に選んだタイル（2枚目を待つ＝確定済みとして強調）。
+  selectedTileId?: string;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
 }
@@ -183,12 +185,15 @@ function renderTile(
   const cy = p.y + oy;
 
   const isValidRobber = opts?.validTileIds?.has(tile.id) ?? false;
+  const isChosen = opts?.selectedTileId === tile.id;
 
   // 六角形
   const poly = svgEl('polygon');
   poly.setAttribute('points', hexCorners(cx, cy, size - 1));
   poly.classList.add('hex-tile', tile.type);
-  if (isValidRobber) poly.classList.add('valid-robber');
+  // 発明家: 1枚目に選んだタイルは確定済みの強調（青）、それ以外の候補は通常の黄ハイライト。
+  if (isChosen) poly.classList.add('tile-chosen');
+  else if (isValidRobber) poly.classList.add('valid-robber');
   g.appendChild(poly);
 
   // 金タイル: 麦(field)と色が紛らわしいので、光沢ゴールド＋発光（CSS）に加えて

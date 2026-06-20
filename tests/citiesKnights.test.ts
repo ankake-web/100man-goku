@@ -241,6 +241,58 @@ describe('C&K 蛮族防衛の報酬', () => {
     expect((r.players.player2!.progressCards ?? []).length).toBe(1);
   });
 
+  // --- フル経路（ROLL_DICE 相当: applyEventDie で蛮族が満タン→襲来）での検証 ---
+  it('【フル経路】単独最大で撃退→守護者VP+1 が「勝利点」に加算される', async () => {
+    const { applyEventDie, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { calcVP } = await import('../src/engine/scoring');
+    const { createRng } = await import('../src/engine/setup');
+    const { CK_BARBARIAN_MAX } = await import('../src/constants');
+    const s = barbState((g, vs) => ({
+      ...g,
+      barbarianPosition: CK_BARBARIAN_MAX - 1, // 次の船で襲来
+      progressDecks: buildProgressDecks(createRng(1)),
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, knight: { playerId: 'player1', strength: 3, active: true } },
+      },
+    }));
+    const vpBefore = calcVP(s, 'player1');
+    const r = applyEventDie(s, () => 0.1, 4); // 0.1<0.5 → 'ship' → 前進で襲来
+    expect(r.barbarianAttacks).toBe(1);                 // 襲来した
+    expect(r.players.player1!.defenderVP).toBe(1);      // 守護者VP+1
+    expect(calcVP(r, 'player1')).toBe(vpBefore + 1);    // 勝利点に反映
+    expect((r.players.player1!.progressCards ?? []).length).toBe(0); // 単独はカードなし
+  });
+
+  it('【フル経路】同点撃退→各同点者が実在の進歩カードを1枚もらう（VPは増えない）', async () => {
+    const { applyEventDie, buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { calcVP } = await import('../src/engine/scoring');
+    const { createRng } = await import('../src/engine/setup');
+    const { CK_BARBARIAN_MAX } = await import('../src/constants');
+    const s = barbState((g, vs) => ({
+      ...g,
+      barbarianPosition: CK_BARBARIAN_MAX - 1,
+      progressDecks: buildProgressDecks(createRng(2)),
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, knight: { playerId: 'player1', strength: 2, active: true } },
+        [vs[2]!]: { ...g.vertices[vs[2]!]!, knight: { playerId: 'player2', strength: 2, active: true } },
+      },
+    }));
+    const r = applyEventDie(s, () => 0.1, 4);
+    expect(r.barbarianAttacks).toBe(1);
+    expect(r.players.player1!.defenderVP ?? 0).toBe(0);
+    expect(r.players.player2!.defenderVP ?? 0).toBe(0);
+    const c1 = r.players.player1!.progressCards ?? [];
+    const c2 = r.players.player2!.progressCards ?? [];
+    expect(c1.length).toBe(1);
+    expect(c2.length).toBe(1);
+    expect(c1[0]!.type).toBeTruthy(); // 実在のカード種別
+    expect(calcVP(r, 'player1')).toBe(calcVP(s, 'player1')); // 同点はVPが増えない
+  });
+
   it('同点で手札上限4の防衛者も5枚目を引き、捨て札選択（PROGRESS_DISCARD）の対象になる', async () => {
     const { resolveBarbarianAttack, buildProgressDecks } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');
