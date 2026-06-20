@@ -142,7 +142,7 @@ export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   merchant: '資源地形に商人を置く（+1VP・その資源2:1）',
   merchant_fleet: 'このターン、指定1種を2:1で交易',
   warlord: '自分の騎士を全て無料で起動',
-  saboteur: '自分以上のVPの全員が資源を半数捨てる',
+  saboteur: '自分以上のVPを持つ全員が資源を半数捨てる',
   wedding: '自分よりVPが高い各相手から2枚もらう',
   bishop: '盗賊を移動し移動先隣接の全相手から各1枚',
   constitution: '即座に+1勝利点',

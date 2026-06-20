@@ -1406,7 +1406,19 @@ function cpuIsResponsible(): boolean {
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     return state.playerOrder.some(p => state.players[p]?.type === 'ai'
       && !(state.discardedThisRound ?? []).includes(p)
-      && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8);
+      && discardCount(state, p) > 0);
+  }
+  // 多人数解決フェーズは「手番」ではなく対象プレイヤーが解決する。対象に CPU がいる時だけ
+  // CPU 責任（＝ウォッチドッグ対象）。人間が対象の時は false（人間の操作を待つ。誤って
+  // safeFallbackAction が走らないように＝「前の人の処理が終わっていない」誤検知を防ぐ）。
+  if (state.phase === 'MAIN' && state.turnPhase === 'GOLD') {
+    return state.playerOrder.some(p => state.players[p]?.type === 'ai' && ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
+  }
+  if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
+    return (state.pendingCityDowngrade ?? []).some(p => state.players[p]?.type === 'ai');
+  }
+  if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
+    return (state.pendingProgressDiscard ?? []).some(p => state.players[p]?.type === 'ai');
   }
   const cur = state.playerOrder[state.currentPlayerIndex];
   return !!cur && state.players[cur]?.type === 'ai';
@@ -2103,20 +2115,37 @@ function triggerResourceAnimation(
   // ダイス以外（交易・年の豊穣等）は手札差分（自分のみ公開）で資源・商品とも飛ばす。
   const isDice = action?.type === 'ROLL_DICE' && diceTotal !== undefined;
   const ck = isCk(newState);
-  const ckProd = (isDice && ck) ? computeCkProduction(oldState, diceTotal!) : null;
-  const baseProd = (isDice && !ck) ? computeDiceProduction(oldState, diceTotal!) : null;
+  // 騎士と商人: 蛮族敗北(CITY_DOWNGRADE)・進歩カード上限(PROGRESS_DISCARD)では生産が「保留」される。
+  // ロールでこれらの保留フェーズに入った時はまだ資源が配られていないので生産アニメを出さない
+  // （出すと「幻の資源」が飛び、さらに分配アニメ用ゲートで進行が約2秒固まる＝手前の処理が
+  //   終わっていないように見える原因になっていた）。生産は保留が解けた時に出す。
+  const rollDeferred = action?.type === 'ROLL_DICE'
+    && (newState.turnPhase === 'CITY_DOWNGRADE' || newState.turnPhase === 'PROGRESS_DISCARD');
+  // 保留が全て解決して生産が確定した瞬間（DOWNGRADE_CITY / DISCARD_PROGRESS でフェーズが抜けた）。
+  const deferredResolved = ck
+    && (action?.type === 'DOWNGRADE_CITY' || action?.type === 'DISCARD_PROGRESS')
+    && (oldState.turnPhase === 'CITY_DOWNGRADE' || oldState.turnPhase === 'PROGRESS_DISCARD')
+    && newState.turnPhase !== 'CITY_DOWNGRADE' && newState.turnPhase !== 'PROGRESS_DISCARD';
+  // ダイス生産アニメを出す総数。通常ロール（保留なし）か、保留解決時。盤面は確定後の newState 基準
+  //（保留中に格下げされた都市を反映＝実際に配られた量と一致）。
+  const prodTotal = isDice ? diceTotal
+    : deferredResolved ? ((newState.lastDiceRoll?.[0] ?? 0) + (newState.lastDiceRoll?.[1] ?? 0))
+    : undefined;
+  const animateDiceProd = ((isDice && !rollDeferred) || deferredResolved) && prodTotal !== undefined && prodTotal !== 7;
+  const ckProd = (animateDiceProd && ck) ? computeCkProduction(newState, prodTotal!) : null;
+  const baseProd = (animateDiceProd && !ck) ? computeDiceProduction(newState, prodTotal!) : null;
 
   const MAX_PER_PLAYER = 8; // スマホで重くならないよう1人あたりの上限（商品分を見込み少し増やす）
   let delay = 0;
   for (const pid of newState.playerOrder) {
     // 飛ばすアイコン群（資源・商品を統一して扱う）。
     const flyables: Array<{ img: string; origin: { x: number; y: number }; n: number }> = [];
-    if (isDice && ckProd) {
-      for (const r of RESOURCE_TYPES) { const n = ckProd.resources[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(diceTotal!, pid, r), n }); }
-      for (const c of COMMODITY_TYPES) { const n = ckProd.commodities[pid]?.[c] ?? 0; if (n > 0) flyables.push({ img: COM_FLY_IMG[c], origin: originForCommodity(diceTotal!, pid, c), n }); }
-    } else if (isDice && baseProd) {
-      for (const r of RESOURCE_TYPES) { const n = baseProd[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(diceTotal!, pid, r), n }); }
-    } else {
+    if (ckProd) {
+      for (const r of RESOURCE_TYPES) { const n = ckProd.resources[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(prodTotal!, pid, r), n }); }
+      for (const c of COMMODITY_TYPES) { const n = ckProd.commodities[pid]?.[c] ?? 0; if (n > 0) flyables.push({ img: COM_FLY_IMG[c], origin: originForCommodity(prodTotal!, pid, c), n }); }
+    } else if (baseProd) {
+      for (const r of RESOURCE_TYPES) { const n = baseProd[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(prodTotal!, pid, r), n }); }
+    } else if (!rollDeferred) {
       const c0 = getBoardCenter();
       for (const { r, n } of handDiffGains(oldState, newState, pid)) flyables.push({ img: RES_FLY_IMG[r], origin: c0, n });
       for (const { c, n } of commodityDiffGains(oldState, newState, pid)) flyables.push({ img: COM_FLY_IMG[c], origin: c0, n });
@@ -2173,7 +2202,10 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
       any = true;
     }
   }
-  if (any) holdResourceAnimating(delay + RES_FLY_MS + 120);
+  // 保留フェーズ（都市格下げ/進歩カード捨て）へ入る時はゲートしない。次は「ロール」ではなく
+  // 「解決操作」なので待たせる必要がなく、待たせると解決が固まって見える原因になる。
+  const pendingPhase = newState.turnPhase === 'CITY_DOWNGRADE' || newState.turnPhase === 'PROGRESS_DISCARD';
+  if (any && !pendingPhase) holdResourceAnimating(delay + RES_FLY_MS + 120);
 }
 
 // 自分のプレイヤーID（LAN=viewer、単一端末=human）。手番強調・得点演出の基準。

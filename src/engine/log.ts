@@ -101,7 +101,7 @@ export function buildActionLog(
         push(actor, 'RESOURCE_GAIN', `📥 ${gainParts.join('　')}`);
       } else if (d1 + d2 !== 7) {
         // 7（盗賊）以外で誰も得られなかった場合のみ明示（7は盗賊フローで案内）。
-        push(actor, 'RESOURCE_GAIN', '📥 だれも資源を得られなかった');
+        push(actor, 'RESOURCE_GAIN', '📥 誰も資源を得られなかった');
       }
       break;
     }
@@ -201,7 +201,7 @@ export function buildActionLog(
     const nextBonus = next.islandBonus ?? {};
     for (const [rep, owner] of Object.entries(nextBonus)) {
       if (!prevBonus[rep]) {
-        push(owner, 'BONUS_CHANGE', `🚢 ${nm(owner)} が新しい島に到達（+2勝利点）`);
+        push(owner, 'BONUS_CHANGE', `🚢 ${nm(owner)} が新しい島に入植（+2勝利点）`);
       }
     }
   }
