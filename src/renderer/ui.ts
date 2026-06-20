@@ -11,7 +11,7 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgressLoose,
-  playerHasMovableKnight, playerHasChasableKnight, inventorTiles, plainCityVertexIds, progressDiscardCandidates,
+  playerHasMovableKnight, playerHasChasableKnight, robberAdjacentChasableVertexIds, inventorTiles, plainCityVertexIds, progressDiscardCandidates,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
@@ -1585,8 +1585,16 @@ function appendCkBuildSection(
     knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
   }
   // 盗賊を追い払う（盗賊に隣接した自分のアクティブ騎士で。1ターン1回・騎士は非起動になる）。
+  // 候補騎士が1つだけなら1タップで即追い払う（盤面選択を挟まない＝「ボタンが無反応」を解消）。
+  // 複数いる時だけ盤面で騎士を選ばせる。
   if (playerHasChasableKnight(state, pid)) {
-    knightRow.appendChild(modeBtn('🦹 盗賊を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
+    const chasable = robberAdjacentChasableVertexIds(state, pid);
+    if (chasable.length === 1) {
+      knightRow.appendChild(makeBtn('🦹 盗賊を追い払う', 'btn-build', false,
+        () => dispatch({ type: 'CHASE_ROBBER', vertexId: chasable[0]! })));
+    } else {
+      knightRow.appendChild(modeBtn('🦹 盗賊を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
+    }
   }
   const wallVid = firstV(v => canBuildCityWall(state, pid, v));
   knightRow.appendChild(makeImgBtn(ASSETS.piece.cityWall ?? RESOURCE_IMG.brick, [costLabel('城壁', resCostParts(CK_COSTS.cityWall))], wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
