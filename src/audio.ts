@@ -296,7 +296,7 @@ const SE_MIN_INTERVAL: Record<string, number> = {
 };
 
 export type SEType = 'click'|'dice'|'diceLandHeavy'|'resource'|'build'|'tradeOk'|'tradeNg'|'devCard'|'robber'|'turnStart'|'victory'
-  |'sevenRoll'|'discardWarn'|'discardLose'|'vpGain'|'bonusGain'|'yourTurn';
+  |'sevenRoll'|'discardWarn'|'discardLose'|'vpGain'|'bonusGain'|'yourTurn'|'barbarianAttack';
 
 function playSE(type: SEType): void {
   if (!_seEnabled) return;
@@ -411,6 +411,14 @@ function playSE(type: SEType): void {
         note(150, 0.18, 'sine', 0.6, 0.00);
         note(92,  0.24, 'sine', 0.5, 0.02);
         note(220, 0.06, 'triangle', 0.3, 0.00);
+        break;
+      case 'barbarianAttack':
+        // 蛮族襲来: 不穏な戦角笛＋地鳴り（低く重く、半音の不協和で緊張）。二段で吹き上げる。
+        note(64, 0.85, 'sine', 0.7, 0.00);        // 地鳴りの重低音
+        note(110, 0.6, 'sawtooth', 0.4, 0.00);    // 角笛
+        note(116, 0.6, 'sawtooth', 0.26, 0.02);   // 半音上＝不協和（緊張）
+        note(146, 0.55, 'sawtooth', 0.34, 0.26);  // 二段目（吹き上げ）
+        note(155, 0.55, 'sawtooth', 0.22, 0.28);
         break;
     }
   } catch { /* ignore */ }
