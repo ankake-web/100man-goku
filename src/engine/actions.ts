@@ -253,6 +253,8 @@ export function canBuildSettlement(
   const vertex = state.vertices[vertexId];
   if (!vertex) return false;
   if (vertex.building != null) return false;
+  // 騎士と商人: 騎士が立つ頂点には開拓地を建てられない（建てると騎士コマが描画上消える＝盤面不整合）。
+  if (vertex.knight != null) return false;
   // 開拓地は陸に面した頂点のみ（航海者: 外洋だけに接する頂点には置けない）。基本ゲームは常に true。
   if (!isLandVertex(vertex, state.tiles)) return false;
 

@@ -414,6 +414,20 @@ describe('canBuildSettlement', () => {
     expect(canBuildSettlement(s, 'player1', vid0)).toBe(false);
   });
 
+  it('returns false when a knight stands on the vertex (騎士コマ消失バグの回帰)', () => {
+    const s = {
+      ...state,
+      vertices: {
+        ...state.vertices,
+        [vid0]: {
+          ...state.vertices[vid0]!,
+          knight: { playerId: 'player2' as const, strength: 1 as const, active: false },
+        },
+      },
+    };
+    expect(canBuildSettlement(s, 'player1', vid0)).toBe(false);
+  });
+
   it('returns false when remainingSettlements is 0', () => {
     const eid0 = getEdgeAtVertex(state, vid0);
     const s = {
