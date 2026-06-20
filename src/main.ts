@@ -2369,10 +2369,28 @@ function showDiceSum(sum: HTMLElement, d1: number, d2: number): void {
   sum.classList.add('show');
 }
 
+// 蛮族襲来: 画面全体を覆う襲来演出＋SE（重要イベントなので reduced-motion でも出す）。
+function showBarbarianAttackOverlay(): void {
+  playSE('barbarianAttack');
+  document.getElementById('barbarian-attack')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'barbarian-attack';
+  if (ASSETS.bg.barbarian) ov.style.backgroundImage = `url("${ASSETS.bg.barbarian}")`;
+  if (prefersReducedMotion()) ov.classList.add('reduced');
+  const title = document.createElement('div');
+  title.className = 'barbarian-attack-title';
+  title.textContent = '⚔ 蛮族 襲来！';
+  ov.appendChild(title);
+  document.body.appendChild(ov);
+  setTimeout(() => ov.remove(), 2000);
+}
+
 /** イベント結果を演出へ接続: 船=蛮族前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。
  * 盤面(#board-area)を transform で動かすと結果表示時にガタつくため、盤は動かさず
  * オーバーレイのフラッシュ（非レイアウト・GPU合成のみ）で表現する。 */
 function applyEventFlourish(info: DiceEventInfo): void {
+  // 蛮族襲来は重要イベントなので、演出OFF/reduced-motion でも全画面演出＋SEを出す。
+  if (info.eventDie === 'ship' && info.attacked) showBarbarianAttackOverlay();
   if (prefersReducedMotion() || fxSpeed() === 'instant') return;
   const board = document.getElementById('board-area') ?? document.body;
   if (info.eventDie === 'ship') {
@@ -2961,7 +2979,7 @@ function updateZoomControls(): void {
 // ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
 function clearTransientFx(): void {
   document
-    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast, #board-notice')
+    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast, #board-notice, #barbarian-attack')
     .forEach(n => n.remove());
 }
 

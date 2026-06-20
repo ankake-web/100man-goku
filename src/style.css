@@ -2492,6 +2492,35 @@ h1 {
 /* 蛮族が残り少/襲来のときの赤い警告フラッシュ（盤は揺らさない・非レイアウト） */
 .dice-color-wash.ev-danger   { background: radial-gradient(circle, rgba(220,40,40,0.42), rgba(220,40,40,0) 78%); }
 
+/* 蛮族襲来: 画面全体を覆う襲来演出（蛮族画像＋赤いスクリム＋大見出し）。約2秒で自動消滅。 */
+#barbarian-attack {
+  position: fixed; inset: 0; z-index: 200;
+  background-size: cover; background-position: center;
+  pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  animation: barbAttackIn 0.35s ease-out, barbShake 0.5s ease-in-out, barbAttackOut 0.6s ease-in 1.4s forwards;
+}
+#barbarian-attack::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 45%, rgba(150,10,10,0.30), rgba(50,0,0,0.78));
+}
+#barbarian-attack.reduced { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 1.5s forwards; }
+.barbarian-attack-title {
+  position: relative; z-index: 1; text-align: center;
+  font-size: clamp(2rem, 12vw, 5.5rem); font-weight: 900; color: #fff;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 20px rgba(255,50,20,0.95), 0 4px 12px rgba(0,0,0,0.95);
+  animation: barbTitlePulse 0.55s cubic-bezier(0.2,1.5,0.4,1);
+}
+@keyframes barbAttackIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes barbAttackOut { to { opacity: 0; } }
+@keyframes barbTitlePulse { 0% { transform: scale(0.55); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes barbShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-8px); } 40% { transform: translateX(7px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  #barbarian-attack { animation: barbAttackIn 0.2s ease-out, barbAttackOut 0.4s ease-in 1.5s forwards; }
+  .barbarian-attack-title { animation: none; }
+}
+
 /* イベント結果パネル（蛮族前進 / 色別抽選の照合）。結果カードと調和する締まったデザイン。 */
 .dice-event-panel {
   max-width: min(92vw, 360px);
