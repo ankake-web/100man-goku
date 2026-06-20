@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -651,6 +651,12 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'buildKnight') {
         // 騎士と商人・騎士の手動配置: 建てられる合法頂点を光らせる。
         opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canBuildKnight(state, pid, vid)));
+      } else if (mode === 'activateKnight') {
+        // 騎士と商人・騎士の手動起動: 起動できる自分の騎士頂点を光らせる。
+        opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canActivateKnight(state, pid, vid)));
+      } else if (mode === 'upgradeKnight') {
+        // 騎士と商人・騎士の手動昇格: 昇格できる自分の騎士頂点を光らせる。
+        opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canUpgradeKnight(state, pid, vid)));
       }
     }
   }
@@ -899,6 +905,8 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'moveKnight') return { text: moveKnightFrom ? '🛡 移動先をタップ' : '🛡 動かす騎士を選択', alert: false };
       if (buildMode === 'chaseRobber') return { text: '🦹 追い払う騎士を選択', alert: false };
       if (buildMode === 'buildKnight') return { text: '🛡 騎士を置く頂点をタップ', alert: false };
+      if (buildMode === 'activateKnight') return { text: '⚡ 起動する騎士をタップ', alert: false };
+      if (buildMode === 'upgradeKnight') return { text: '⬆ 昇格する騎士をタップ', alert: false };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };

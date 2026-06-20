@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -144,19 +144,31 @@ export function nearestMoveKnightVertexId(
   return best;
 }
 
-/** 点(x,y)に最も近い「騎士を建てられる合法頂点」を返す（騎士と商人・手動配置）。なければ null。 */
-export function nearestBuildKnightVertexId(
-  state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
+/** 点(x,y)に最も近い「述語を満たす頂点」を返す。なければ null（騎士の配置/起動/昇格で共用）。 */
+function nearestVertexMatching(
+  state: GameState, pred: (vid: string) => boolean, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
 ): string | null {
   let best: string | null = null;
   let bestD = maxDist * maxDist;
   for (const v of Object.values(state.vertices)) {
-    if (!canBuildKnight(state, pid, v.id)) continue;
+    if (!pred(v.id)) continue;
     const dx = v.pixel.x - x, dy = v.pixel.y - y;
     const d = dx * dx + dy * dy;
     if (d <= bestD) { bestD = d; best = v.id; }
   }
   return best;
+}
+/** 点(x,y)に最も近い「騎士を建てられる合法頂点」を返す（騎士と商人・手動配置）。 */
+export function nearestBuildKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  return nearestVertexMatching(state, vid => canBuildKnight(state, pid, vid), x, y, maxDist);
+}
+/** 点(x,y)に最も近い「起動できる自分の騎士頂点」を返す（騎士と商人・手動起動）。 */
+export function nearestActivateKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  return nearestVertexMatching(state, vid => canActivateKnight(state, pid, vid), x, y, maxDist);
+}
+/** 点(x,y)に最も近い「昇格できる自分の騎士頂点」を返す（騎士と商人・手動昇格）。 */
+export function nearestUpgradeKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  return nearestVertexMatching(state, vid => canUpgradeKnight(state, pid, vid), x, y, maxDist);
 }
 
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
@@ -284,6 +296,22 @@ export function attachBoardEvents(
       const ptk = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptk ? nearestBuildKnightVertexId(state, pid, ptk.x, ptk.y) : null;
       if (vid) dispatch({ type: 'BUILD_KNIGHT', vertexId: vid });
+      return;
+    }
+
+    // ---- 騎士と商人: 騎士を起動するモード（起動できる自分の騎士をタップ → ACTIVATE_KNIGHT）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'activateKnight') {
+      const pta = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = pta ? nearestActivateKnightVertexId(state, pid, pta.x, pta.y) : null;
+      if (vid) dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: vid });
+      return;
+    }
+
+    // ---- 騎士と商人: 騎士を昇格するモード（昇格できる自分の騎士をタップ → UPGRADE_KNIGHT）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'upgradeKnight') {
+      const ptu = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = ptu ? nearestUpgradeKnightVertexId(state, pid, ptu.x, ptu.y) : null;
+      if (vid) dispatch({ type: 'UPGRADE_KNIGHT', vertexId: vid });
       return;
     }
 

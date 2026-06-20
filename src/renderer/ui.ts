@@ -1472,12 +1472,11 @@ function appendCkBuildSection(
   // 騎士の配置は盤面で頂点を選ぶ（自動配置をやめ、置く場所を自分で選べるように）。
   const canBuildKn = !!firstV(v => canBuildKnight(state, pid, v));
   knightRow.appendChild(modeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], 'buildKnight', canBuildKn, buildMode, setBuildMode));
-  const actVid = firstV(v => canActivateKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], actVid ? 'btn-build' : 'btn-disabled', !actVid,
-    () => actVid && dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: actVid })));
-  const upVid = firstV(v => canUpgradeKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(ASSETS.action.knightUpgrade, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], upVid ? 'btn-build' : 'btn-disabled', !upVid,
-    () => upVid && dispatch({ type: 'UPGRADE_KNIGHT', vertexId: upVid })));
+  // 起動・昇格も対象の騎士を盤面で選ぶ（騎士が複数いるとき自分で選べるように）。
+  const canActKn = !!firstV(v => canActivateKnight(state, pid, v));
+  knightRow.appendChild(modeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], 'activateKnight', canActKn, buildMode, setBuildMode));
+  const canUpKn = !!firstV(v => canUpgradeKnight(state, pid, v));
+  knightRow.appendChild(modeImgBtn(ASSETS.action.knightUpgrade, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], 'upgradeKnight', canUpKn, buildMode, setBuildMode));
   // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
     knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
