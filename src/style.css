@@ -403,23 +403,19 @@ h1 {
 
 /* 建物フィギュア画像。都市化など有効ターゲットは緑の発光で示す。 */
 .building-img { pointer-events: none; }
-.building-valid { filter: drop-shadow(0 0 3px #00ff88) drop-shadow(0 0 6px #00ff88); }
-/* 騎士と商人: 城壁付きの都市はコマの形に沿った黒いフチで「壁あり」を示す（多方向の影で輪郭化）。 */
-.building-walled {
-  filter:
-    drop-shadow(1.4px 0 0 #050505) drop-shadow(-1.4px 0 0 #050505)
-    drop-shadow(0 1.4px 0 #050505) drop-shadow(0 -1.4px 0 #050505)
-    drop-shadow(1px 1px 0 #050505) drop-shadow(-1px -1px 0 #050505)
-    drop-shadow(1px -1px 0 #050505) drop-shadow(-1px 1px 0 #050505);
-}
-/* 蛮族敗北の格下げ対象都市: 赤く点滅させて「タップで格下げ」を強く示す。 */
-.building-downgrade { animation: bldgDowngradePulse 1s ease-in-out infinite; }
+/* 建設候補(都市化など)の緑ハイライト。viewBox 縮小でも見えるよう blur を大きめに。 */
+.building-valid { filter: drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 12px #00ff88); }
+/* 騎士と商人: 城壁付き都市の「黒いシルエット縁」。同じ城画像を真っ黒にして後ろに敷く。 */
+.city-wall-outline { pointer-events: none; filter: brightness(0) saturate(0); }
+/* 蛮族敗北の格下げ対象都市: 強い赤発光＋点滅で「タップで格下げ」を目立たせる。
+   ※ blur は SVG ユーザー単位。盤面は viewBox(752) を ~360px に縮小するので大きめにする。 */
+.building-downgrade { animation: bldgDowngradePulse 0.85s ease-in-out infinite; }
 @keyframes bldgDowngradePulse {
-  0%,100% { filter: drop-shadow(0 0 3px #ff5a3a) drop-shadow(0 0 6px #ff5a3a); }
-  50%     { filter: drop-shadow(0 0 6px #ff3a1a) drop-shadow(0 0 13px #ff3a1a); }
+  0%,100% { filter: drop-shadow(0 0 7px #ff3a1a) drop-shadow(0 0 15px #ff2a14); }
+  50%     { filter: drop-shadow(0 0 14px #ff1a08) drop-shadow(0 0 28px #ff5a3a); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .building-downgrade { animation: none; filter: drop-shadow(0 0 5px #ff3a1a) drop-shadow(0 0 10px #ff3a1a); }
+  .building-downgrade { animation: none; filter: drop-shadow(0 0 12px #ff2a14) drop-shadow(0 0 24px #ff5a3a); }
 }
 
 /* ---- 港 ---- */
@@ -517,14 +513,20 @@ h1 {
 .edge-line.ship-valid:hover { stroke: rgba(150, 220, 255, 1); }
 .ship-preview { stroke-width: 8; stroke-dasharray: 9 6; stroke-linecap: round; pointer-events: none; }
 
+/* 選択候補タイル（盗賊/商人/発明家など）。黄色の太枠＋強い発光＋点滅で「ここを選ぶ」と明示。 */
 .hex-tile.valid-robber {
   cursor: pointer;
-  filter: brightness(1.35);
-  stroke: #ffdd44;
-  stroke-width: 3;
+  stroke: #ffe24a;
+  stroke-width: 5;
+  animation: tileValidPulse 1s ease-in-out infinite;
 }
-.hex-tile.valid-robber:hover {
-  filter: brightness(1.6);
+@keyframes tileValidPulse {
+  0%,100% { stroke-width: 5; filter: brightness(1.4)  drop-shadow(0 0 8px #ffe24a)  drop-shadow(0 0 16px #ffd02a); }
+  50%     { stroke-width: 8; filter: brightness(1.6)  drop-shadow(0 0 16px #ffe24a) drop-shadow(0 0 30px #ffd02a); }
+}
+.hex-tile.valid-robber:hover { filter: brightness(1.7) drop-shadow(0 0 18px #ffe24a); }
+@media (prefers-reduced-motion: reduce) {
+  .hex-tile.valid-robber { animation: none; filter: brightness(1.5) drop-shadow(0 0 14px #ffe24a) drop-shadow(0 0 26px #ffd02a); }
 }
 
 /* ---- タッチ用の透明な当たり判定（候補のみに重ねる） ----
@@ -545,8 +547,7 @@ h1 {
   .vertex-dot.valid { r: 9; stroke-width: 2.5; }
   .edge-line.valid  { stroke-width: 11; }
   .edge-line.ship-valid { stroke-width: 11; }
-  /* 盗賊候補タイルもタッチ時はより強調 */
-  .hex-tile.valid-robber { stroke-width: 4; filter: brightness(1.45); }
+  /* 候補タイルはタッチ時、点滅アニメ(tileValidPulse)に任せる（ここでは上書きしない） */
 }
 
 /* ---- 建設フィードバック(C-4): 開拓地/都市のスケールイン、道の描画 ---- */

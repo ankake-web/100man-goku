@@ -514,20 +514,31 @@ function renderVertices(
       setAttrs(shadow, { cx: vx, cy: by, rx: w * (isMetro ? 0.32 : isCity ? 0.30 : 0.26), ry: w * 0.06,
         fill: 'rgba(0,0,0,0.30)', stroke: 'none' });
       vg.appendChild(shadow);
+      const href = isMetro ? METROPOLIS_IMG[ckey]! : isCity ? CITY_IMG[ckey]! : HOUSE_IMG[ckey]!;
+      const ix = vx - w / 2, iy = by - w * 0.9;
+      // 騎士と商人: 城壁付きの都市は「コマの形に沿った黒いフチ」で囲って壁ありを示す。
+      // 同じ城画像を真っ黒(brightness 0)にして一回り大きく後ろへ敷く＝シルエットの黒縁。
+      // ※ CSS filter の drop-shadow は viewBox 縮小で消えるため、画像サイズ基準のこの方式にする。
+      const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
+      if (hasWall) {
+        const ow = w * 1.18;
+        const ocx = vx, ocy = iy + w / 2; // 本体画像の中心に合わせる
+        const outline = svgEl('image');
+        setAttrs(outline, { x: ocx - ow / 2, y: ocy - ow / 2, width: ow, height: ow, preserveAspectRatio: 'xMidYMid meet' });
+        outline.setAttribute('href', href);
+        outline.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
+        outline.classList.add('city-wall-outline');
+        vg.appendChild(outline);
+      }
       // フィギュア画像（足元 by が下に来るよう配置）
       const img = svgEl('image');
-      const href = isMetro ? METROPOLIS_IMG[ckey]! : isCity ? CITY_IMG[ckey]! : HOUSE_IMG[ckey]!;
-      setAttrs(img, { x: vx - w / 2, y: by - w * 0.9, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
+      setAttrs(img, { x: ix, y: iy, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
       img.setAttribute('href', href);
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
       img.classList.add('building-img');
       // 蛮族敗北の格下げ対象は赤い危険ハイライト、それ以外の有効ターゲット（都市化等）は緑。
-      // 騎士と商人: 城壁付きの都市は「コマの形に沿った黒いフチ」で囲って壁ありを示す。
-      // 格下げ(赤)中はそちらを優先（city-wall は filter で黒フチ、building-downgrade は赤発光で排他）。
-      const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
       if (opts?.downgradeVertexIds?.has(vertex.id)) img.classList.add('building-downgrade');
       else if (isValid) img.classList.add('building-valid');
-      else if (hasWall) img.classList.add('building-walled');
       vg.appendChild(img);
     } else if (vertex.knight) {
       // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。

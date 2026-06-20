@@ -131,7 +131,7 @@ export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   mining: '建物に隣接する山1つにつき鉱石2',
   alchemist: '次のダイスの目を自分で決めてから振る',
   crane: '都市の改善トラック（交易/政治/科学）を1段、必要な商品より1個少なく上げる',
-  inventor: '数字トークン2枚を入れ替え（自分に有利に）',
+  inventor: '数字トークン2枚を入れ替え（2/6/8/12以外）',
   medicine: '開拓地を都市に格上げ（通常より安い 麦1＋鉱石2 で）',
   printer: '即座に+1勝利点',
   road_building_progress: '道を2本まで無料で建設',
