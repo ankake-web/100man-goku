@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -216,6 +216,25 @@ export function nearestMerchantTileId(
   return best;
 }
 
+/** 点(x,y)に最も近い「発明家で入替可能なタイル」を返す（数字あり・2/12/6/8以外）。なければ null。 */
+export function nearestInventorTileId(
+  state: GameState, x: number, y: number, maxDist = 70,
+): string | null {
+  const valid = new Set(inventorTiles(state));
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const tid of valid) {
+    const vids = state.tileToVertices[tid] ?? [];
+    let cx = 0, cy = 0, n = 0;
+    for (const vid of vids) { const v = state.vertices[vid]; if (v) { cx += v.pixel.x; cy += v.pixel.y; n++; } }
+    if (n === 0) continue;
+    cx /= n; cy /= n;
+    const d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+    if (d <= bestD) { bestD = d; best = tid; }
+  }
+  return best;
+}
+
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -282,6 +301,9 @@ export function attachBoardEvents(
   // 騎士と商人・騎士移動モード: 選択中の移動元頂点。
   getMoveKnightFrom: () => string | null = () => null,
   setMoveKnightFrom: (vid: string | null) => void = () => {},
+  // 騎士と商人・発明家(inventorSwap)モード: 1枚目に選んだタイルID。
+  getInventorFirst: () => string | null = () => null,
+  setInventorFirst: (tid: string | null) => void = () => {},
 ): void {
   svg.addEventListener('click', (e) => {
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
@@ -388,6 +410,22 @@ export function attachBoardEvents(
       else if (tid && !new Set(merchantTileIds(state, pid)).has(tid)) tid = null; // 候補外の直接ヒットは無効
       const card = state.players[pid]?.progressCards?.find(c => c.type === 'merchant');
       if (tid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { merchantTileId: tid } });
+      return;
+    }
+
+    // ---- 騎士と商人: 発明家カードの数字入替（光った2タイルを順にタップ → PLAY_PROGRESS）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'inventorSwap') {
+      const pti = clickToBoardPixel(svg, e.clientX, e.clientY);
+      let tid = (e.target as SVGElement).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
+      if (!tid && pti) tid = nearestInventorTileId(state, pti.x, pti.y);
+      else if (tid && !new Set(inventorTiles(state)).has(tid)) tid = null; // 入替不可タイルの直接ヒットは無効
+      if (!tid) { if (getInventorFirst()) setInventorFirst(null); return; } // 空タップで選択解除
+      const first = getInventorFirst();
+      if (!first) { setInventorFirst(tid); return; }       // 1枚目を選択
+      if (tid === first) { setInventorFirst(null); return; } // 同じタイル再タップ＝解除
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'inventor');
+      if (card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { inventorTiles: [first, tid] } });
+      setInventorFirst(null);
       return;
     }
 
