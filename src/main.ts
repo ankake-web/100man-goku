@@ -2396,7 +2396,6 @@ interface DiceEventInfo {
   draws: Array<{ name: string; level: number; threshold: number; eligible: boolean; drew: boolean }> | null;
 }
 
-const EVENT_LABEL: Record<string, string> = { ship: '🛶', trade: '商', politics: '政', science: '科' };
 
 /** ロール前後のstateからイベントダイスの可視化情報を導出。非CK or 情報なしは null。 */
 function buildDiceEventInfo(prev: GameState, next: GameState): DiceEventInfo | null {
@@ -2492,10 +2491,13 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
   } else {
     // 色ゲート（交易/政治/科学）の進歩カード抽選。スマホで見切れないよう、全員の
     // しきい値詳細は出さず「誰が貰えたか」だけを簡潔に出す（誰も貰えなければ1行）。
-    const color = info.eventDie;
+    const color = info.eventDie; // この分岐では 'ship' ではなく CkTrack（交易/政治/科学）
     const title = document.createElement('div');
     title.className = `dep-title ev-${color}`;
-    title.textContent = `${EVENT_LABEL[color]} ${CK_TRACK_NAME[color]}の進歩カード`;
+    // 先頭の「科」等の漢字ラベルはカッコ悪いので、そのトラックのアイコン画像にする。
+    const icon = document.createElement('img');
+    icon.className = 'dep-ev-icon'; icon.src = ASSETS.trackIcon[color]; icon.alt = ''; icon.draggable = false;
+    title.append(icon, document.createTextNode(` ${CK_TRACK_NAME[color]}の進歩カード`));
     panel.appendChild(title);
     const winners = (info.draws ?? []).filter(r => r.drew);
     if (winners.length === 0) {
@@ -2841,6 +2843,8 @@ function dispatch(action: Action): void {
     {
       const actorPid = action.type === 'DISCARD_RESOURCES' ? action.playerId
         : action.type === 'CHOOSE_GOLD' ? action.playerId
+        : action.type === 'DOWNGRADE_CITY' ? action.playerId
+        : action.type === 'DISCARD_PROGRESS' ? action.playerId
         : action.type === 'RESPOND_TRADE' ? action.response.playerId
         : prevState.playerOrder[prevState.currentPlayerIndex];
       if (actorPid === selfPlayerId()) vibrateForAction(action);
@@ -3522,10 +3526,16 @@ function netDispatch(action: Action): void {
   if (diceAnimating) return;
   if (!lanClient || !viewerPlayerId) return;
   if (!LAN_CLIENT_ALLOWED.has(action.type)) return; // 未対応操作は送らない
-  // actor（操作者）が自分か。捨て札・交易応答は対象本人、それ以外は手番プレイヤー。
+  // actor（操作者）が自分か。多人数解決（捨て札/金/都市格下げ/進歩カード捨て）は手番に関係なく
+  // action.playerId が操作者。交易応答は応答者。それ以外は手番プレイヤー。
+  // ※ DOWNGRADE_CITY/DISCARD_PROGRESS を入れ忘れると、蛮族襲来が他人の手番で起きた時に viewer の
+  //   格下げ操作が currentPid 判定で弾かれ「オンラインだと格下げできない」原因になる（サーバの
+  //   requiredActor と一致させる）。
   const actor =
     action.type === 'DISCARD_RESOURCES' ? action.playerId :
     action.type === 'CHOOSE_GOLD'       ? action.playerId :
+    action.type === 'DOWNGRADE_CITY'    ? action.playerId :
+    action.type === 'DISCARD_PROGRESS'  ? action.playerId :
     action.type === 'RESPOND_TRADE'     ? action.response.playerId :
     currentPid(state);
   if (actor !== viewerPlayerId) return; // 自分の操作できる場面のみ送信

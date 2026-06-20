@@ -78,4 +78,19 @@ describe('盤面描画（jsdom）: 騎士と商人のコマ', () => {
     const img = mp?.querySelector('image');
     expect(img?.getAttribute('href')).toBeTruthy();
   });
+
+  it('downgradeVertexIds の都市に .building-downgrade（赤ハイライト）を付ける', () => {
+    const s: GameState = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'cities_knights');
+    const vids = Object.keys(s.vertices);
+    const cityVid = vids[5]!;
+    const s2: GameState = {
+      ...s,
+      vertices: { ...s.vertices, [cityVid]: { ...s.vertices[cityVid]!, building: { type: 'city', playerId: 'player1' } } },
+    };
+    const svg = svgEl();
+    renderBoard(svg, s2, { downgradeVertexIds: new Set([cityVid]) });
+    const dg = svg.querySelector('.building-downgrade');
+    expect(dg).not.toBeNull();
+    expect(dg?.tagName.toLowerCase()).toBe('image');
+  });
 });

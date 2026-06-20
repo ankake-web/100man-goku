@@ -2629,6 +2629,8 @@ h1 {
 }
 .dep-title { font-size: 1.05rem; font-weight: 800; text-align: center; margin-bottom: 6px; }
 .dep-title.ev-trade { color: #ffd24d; } .dep-title.ev-politics { color: #7fa9ff; } .dep-title.ev-science { color: #7fe0a0; }
+/* イベント結果の見出しに付くトラックアイコン（漢字ラベルの代わり）。 */
+.dep-ev-icon { width: 1.3em; height: 1.3em; object-fit: contain; vertical-align: -0.28em; }
 .dep-track { display: flex; gap: 5px; justify-content: center; margin: 6px 0; }
 .dep-pip { width: 15px; height: 15px; border-radius: 50%; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.3); transition: transform .2s; }
 .dep-pip.on { background: #ffcf4d; }
