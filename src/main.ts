@@ -897,7 +897,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       return { text: state.setupSubPhase === 'PLACE_ROAD' ? '🛤 道を配置' : '🏠 開拓地を配置', alert: false };
     }
     if (state.turnPhase === 'PRE_ROLL') return { text: '🎲 ダイス', alert: false };
-    if (state.turnPhase === 'ROBBER')   return { text: '🦹 盗賊', alert: false };
+    if (state.turnPhase === 'ROBBER')   return { text: '🦹 盗賊を移動するタイルをタップ', alert: true };
     if (state.turnPhase === 'TRADE_BUILD') {
       if (buildMode === 'road')       return { text: '🛤 道を配置', alert: false };
       if (buildMode === 'ship')       return { text: '🚢 船を配置', alert: false };
@@ -2648,7 +2648,12 @@ function dispatch(action: Action): void {
     if (
       action.type === 'BUILD_ROAD' ||
       action.type === 'BUILD_SETTLEMENT' ||
-      action.type === 'BUILD_CITY'
+      action.type === 'BUILD_CITY' ||
+      // 騎士と商人: 配置/起動/昇格/城壁の後もモードが残り「ボタンが光りっぱなし」になる不具合の修正。
+      action.type === 'BUILD_KNIGHT' ||
+      action.type === 'ACTIVATE_KNIGHT' ||
+      action.type === 'UPGRADE_KNIGHT' ||
+      action.type === 'BUILD_CITY_WALL'
     ) {
       buildMode = 'idle';
     }

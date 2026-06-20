@@ -715,6 +715,57 @@ describe('C&K 追加進歩カード', () => {
     expect(canPlayProgress(g, 'player1', 'rm')).toBe(true); // 相手 handCount=5
   });
 
+  it('全進歩カード: 効果が空でも例外なく使えてカードが消費される（空撃ち安全性）', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    // 25種すべて。相手は何も持たない＝多くは効果なし。bishopのみ盗賊凍結解除(barb=1)が必要。
+    const cards: Array<{ type: string; deck: string; phase: 'TRADE_BUILD' | 'PRE_ROLL'; barb?: number }> = [
+      { type: 'bishop', deck: 'politics', phase: 'TRADE_BUILD', barb: 1 },
+      { type: 'diplomat', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'intrigue', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'deserter', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'warlord', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'spy', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'saboteur', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'wedding', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'constitution', deck: 'politics', phase: 'TRADE_BUILD' },
+      { type: 'alchemist', deck: 'science', phase: 'PRE_ROLL' },
+      { type: 'crane', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'engineer', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'inventor', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'irrigation', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'medicine', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'mining', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'road_building_progress', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'smith', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'printer', deck: 'science', phase: 'TRADE_BUILD' },
+      { type: 'merchant', deck: 'trade', phase: 'TRADE_BUILD' },
+      { type: 'merchant_fleet', deck: 'trade', phase: 'TRADE_BUILD' },
+      { type: 'master_merchant', deck: 'trade', phase: 'TRADE_BUILD' },
+      { type: 'commercial_harbor', deck: 'trade', phase: 'TRADE_BUILD' },
+      { type: 'resource_monopoly', deck: 'trade', phase: 'TRADE_BUILD' },
+      { type: 'trade_monopoly', deck: 'trade', phase: 'TRADE_BUILD' },
+    ];
+    for (const { type, deck, phase, barb } of cards) {
+      const g = makeGameState({
+        expansion: 'cities_knights', phase: 'MAIN', turnPhase: phase, currentPlayerIndex: 0,
+        barbarianAttacks: barb ?? 0, diceRolledThisTurn: phase === 'TRADE_BUILD',
+        players: {
+          player1: makePlayer('player1', { progressCards: [{ id: 'c', type, deck } as never] }),
+          player2: makePlayer('player2'),
+        },
+        playerOrder: ['player1', 'player2'],
+      } as Partial<GameState>);
+      const choice = type === 'alchemist' ? { dice: [3, 4] as const } : undefined;
+      try {
+        const r = applyAction(g, { type: 'PLAY_PROGRESS', cardId: 'c', ...(choice ? { choice } : {}) }, createRng(1));
+        expect((r.players.player1!.progressCards ?? []).length).toBe(0); // 消費される
+      } catch (e) {
+        throw new Error(`progress card "${type}" failed when wasted: ${(e as Error).message}`);
+      }
+    }
+  });
+
   it('spy: 手札4枚(spy含む)でも使え、使用後はちょうど4枚（5枚にならない）', async () => {
     const { playProgress, canPlayProgress } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');

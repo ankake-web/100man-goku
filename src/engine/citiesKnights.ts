@@ -854,6 +854,25 @@ export function canPlayProgress(state: GameState, pid: PlayerId, cardId: string)
   }
 }
 
+/**
+ * 人間が「効果が空でも進歩カードを使える（消費される）」ための緩い判定。
+ * 構造/フェーズ条件のみ（手札にある・正しいフェーズ・盗賊凍結中のbishop不可）。効果の成立は問わない。
+ * applyAction の受理と人間UIの有効化に使う。CPUは従来の canPlayProgress（効果が成立する時だけ）で判断する。
+ */
+export function canPlayProgressLoose(state: GameState, pid: PlayerId, cardId: string): boolean {
+  if (!isCk(state)) return false;
+  const p = state.players[pid]; if (!p) return false;
+  const card = (p.progressCards ?? []).find(c => c.id === cardId);
+  if (!card) return false;
+  // 通常は TRADE_BUILD、錬金術師(次のダイス指定)のみ PRE_ROLL。
+  const okPhase = state.phase === 'MAIN'
+    && (state.turnPhase === 'TRADE_BUILD' || (card.type === 'alchemist' && state.turnPhase === 'PRE_ROLL'));
+  if (!okPhase) return false;
+  // 盗賊は初回の蛮族襲来まで凍結。bishop だけは空撃ち不可（凍結中の盗賊を動かさない）。
+  if (card.type === 'bishop' && (state.barbarianAttacks ?? 0) < 1) return false;
+  return true;
+}
+
 /** 進歩カードを使用して効果を適用（バリデーション済み前提）。カードは手札から除去。 */
 export function playProgress(state: GameState, pid: PlayerId, cardId: string, rng: () => number, choice?: ProgressChoice): GameState {
   const p0 = state.players[pid]!;
