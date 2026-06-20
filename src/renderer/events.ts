@@ -170,6 +170,14 @@ export function nearestActivateKnightVertexId(state: GameState, pid: PlayerId, x
 export function nearestUpgradeKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   return nearestVertexMatching(state, vid => canUpgradeKnight(state, pid, vid), x, y, maxDist);
 }
+/** 点(x,y)に最も近い「格下げ対象の平の都市」頂点を返す（蛮族敗北・対象プレイヤーの都市のみ）。 */
+export function nearestDowngradableCityId(state: GameState, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const pending = new Set(state.pendingCityDowngrade ?? []);
+  return nearestVertexMatching(state, vid => {
+    const b = state.vertices[vid]?.building;
+    return !!b && b.type === 'city' && !b.metropolis && pending.has(b.playerId);
+  }, x, y, maxDist);
+}
 
 /** 点(x,y)に最も近いタイル（中心=頂点平均）のIDを maxDist 内で返す。盗賊のタイル選択スナップ用。 */
 export function nearestTileId(
@@ -276,6 +284,15 @@ export function attachBoardEvents(
         if (pt) tileId = nearestTileId(state, pt.x, pt.y);
       }
       if (tileId) handleTileClick(tileId, state, pid, setUIPhase, dispatch);
+      return;
+    }
+
+    // ---- 騎士と商人: 蛮族敗北の都市格下げ。盤面で（自分の）光った都市をタップ → DOWNGRADE_CITY ----
+    if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
+      const ptd = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = ptd ? nearestDowngradableCityId(state, ptd.x, ptd.y) : null;
+      const owner = vid ? state.vertices[vid]?.building?.playerId : null;
+      if (vid && owner) dispatch({ type: 'DOWNGRADE_CITY', playerId: owner, vertexId: vid });
       return;
     }
 
