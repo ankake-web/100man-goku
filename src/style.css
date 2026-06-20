@@ -2130,6 +2130,28 @@ h1 {
   #turn-toast { animation: none; }
 }
 
+/* 盤面メッセージ（交易の申し込みなどの通知。中央上に短く表示） */
+#board-notice {
+  position: absolute;
+  top: 13%; left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 9px 20px;
+  border-radius: 999px;
+  background: rgba(12,14,20,0.93);
+  border: 1.5px solid var(--turn-color, #e0a948);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.55), 0 0 16px rgba(224,169,72,0.45);
+  color: #fff; font-weight: 800; font-size: 1rem;
+  white-space: nowrap; pointer-events: none;
+  max-width: clamp(220px, 90vw, 360px);   /* 長い名前でも端末幅を越えない */
+  overflow: hidden; text-overflow: ellipsis;
+  animation: boardNoticeIn 0.3s ease-out, turnToastOut 0.5s ease-in 1.7s forwards;
+}
+@keyframes boardNoticeIn { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  #board-notice { animation: none; }
+}
+
 /* ---- 称号バッジの移動演出(C-7): 旧保持者→新保持者へ飛ぶ ---- */
 .badge-fly {
   position: fixed;
@@ -2395,6 +2417,8 @@ h1 {
   pointer-events: none;
   overflow: hidden;              /* 子のはみ出しでページにスクロールを作らない（モバイルのURLバー出現→画面縮みを防止） */
 }
+/* CK: イベント結果パネルを下に出す回は、ダイス＋パネルを中央寄せにして跳ね上がりを抑える。 */
+.dice-roll-overlay.has-event { justify-content: center; padding-bottom: 0; }
 /* ロール中だけ盤を沈める（背後の盤を減光＋減彩＋スポット）。blur は外して合成負荷とガタつきを抑える。 */
 .dice-board-dim {
   position: absolute;

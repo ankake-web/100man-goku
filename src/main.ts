@@ -2165,12 +2165,32 @@ function maybeScrollToTradeOffer(prevState: GameState, newState: GameState): voi
     return !!(t && t.state === 'TRADE_RESPONSE' && t.targetPlayerIds.includes(me) && !t.responses[me]);
   };
   if (offerForMe(newState) && !offerForMe(prevState)) {
-    requestAnimationFrame(() => {
+    // まず盤面に「交易の申し込み」メッセージを出して気づかせ、その後ゆっくり提案UIへスクロールする。
+    const t = newState.pendingTrade;
+    const proposer = t ? newState.players[t.initiatorId]?.name : null;
+    showBoardNotice(`🤝 ${proposer ?? '相手'}から交易の申し込み`);
+    setTimeout(() => {
+      // 800ms の間に交易が解決/取消された場合はスクロールしない（古いスクロール抑止）。
+      if (state && !offerForMe(state)) return;
       const target = (document.querySelector('.turn-panel .modal-panel')
         ?? document.querySelector('.turn-panel')) as HTMLElement | null;
       target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    });
+    }, 800);
   }
+}
+
+// 盤面メッセージ（中央上に短く出す汎用トースト。交易申し込みなどの通知に使う）。
+// レイアウトは崩さない absolute 配置。約2.2秒で自動消滅。
+function showBoardNotice(text: string, color = '#e0a948'): void {
+  const host = document.getElementById('board-area');
+  if (!host) return;
+  document.getElementById('board-notice')?.remove();
+  const n = document.createElement('div');
+  n.id = 'board-notice';
+  n.style.setProperty('--turn-color', color);
+  n.textContent = text;
+  host.appendChild(n);
+  setTimeout(() => n.remove(), 2200);
 }
 
 function maybeYourTurnCue(prevState: GameState, newState: GameState): void {
@@ -2394,6 +2414,9 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
   const dim = showBoardDim(instant);                 // ① ロール中だけ盤を沈める（off/抑制は軽い減光）
   const overlay = document.createElement('div');
   overlay.className = 'dice-roll-overlay';
+  // イベント結果パネルをサイコロの「下」に出す回（CK）は、ダイス＋パネルを中央寄せにして
+  // パネル出現時にダイスが大きく跳ね上がって見えるのを防ぐ（通常ロールは従来どおり下寄せ）。
+  if (eventInfo) overlay.classList.add('has-event');
   // ダイスと合計を1枚の「結果カード」にまとめ、ダイスが面に乗っているように見せる（浮き防止）。
   const card = document.createElement('div'); card.className = 'dice-result-card';
   const glWrap = document.createElement('div'); glWrap.className = 'dice-gl-wrap';
@@ -2413,10 +2436,11 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
     if (done) return; done = true;
     overlay.remove(); hideBoardDim(dim); gl?.reset(); onDone();
   };
-  // 結果パネル＋（船=警告フラッシュ / 色=wash＋抽選照合）。パネルは上に挿入してダイスを動かさない。
+  // 結果パネル＋（船=警告フラッシュ / 色=wash＋抽選照合）。
+  // パネルはサイコロ枠の「下」に出す（上に出すと画面上端で見切れていたため）。
   const showPanelAndFlourish = (): void => {
     if (!eventInfo) return;
-    overlay.insertBefore(buildEventResolutionPanel(eventInfo), overlay.firstChild);
+    overlay.appendChild(buildEventResolutionPanel(eventInfo));
     applyEventFlourish(eventInfo);
   };
 
@@ -2916,7 +2940,7 @@ function updateZoomControls(): void {
 // ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
 function clearTransientFx(): void {
   document
-    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast')
+    .querySelectorAll('.dice-roll-overlay, .dice-board-dim, .dice-color-wash, .res-fly, .robber-fly, .steal-card, .badge-fly, .vp-pop, .bonus-pop, #turn-toast, #board-notice')
     .forEach(n => n.remove());
 }
 
