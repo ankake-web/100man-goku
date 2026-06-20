@@ -15,8 +15,8 @@
 // 単一端末のローカルCPU経路（main.ts）には一切触れない（CPU戦は無傷）。
 
 import type { GameState, Action, PlayerId } from '../types';
-import { RESOURCE_TYPES } from '../constants';
 import { chooseAction, evaluateTradeOffer, chooseStealTarget } from './ai';
+import { discardCount } from './robber';
 import { canBuildSettlement, canBuildRoad } from './actions';
 
 export interface CpuStep {
@@ -57,15 +57,17 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     return null; // 人間起案の応答収集中 / 人間の確定待ち
   }
 
-  // ---- 捨て札（手番に関わらず 8枚以上の CPU を1人ずつ処理）----
+  // ---- 捨て札（手番に関わらず 上限超の CPU を1人ずつ処理）----
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     // 捨て札済み(discardedThisRound)の CPU は除外する。16枚以上から半分捨てても8枚以上
     // 残るため、これが無いと同じ CPU を再選択し続け、エンジンの二重捨てガードで
     // 全アクションが拒否されてサーバの CPU 駆動が恒久停止する（デッドロック）。
+    // 判定はエンジンの discardCount（騎士と商人は資源＋商品で数える）で行う。資源のみで
+    // 数えると、商品込みで上限超の CPU が選ばれず捨て札フェーズが永久に終わらない（盗賊へ進めない）。
     const dpid = state.playerOrder.find(p =>
       isCpu(state, p)
       && !(state.discardedThisRound ?? []).includes(p)
-      && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8,
+      && discardCount(state, p) > 0,
     );
     if (dpid) {
       const action = chooseAction(state, dpid, { rng });
