@@ -11,7 +11,7 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
-  playerHasMovableKnight, playerHasChasableKnight, inventorTiles,
+  playerHasMovableKnight, playerHasChasableKnight, inventorTiles, plainCityVertexIds,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
@@ -537,6 +537,31 @@ function buildBankTradeUI(
   }
 
   div.appendChild(makeBtn('✕ キャンセル', 'btn-end', false, () => setUIPhase({ type: 'idle' })));
+  return div;
+}
+
+// ============================================================
+// 騎士と商人: 蛮族敗北での都市格下げ選択
+// ============================================================
+// 自分の「平の都市」一覧から1つ選んで開拓地へ格下げ。どの都市かは隣接タイルの数字で識別。
+function buildCityDowngradeUI(state: GameState, pid: PlayerId, dispatch: (a: Action) => void): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+  const header = el('div', 'modal-header');
+  header.textContent = '⚔ 蛮族に敗北：格下げする都市を選ぶ';
+  div.appendChild(header);
+  div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: 'あなたの都市が1つ開拓地に格下げされます' }));
+  const row = el('div', 'modal-res-row');
+  for (const vid of plainCityVertexIds(state, pid)) {
+    const nums: number[] = [];
+    for (const [tid, vids] of Object.entries(state.tileToVertices)) {
+      const n = state.tiles[tid]?.number;
+      if (vids.includes(vid) && n != null) nums.push(n);
+    }
+    const label = `都市（隣接 ${nums.sort((a, b) => a - b).join('・') || '—'}）`;
+    row.appendChild(makeImgBtn(cityImg(PLAYER_COLOR_KEY[pid] ?? 'red'), label, 'btn-build', false,
+      () => dispatch({ type: 'DOWNGRADE_CITY', playerId: pid, vertexId: vid })));
+  }
+  div.appendChild(row);
   return div;
 }
 
@@ -1603,6 +1628,16 @@ function buildActionButtons(
     if (!gpid || state.players[gpid]?.type !== 'human') return null;
     if (lanMode && viewerId != null && viewerId !== gpid) return null; // LANは自分の分のみ
     div.appendChild(buildGoldChoiceUI(state, gpid, uiPhase, setUIPhase, dispatch));
+    return div;
+  }
+
+  // ---- 騎士と商人: 蛮族敗北での都市格下げ選択（DISCARD と同様の多人数解決）----
+  if (state.turnPhase === 'CITY_DOWNGRADE') {
+    const pending = state.pendingCityDowngrade ?? [];
+    // 自分（LAN=viewer / ローカル=最初の人間対象）が対象なら格下げUIを出す。CPU分は自動解決。
+    const me = lanMode && viewerId != null ? viewerId : pending.find(p => state.players[p]?.type === 'human');
+    if (!me || !pending.includes(me)) return null;
+    div.appendChild(buildCityDowngradeUI(state, me, dispatch));
     return div;
   }
 

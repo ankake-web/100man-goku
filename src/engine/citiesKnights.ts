@@ -381,6 +381,7 @@ export function resolveBarbarianAttack(state: GameState): GameState {
   let players = { ...state.players };
   let vertices = { ...state.vertices };
   let progressDecks = state.progressDecks;
+  let pendingDowngrade: PlayerId[] = [];
 
   if (total >= cities) {
     // 防衛成功。
@@ -414,18 +415,11 @@ export function resolveBarbarianAttack(state: GameState): GameState {
     // max===0（貢献0のみ）→ 報酬なし。
   } else {
     // 防衛失敗: 平の都市を持つプレイヤーのうち最弱(同点は全員)が都市1つを開拓地に格下げ。
+    // どの都市を格下げするかは各自が選ぶ（CITY_DOWNGRADE フェーズ）。ここでは対象者だけ確定する。
     const owners = state.playerOrder.filter(p => playerHasPlainCity({ ...state, vertices }, p));
     if (owners.length > 0) {
       const minStr = Math.min(...owners.map(p => knightStr[p] ?? 0));
-      for (const p of owners) {
-        if ((knightStr[p] ?? 0) !== minStr) continue;
-        const vid = Object.keys(vertices).find(id =>
-          vertices[id]!.building?.playerId === p && vertices[id]!.building?.type === 'city' && !vertices[id]!.building?.metropolis);
-        if (vid) {
-          vertices[vid] = { ...vertices[vid]!, building: { type: 'settlement', playerId: p } };
-          players[p] = { ...players[p]!, remainingCities: players[p]!.remainingCities + 1, remainingSettlements: Math.max(0, players[p]!.remainingSettlements - 1) };
-        }
-      }
+      pendingDowngrade = owners.filter(p => (knightStr[p] ?? 0) === minStr);
     }
   }
 
@@ -438,6 +432,27 @@ export function resolveBarbarianAttack(state: GameState): GameState {
   return {
     ...state, players, vertices, barbarianPosition: 0, barbarianAttacks: (state.barbarianAttacks ?? 0) + 1,
     ...(progressDecks !== state.progressDecks ? { progressDecks } : {}),
+    ...(pendingDowngrade.length > 0 ? { pendingCityDowngrade: pendingDowngrade } : {}),
+  };
+}
+
+/** 指定プレイヤーの「格下げ可能な都市」（平の都市＝メトロポリスでない）頂点ID一覧。UI/AIの選択肢。 */
+export function plainCityVertexIds(state: GameState, pid: PlayerId): string[] {
+  return Object.keys(state.vertices).filter(id => {
+    const b = state.vertices[id]?.building;
+    return b?.playerId === pid && b.type === 'city' && !b.metropolis;
+  });
+}
+
+/** 蛮族敗北での都市格下げ（都市→開拓地）。pid本人の平の都市のみ。違法なら state を返す（無害）。 */
+export function downgradeCity(state: GameState, pid: PlayerId, vid: VertexId): GameState {
+  const v = state.vertices[vid];
+  if (!v || v.building?.playerId !== pid || v.building.type !== 'city' || v.building.metropolis) return state;
+  const p = state.players[pid]!;
+  return {
+    ...state,
+    vertices: { ...state.vertices, [vid]: { ...v, building: { type: 'settlement', playerId: pid } } },
+    players: { ...state.players, [pid]: { ...p, remainingCities: p.remainingCities + 1, remainingSettlements: Math.max(0, p.remainingSettlements - 1) } },
   };
 }
 

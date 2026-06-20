@@ -32,6 +32,8 @@ function playToEnd(scenario: ScenarioId, seed: number): GameState {
       pid = findPendingDiscarder(s) ?? pid; // 騎士と商人は商品も計上するためエンジン判定に委譲
     } else if (s.phase === 'MAIN' && s.turnPhase === 'GOLD') {
       pid = s.playerOrder.find(p => ((s.pendingGoldChoice ?? {})[p] ?? 0) > 0) ?? pid;
+    } else if (s.phase === 'MAIN' && s.turnPhase === 'CITY_DOWNGRADE') {
+      pid = (s.pendingCityDowngrade ?? [])[0] ?? pid; // 蛮族敗北の都市格下げは対象プレイヤーが解決
     }
     const action = chooseAction(s, pid, { rng });
     if (!action) break;

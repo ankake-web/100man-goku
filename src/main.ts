@@ -10,7 +10,7 @@ import { createInitialGameState } from './engine/createState';
 import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
 import { applyAction, setupGainFor } from './engine/game';
-import { findPendingDiscarder } from './engine/robber';
+import { findPendingDiscarder, discardCount } from './engine/robber';
 import {
   playSE, bgmStart, bgmStop, bgmSetVolume, setBgmTrack, BGM_TRACKS,
   isBgmEnabled, setBgmEnabled, getBgmVolume, getBgmTrack, isSeEnabled, setSeEnabled,
@@ -1393,22 +1393,13 @@ function safeFallbackAction(): Action | null {
     }
     return null;
   }
-  // 捨て札（CPUが対象のとき、大きい山から半数を捨てる）
+  // 捨て札（CPUが対象のとき）。判定・生成は chooseAction(chooseDiscard) に集約。
+  // 騎士と商人では資源＋商品で数える（資源のみだと商品込みのCPUが選ばれず捨て札が終わらない）。
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     const dpid = state.playerOrder.find(p => state.players[p]?.type === 'ai'
       && !(state.discardedThisRound ?? []).includes(p)
-      && RESOURCE_TYPES.reduce((s, r) => s + state.players[p]!.hand[r], 0) >= 8);
-    if (dpid) {
-      const hand = state.players[dpid]!.hand;
-      let toDiscard = Math.floor(RESOURCE_TYPES.reduce((s, r) => s + hand[r], 0) / 2);
-      const resources: Partial<ResourceHand> = {};
-      for (const r of [...RESOURCE_TYPES].sort((a, b) => hand[b] - hand[a])) {
-        if (toDiscard <= 0) break;
-        const take = Math.min(hand[r], toDiscard);
-        if (take > 0) { resources[r] = take; toDiscard -= take; }
-      }
-      return { type: 'DISCARD_RESOURCES', playerId: dpid, resources };
-    }
+      && discardCount(state, p) > 0);
+    if (dpid) return chooseAction(state, dpid);
     return null;
   }
   // 航海者: 金タイル産出の選択待ち（owed な CPU の選択を chooseAction で生成）。
@@ -1416,6 +1407,12 @@ function safeFallbackAction(): Action | null {
     const gpid = state.playerOrder.find(p => state.players[p]?.type === 'ai'
       && ((state.pendingGoldChoice ?? {})[p] ?? 0) > 0);
     if (gpid) return chooseAction(state, gpid);
+    return null;
+  }
+  // 騎士と商人: 蛮族敗北での都市格下げ待ち（対象 CPU の選択を chooseAction で生成）。
+  if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
+    const cpid = (state.pendingCityDowngrade ?? []).find(p => state.players[p]?.type === 'ai');
+    if (cpid) return chooseAction(state, cpid);
     return null;
   }
   const cur = state.playerOrder[state.currentPlayerIndex];

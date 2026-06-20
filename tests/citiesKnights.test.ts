@@ -115,6 +115,8 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
       let pid = s.playerOrder[s.currentPlayerIndex]!;
       if (s.phase === 'MAIN' && s.turnPhase === 'DISCARD') {
         pid = findPendingDiscarder(s) ?? pid; // 商品も計上するエンジン判定に委譲
+      } else if (s.phase === 'MAIN' && s.turnPhase === 'CITY_DOWNGRADE') {
+        pid = (s.pendingCityDowngrade ?? [])[0] ?? pid; // 蛮族敗北の都市格下げは対象が解決
       }
       const action = chooseAction(s, pid, { rng });
       if (!action) break;
@@ -258,6 +260,47 @@ describe('C&K 蛮族防衛の報酬', () => {
     const r = resolveBarbarianAttack(s);
     expect((r.players.player1!.progressCards ?? []).length).toBe(4); // 上限のため引かない
     expect((r.players.player2!.progressCards ?? []).length).toBe(1);
+  });
+
+  it('防衛失敗: 最弱の都市持ちは pendingCityDowngrade に入り、その場で格下げはしない（選択式）', async () => {
+    const { resolveBarbarianAttack } = await import('../src/engine/citiesKnights');
+    const s = barbState((g, vs) => ({
+      ...g,
+      vertices: { ...g.vertices, [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } } },
+    })); // 騎士なし → 防衛失敗
+    const r = resolveBarbarianAttack(s);
+    expect(r.pendingCityDowngrade).toEqual(['player1']);
+    const cityVid = Object.keys(r.vertices).find(v => r.vertices[v]!.building?.type === 'city');
+    expect(cityVid).toBeDefined(); // まだ都市のまま（格下げは選択後）
+  });
+
+  it('DOWNGRADE_CITY: 選んだ都市を格下げし、保留していた生産へ再開する', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const g0 = makeGameState({ expansion: 'cities_knights', players: { player1: makePlayer('player1'), player2: makePlayer('player2') }, playerOrder: ['player1', 'player2'] } as Partial<GameState>);
+    const cityVid = Object.keys(g0.vertices)[0]!;
+    const s: GameState = {
+      ...g0, phase: 'MAIN', turnPhase: 'CITY_DOWNGRADE', currentPlayerIndex: 0,
+      lastDiceRoll: [3, 2], barbarianAttacks: 1, pendingCityDowngrade: ['player1'],
+      vertices: { ...g0.vertices, [cityVid]: { ...g0.vertices[cityVid]!, building: { type: 'city', playerId: 'player1' } } },
+    };
+    const r = applyAction(s, { type: 'DOWNGRADE_CITY', playerId: 'player1', vertexId: cityVid }, createRng(1));
+    expect(r.vertices[cityVid]!.building!.type).toBe('settlement'); // 格下げ
+    expect(r.turnPhase).toBe('TRADE_BUILD');                        // 生産へ再開（total=5）
+    expect(r.pendingCityDowngrade ?? null).toBeNull();             // クリア
+  });
+
+  it('CITY_DOWNGRADE: CPU は自動で都市を選んで格下げする（デッドロックしない）', async () => {
+    const { chooseAction } = await import('../src/engine/ai');
+    const g0 = makeGameState({ expansion: 'cities_knights', players: { player1: makePlayer('player1', { type: 'ai' }), player2: makePlayer('player2') }, playerOrder: ['player1', 'player2'] } as Partial<GameState>);
+    const cityVid = Object.keys(g0.vertices)[0]!;
+    const s: GameState = {
+      ...g0, phase: 'MAIN', turnPhase: 'CITY_DOWNGRADE', pendingCityDowngrade: ['player1'],
+      vertices: { ...g0.vertices, [cityVid]: { ...g0.vertices[cityVid]!, building: { type: 'city', playerId: 'player1' } } },
+    };
+    const action = chooseAction(s, 'player1');
+    expect(action?.type).toBe('DOWNGRADE_CITY');
+    expect((action as { playerId: string }).playerId).toBe('player1');
   });
 });
 
