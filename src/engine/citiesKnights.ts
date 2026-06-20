@@ -382,6 +382,7 @@ export function resolveBarbarianAttack(state: GameState): GameState {
   let vertices = { ...state.vertices };
   let progressDecks = state.progressDecks;
   let pendingDowngrade: PlayerId[] = [];
+  const tieOverflow: PlayerId[] = []; // 同点撃退で進歩カード5枚目を引き、捨て札選択が要るプレイヤー
 
   if (total >= cities) {
     // 防衛成功。
@@ -393,7 +394,8 @@ export function resolveBarbarianAttack(state: GameState): GameState {
         const w = winners[0]!;
         players[w] = { ...players[w]!, defenderVP: (players[w]!.defenderVP ?? 0) + 1 };
       } else if (state.progressDecks) {
-        // 同点最大: 守護VPなし。各同点者が最も枚数の多いデッキから進歩カードを1枚引く（手札上限4まで）。
+        // 同点最大: 守護VPなし。各同点者が最も枚数の多いデッキから進歩カードを1枚引く。
+        // 公式: 上限(4)を超えても引いてよく、その場合は1枚を選んで捨てる（PROGRESS_DISCARD）。
         const work: Record<CkTrack, ProgressCard[]> = {
           trade: [...state.progressDecks.trade],
           politics: [...state.progressDecks.politics],
@@ -401,13 +403,14 @@ export function resolveBarbarianAttack(state: GameState): GameState {
         };
         let touched = false;
         for (const w of winners) {
-          const held = players[w]!.progressCards ?? [];
-          if (held.length >= PROGRESS_HAND_LIMIT) continue;
           const deck = chooseBarbarianTieDeck(work);
           if (!deck) continue;
+          const held = players[w]!.progressCards ?? [];
           const card = work[deck].shift()!;
-          players[w] = { ...players[w]!, progressCards: [...held, card] };
+          const newHeld = [...held, card];
+          players[w] = { ...players[w]!, progressCards: newHeld };
           touched = true;
+          if (newHeld.filter(c => !isVpProgress(c.type)).length > PROGRESS_HAND_LIMIT) tieOverflow.push(w);
         }
         if (touched) progressDecks = work;
       }
@@ -433,6 +436,28 @@ export function resolveBarbarianAttack(state: GameState): GameState {
     ...state, players, vertices, barbarianPosition: 0, barbarianAttacks: (state.barbarianAttacks ?? 0) + 1,
     ...(progressDecks !== state.progressDecks ? { progressDecks } : {}),
     ...(pendingDowngrade.length > 0 ? { pendingCityDowngrade: pendingDowngrade } : {}),
+    ...(tieOverflow.length > 0 ? { pendingProgressDiscard: tieOverflow } : {}),
+  };
+}
+
+/** 進歩カード上限超過時、pid が捨てる候補（非VPカード）のID一覧。VPカードは上限対象外なので捨てない。 */
+export function progressDiscardCandidates(state: GameState, pid: PlayerId): string[] {
+  return (state.players[pid]?.progressCards ?? []).filter(c => !isVpProgress(c.type)).map(c => c.id);
+}
+
+/** 進歩カードを1枚捨てる（DISCARD_PROGRESS）。pid本人の非VPカードのみ。違法なら state を返す（無害）。 */
+export function discardProgressCard(state: GameState, pid: PlayerId, cardId: string): GameState {
+  const p = state.players[pid];
+  if (!p) return state;
+  const card = (p.progressCards ?? []).find(c => c.id === cardId);
+  if (!card || isVpProgress(card.type)) return state; // VPカードは捨てられない
+  const decks = state.progressDecks;
+  // 捨てたカードは同種デッキの末尾へ戻す（山札枯渇を避ける・公式の捨て札に準拠）。
+  const nextDecks = decks ? { ...decks, [card.deck]: [...decks[card.deck], card] } : decks;
+  return {
+    ...state,
+    players: { ...state.players, [pid]: { ...p, progressCards: (p.progressCards ?? []).filter(c => c.id !== cardId) } },
+    ...(nextDecks ? { progressDecks: nextDecks } : {}),
   };
 }
 
@@ -496,6 +521,7 @@ function drawProgressCards(state: GameState, color: CkTrack, redDie: number): Ga
   if (deck.length === 0) return state;
   const players = { ...state.players };
   let changed = false;
+  const overflow: PlayerId[] = []; // 上限超過（5枚目を引いた）→ 捨て札選択が要るプレイヤー
   const n = state.playerOrder.length;
   const start = state.currentPlayerIndex ?? 0;
   for (let i = 0; i < n; i++) {
@@ -503,15 +529,19 @@ function drawProgressCards(state: GameState, color: CkTrack, redDie: number): Ga
     const p = players[pid]!;
     const lvl = p.improvements?.[color] ?? 0;
     if (lvl < 1 || lvl + 1 < redDie) continue;        // Lv0は不可。赤 ≦ Lv+1 のみ。
-    const held = p.progressCards ?? [];
-    // 勝利点カード(憲法/印刷機)は手札上限の対象外。
-    if (held.filter(c => !isVpProgress(c.type)).length >= PROGRESS_HAND_LIMIT) continue;
     if (deck.length === 0) break;
-    players[pid] = { ...p, progressCards: [...held, deck.shift()!] };
+    // 公式: 上限(4・VPカード除外)を超えても引いてよく、その場合は1枚を選んで捨てる。
+    const held = p.progressCards ?? [];
+    const newHeld = [...held, deck.shift()!];
+    players[pid] = { ...p, progressCards: newHeld };
     changed = true;
+    if (newHeld.filter(c => !isVpProgress(c.type)).length > PROGRESS_HAND_LIMIT) overflow.push(pid);
   }
   if (!changed) return state;
-  return { ...state, players, progressDecks: { ...decks, [color]: deck } };
+  return {
+    ...state, players, progressDecks: { ...decks, [color]: deck },
+    ...(overflow.length > 0 ? { pendingProgressDiscard: overflow } : {}),
+  };
 }
 
 function handTotalRes(p: Player): number {

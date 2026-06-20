@@ -67,6 +67,7 @@ export function requiredActor(state: GameState, action: Action): PlayerId | null
     case 'DISCARD_RESOURCES': return action.playerId;
     case 'CHOOSE_GOLD':       return action.playerId;
     case 'DOWNGRADE_CITY':    return action.playerId;
+    case 'DISCARD_PROGRESS':  return action.playerId;
     case 'RESPOND_TRADE':     return action.response.playerId;
     default:                  return state.playerOrder[state.currentPlayerIndex] ?? null;
   }

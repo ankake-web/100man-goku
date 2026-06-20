@@ -8,7 +8,7 @@ import { discardCount, robbableCardCount } from './robber';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
   isCk, canBuildImprovement, canActivateKnight, canBuildKnight, canUpgradeKnight, canPlayProgress,
-  robberAdjacentChasableVertexIds, plainCityVertexIds,
+  robberAdjacentChasableVertexIds, plainCityVertexIds, progressDiscardCandidates,
 } from './citiesKnights';
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
@@ -472,6 +472,11 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
     return chooseCityDowngrade(state, pid);
   }
 
+  // 騎士と商人: 進歩カード上限超過（5枚目を引いた）→ 1枚捨てる（対象プレイヤーが解決する）。
+  if (state.turnPhase === 'PROGRESS_DISCARD') {
+    return chooseProgressDiscard(state, pid);
+  }
+
   if (state.playerOrder[state.currentPlayerIndex] !== pid) return null;
 
   const player = state.players[pid];
@@ -674,6 +679,17 @@ function chooseCityDowngrade(state: GameState, pid: PlayerId): Action | null {
   };
   const vid = [...cities].sort((a, b) => cityPips(a) - cityPips(b))[0]!;
   return { type: 'DOWNGRADE_CITY', playerId: pid, vertexId: vid };
+}
+
+// 進歩カード上限超過（対象 CPU）。今は使えない/価値の低いカードを優先して1枚捨てる。
+function chooseProgressDiscard(state: GameState, pid: PlayerId): Action | null {
+  if (!(state.pendingProgressDiscard ?? []).includes(pid)) return null;
+  const candidates = progressDiscardCandidates(state, pid);
+  if (candidates.length === 0) return null;
+  // いま使えない（canPlayProgress=false）カードを優先的に捨てる。なければ先頭。
+  const unplayable = candidates.find(id => !canPlayProgress(state, pid, id));
+  const cardId = unplayable ?? candidates[0]!;
+  return { type: 'DISCARD_PROGRESS', playerId: pid, cardId };
 }
 
 // ============================================================

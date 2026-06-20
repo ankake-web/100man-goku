@@ -22,7 +22,7 @@ import {
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
   canPlayProgress, canPlayProgressLoose, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber, ckSetupSecondCity,
-  downgradeCity,
+  downgradeCity, discardProgressCard,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
 import { updateLongestRoad, updateLargestArmy, checkVictory, calcVP, victoryTarget } from './scoring';
@@ -110,6 +110,17 @@ function resolveCkRollOutcome(next: GameState, total: number): GameState {
 }
 
 /**
+ * 騎士と商人: イベントダイス解決(applyEventDie / 蛮族)後の保留フェーズ判定。
+ * 都市格下げ(CITY_DOWNGRADE) → 進歩カード捨て(PROGRESS_DISCARD) の順に解決し、
+ * どちらも無ければ本来の生産/捨て札へ（resolveCkRollOutcome）。
+ */
+function ckPostEventTransition(next: GameState, total: number): GameState {
+  if ((next.pendingCityDowngrade?.length ?? 0) > 0) return { ...next, turnPhase: 'CITY_DOWNGRADE' };
+  if ((next.pendingProgressDiscard?.length ?? 0) > 0) return { ...next, turnPhase: 'PROGRESS_DISCARD' };
+  return resolveCkRollOutcome(next, total);
+}
+
+/**
  * アクションを GameState に適用して新しい GameState を返す純粋関数。
  * バリデーション失敗時は例外を投げる（呼び出し側で can* チェック済み前提）。
  *
@@ -145,10 +156,7 @@ export function applyAction(
         next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で進歩カード抽選
         // 蛮族敗北で都市格下げの選択が要る場合は、まず格下げ（CITY_DOWNGRADE）を解決してから
         // 生産/捨て札へ（イベントダイスは生産ダイスより先に解決する公式順序とも一致）。
-        if ((next.pendingCityDowngrade?.length ?? 0) > 0) {
-          return { ...next, turnPhase: 'CITY_DOWNGRADE' };
-        }
-        return resolveCkRollOutcome(next, total);
+        return ckPostEventTransition(next, total);
       }
 
       if (total === 7) {
@@ -273,6 +281,23 @@ export function applyAction(
       // 全員解決 → 保留していた本来の続き（生産 or 7の捨て札/盗賊）を再開する。pending は除去。
       const total = (state.lastDiceRoll?.[0] ?? 0) + (state.lastDiceRoll?.[1] ?? 0);
       const { pendingCityDowngrade: _done, ...cleared } = after;
+      return ckPostEventTransition(cleared, total);
+    }
+
+    // ----------------------------------------------------------
+    // DISCARD_PROGRESS（騎士と商人: 進歩カード上限超過＝5枚目を引いた時に1枚捨てる。多人数解決）
+    // ----------------------------------------------------------
+    case 'DISCARD_PROGRESS': {
+      if (state.turnPhase !== 'PROGRESS_DISCARD') throw new Error('DISCARD_PROGRESS: not in PROGRESS_DISCARD phase');
+      const { playerId, cardId } = action;
+      const pending = state.pendingProgressDiscard ?? [];
+      if (!pending.includes(playerId)) throw new Error('DISCARD_PROGRESS: not a pending player');
+      const after = discardProgressCard(state, playerId, cardId);
+      if (after === state) throw new Error('DISCARD_PROGRESS: must discard your own non-VP progress card');
+      const newPending = pending.filter(p => p !== playerId);
+      if (newPending.length > 0) return { ...after, pendingProgressDiscard: newPending }; // 他の対象者を待つ
+      const total = (state.lastDiceRoll?.[0] ?? 0) + (state.lastDiceRoll?.[1] ?? 0);
+      const { pendingProgressDiscard: _pdone, ...cleared } = after;
       return resolveCkRollOutcome(cleared, total);
     }
 

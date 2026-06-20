@@ -117,6 +117,8 @@ describe('C&K 統合: フルCPU対戦が拡張機構を使って完走する', (
         pid = findPendingDiscarder(s) ?? pid; // 商品も計上するエンジン判定に委譲
       } else if (s.phase === 'MAIN' && s.turnPhase === 'CITY_DOWNGRADE') {
         pid = (s.pendingCityDowngrade ?? [])[0] ?? pid; // 蛮族敗北の都市格下げは対象が解決
+      } else if (s.phase === 'MAIN' && s.turnPhase === 'PROGRESS_DISCARD') {
+        pid = (s.pendingProgressDiscard ?? [])[0] ?? pid; // 進歩カード上限超過の捨て札は対象が解決
       }
       const action = chooseAction(s, pid, { rng });
       if (!action) break;
@@ -239,7 +241,7 @@ describe('C&K 蛮族防衛の報酬', () => {
     expect((r.players.player2!.progressCards ?? []).length).toBe(1);
   });
 
-  it('同点でも手札上限4の防衛者はカードを引かない', async () => {
+  it('同点で手札上限4の防衛者も5枚目を引き、捨て札選択（PROGRESS_DISCARD）の対象になる', async () => {
     const { resolveBarbarianAttack, buildProgressDecks } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');
     const four = Array.from({ length: 4 }, (_, i) => ({ id: `x${i}`, type: 'warlord' as const, deck: 'politics' as const }));
@@ -258,7 +260,9 @@ describe('C&K 蛮族防衛の報酬', () => {
       },
     }));
     const r = resolveBarbarianAttack(s);
-    expect((r.players.player1!.progressCards ?? []).length).toBe(4); // 上限のため引かない
+    // 公式: 上限を超えても引いてよく、その後1枚捨てる。player1 は5枚＋捨て札対象。
+    expect((r.players.player1!.progressCards ?? []).length).toBe(5);
+    expect(r.pendingProgressDiscard).toEqual(['player1']);
     expect((r.players.player2!.progressCards ?? []).length).toBe(1);
   });
 
@@ -300,6 +304,54 @@ describe('C&K 蛮族防衛の報酬', () => {
     };
     const action = chooseAction(s, 'player1');
     expect(action?.type).toBe('DOWNGRADE_CITY');
+    expect((action as { playerId: string }).playerId).toBe('player1');
+  });
+});
+
+describe('C&K 進歩カード上限超過（5枚目）の捨て札 PROGRESS_DISCARD', () => {
+  function fiveCardState(types?: string[]): { s: GameState; ids: string[] } {
+    const g0 = makeGameState({ expansion: 'cities_knights', players: { player1: makePlayer('player1'), player2: makePlayer('player2') }, playerOrder: ['player1', 'player2'] } as Partial<GameState>);
+    const ts = types ?? ['warlord', 'warlord', 'warlord', 'warlord', 'warlord'];
+    const cards = ts.map((t, i) => ({ id: `c${i}`, type: t as 'warlord', deck: 'politics' as const }));
+    const s: GameState = {
+      ...g0, phase: 'MAIN', turnPhase: 'PROGRESS_DISCARD', currentPlayerIndex: 0,
+      lastDiceRoll: [2, 3], pendingProgressDiscard: ['player1'],
+      players: { ...g0.players, player1: makePlayer('player1', { progressCards: cards }) },
+    };
+    return { s, ids: cards.map(c => c.id) };
+  }
+
+  it('DISCARD_PROGRESS: 選んだ1枚を捨てて4枚に戻り、保留していた続き（生産）へ再開', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { createRng } = await import('../src/engine/setup');
+    const { s, ids } = fiveCardState();
+    const r = applyAction(s, { type: 'DISCARD_PROGRESS', playerId: 'player1', cardId: ids[2]! }, createRng(1));
+    expect((r.players.player1!.progressCards ?? []).length).toBe(4);
+    expect((r.players.player1!.progressCards ?? []).some(c => c.id === ids[2])).toBe(false);
+    expect(r.turnPhase).toBe('TRADE_BUILD');                  // total=5 → 生産へ再開
+    expect(r.pendingProgressDiscard ?? null).toBeNull();      // クリア
+  });
+
+  it('VPカード（憲法/印刷機）は捨てられない（候補に出ない・dispatchは例外）', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { progressDiscardCandidates } = await import('../src/engine/citiesKnights');
+    // 5枚目が VP カードでないケース: 4枚通常＋1枚 constitution（VPは上限対象外なので非VPが5枚の想定はしない）。
+    const { s, ids } = fiveCardState(['warlord', 'warlord', 'warlord', 'warlord', 'constitution']);
+    const cands = new Set(progressDiscardCandidates(s, 'player1'));
+    expect(cands.has(ids[4]!)).toBe(false); // constitution は候補外
+    expect(() => applyAction(s, { type: 'DISCARD_PROGRESS', playerId: 'player1', cardId: ids[4]! })).toThrow();
+  });
+
+  it('CPU は上限超過時に自動で1枚捨てる（デッドロックしない）', async () => {
+    const { chooseAction } = await import('../src/engine/ai');
+    const g0 = makeGameState({ expansion: 'cities_knights', players: { player1: makePlayer('player1', { type: 'ai' }), player2: makePlayer('player2') }, playerOrder: ['player1', 'player2'] } as Partial<GameState>);
+    const cards = Array.from({ length: 5 }, (_, i) => ({ id: `c${i}`, type: 'warlord' as const, deck: 'politics' as const }));
+    const s: GameState = {
+      ...g0, phase: 'MAIN', turnPhase: 'PROGRESS_DISCARD', pendingProgressDiscard: ['player1'],
+      players: { ...g0.players, player1: makePlayer('player1', { type: 'ai', progressCards: cards }) },
+    };
+    const action = chooseAction(s, 'player1');
+    expect(action?.type).toBe('DISCARD_PROGRESS');
     expect((action as { playerId: string }).playerId).toBe('player1');
   });
 });

@@ -127,6 +127,7 @@ export function buildActionLog(
       break;
     }
     case 'DOWNGRADE_CITY':   push(action.playerId, 'ROBBER', `🏚 ${nm(action.playerId)} が都市を1つ開拓地に格下げ`); break;
+    case 'DISCARD_PROGRESS': push(action.playerId, 'DISCARD', `📜 ${nm(action.playerId)} が進歩カードを1枚捨てた（上限4枚）`); break;
     case 'BUY_DEV_CARD':     push(actor, 'DEV_CARD', `🃏 ${nm(actor)} が発展カードを購入`); break;
     case 'PLAY_KNIGHT':
     case 'PLAY_ROAD_BUILDING':

@@ -913,6 +913,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
     if (state.turnPhase === 'PRE_ROLL') return { text: '🎲 ダイス', alert: false };
     if (state.turnPhase === 'ROBBER')   return { text: '🦹 盗賊を移動するタイルをタップ', alert: true };
     if (state.turnPhase === 'CITY_DOWNGRADE') return { text: '⚔ 格下げする自分の都市をタップ', alert: true };
+    if (state.turnPhase === 'PROGRESS_DISCARD') return { text: '📜 進歩カードが5枚 — 捨てる1枚を選択', alert: true };
     if (state.turnPhase === 'TRADE_BUILD') {
       if (buildMode === 'road')       return { text: '🛤 道を配置', alert: false };
       if (buildMode === 'ship')       return { text: '🚢 船を配置', alert: false };
@@ -1306,6 +1307,18 @@ function scheduleAiTurn(): void {
     return;
   }
 
+  // 騎士と商人: 進歩カード上限超過（5枚目）の捨て札待ち。対象 CPU を1人ずつ自動解決。
+  if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
+    const dpid = (state.pendingProgressDiscard ?? []).find(p => state.players[p]?.type === 'ai');
+    if (dpid) {
+      setTimeout(() => {
+        if (gen !== gameGeneration) return;
+        runCpuStep(dpid, {});
+      }, aiDelayMs());
+    }
+    return;
+  }
+
   // 航海者: 金タイル産出の選択待ち。owed な CPU を1人ずつ自動解決する（DISCARD と同様）。
   if (state.phase === 'MAIN' && state.turnPhase === 'GOLD') {
     const goldPid = state.playerOrder.find(p =>
@@ -1440,6 +1453,12 @@ function safeFallbackAction(): Action | null {
   // 騎士と商人: 蛮族敗北での都市格下げ待ち（対象 CPU の選択を chooseAction で生成）。
   if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
     const cpid = (state.pendingCityDowngrade ?? []).find(p => state.players[p]?.type === 'ai');
+    if (cpid) return chooseAction(state, cpid);
+    return null;
+  }
+  // 騎士と商人: 進歩カード上限超過の捨て札待ち（対象 CPU の選択を chooseAction で生成）。
+  if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
+    const cpid = (state.pendingProgressDiscard ?? []).find(p => state.players[p]?.type === 'ai');
     if (cpid) return chooseAction(state, cpid);
     return null;
   }

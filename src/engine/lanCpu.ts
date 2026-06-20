@@ -96,6 +96,16 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     return null; // 人間の選択待ち
   }
 
+  // ---- 騎士と商人: 進歩カード上限超過（5枚目）→ 捨てる対象 CPU を1人ずつ処理 ----
+  if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
+    const dpid = (state.pendingProgressDiscard ?? []).find(p => isCpu(state, p));
+    if (dpid) {
+      const action = chooseAction(state, dpid, { rng });
+      if (action) return { pid: dpid, action };
+    }
+    return null; // 人間の選択待ち
+  }
+
   // ---- 手番が CPU なら通常の一手（初期配置 / ダイス / 盗賊 / 建設等）----
   const cur = state.playerOrder[state.currentPlayerIndex];
   if (cur && isCpu(state, cur)) {
