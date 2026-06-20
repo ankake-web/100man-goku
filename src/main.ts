@@ -2287,16 +2287,12 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'dice-event-panel';
   if (info.eventDie === 'ship') {
-    if (info.attacked && ASSETS.bg.barbarian) {
-      // 襲来: 横長の蛮族襲来バナーを帯として見せる（タイトルを重ねて可読に）。
-      const banner = document.createElement('div');
-      banner.className = 'dep-banner';
-      banner.style.backgroundImage = `url("${ASSETS.bg.barbarian}")`;
+    if (info.attacked) {
+      // 襲来: 画像は出さず見出しだけ（全画面演出と重複するため絵は不要）。
       const bt = document.createElement('div');
-      bt.className = 'dep-banner-title';
+      bt.className = 'dep-attack-title';
       bt.textContent = '⚔ 蛮族 襲来！';
-      banner.appendChild(bt);
-      panel.appendChild(banner);
+      panel.appendChild(bt);
     } else {
       // 前進: 蛮族船コマの画像＋見出し。
       if (ASSETS.piece.barbarianShip) {

@@ -1557,9 +1557,9 @@ function appendCkBuildSection(
   if (playerHasMovableKnight(state, pid)) {
     knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
   }
-  // 強盗を追い払う（強盗に隣接した自分のアクティブ騎士で。1ターン1回・騎士は非起動になる）。
+  // 盗賊を追い払う（盗賊に隣接した自分のアクティブ騎士で。1ターン1回・騎士は非起動になる）。
   if (playerHasChasableKnight(state, pid)) {
-    knightRow.appendChild(modeBtn('🦹 強盗を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
+    knightRow.appendChild(modeBtn('🦹 盗賊を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
   }
   const wallVid = firstV(v => canBuildCityWall(state, pid, v));
   knightRow.appendChild(makeImgBtn(ASSETS.piece.cityWall ?? RESOURCE_IMG.brick, [costLabel('城壁', resCostParts(CK_COSTS.cityWall))], wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
