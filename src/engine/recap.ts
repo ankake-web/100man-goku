@@ -21,6 +21,8 @@ export interface PlayerRecap {
   cities: number;        // 都市の総数（メトロポリス含む）
   metropolises: number;  // 騎士と商人: メトロポリス数（各+2点）
   defenderVP: number;    // 騎士と商人: 蛮族撃退の守護者VP
+  hasMerchant: boolean;  // 騎士と商人: 商人コマを保持中か（+1点・公開）
+  progressVP: number;    // 騎士と商人: 進歩カードの永久勝利点（印刷/立憲、各+1点・公開）
   islandBonus: number;   // 航海者: 新しい島への入植件数（各+2点）
   isCk: boolean;         // 騎士と商人モードか（講評・内訳の出し分け用）
   roads: number;
@@ -53,6 +55,8 @@ export function buildPlayerRecap(state: GameState, pid: PlayerId): PlayerRecap {
     cities,
     metropolises,
     defenderVP: p?.defenderVP ?? 0,
+    hasMerchant: state.merchant?.playerId === pid,
+    progressVP: p?.progressVP ?? 0,
     islandBonus,
     isCk: state.expansion === 'cities_knights',
     roads,

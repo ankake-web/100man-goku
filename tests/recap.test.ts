@@ -104,11 +104,11 @@ describe('buildPlayerRecap', () => {
 
 describe('buildPlayerRecap（騎士と商人）', () => {
   // 都市2つ（うち1つメトロポリス）＋守護VP を持つ CK 終了 state。
-  function ckState(opts: { metropolis?: boolean; defenderVP?: number; winner?: boolean } = {}): GameState {
+  function ckState(opts: { metropolis?: boolean; defenderVP?: number; merchant?: boolean; progressVP?: number; winner?: boolean } = {}): GameState {
     const s = makeGameState({
       expansion: 'cities_knights',
       players: {
-        player1: makePlayer('player1', { name: '青', defenderVP: opts.defenderVP ?? 0 }),
+        player1: makePlayer('player1', { name: '青', defenderVP: opts.defenderVP ?? 0, progressVP: opts.progressVP ?? 0 }),
         player2: makePlayer('player2', { name: '赤' }),
       },
       playerOrder: ['player1', 'player2'],
@@ -117,7 +117,12 @@ describe('buildPlayerRecap（騎士と商人）', () => {
     const vids = Object.keys(vertices) as VertexId[];
     vertices[vids[0]!] = { ...vertices[vids[0]!]!, building: { type: 'city', playerId: 'player1', ...(opts.metropolis ? { metropolis: true } : {}) } };
     vertices[vids[1]!] = { ...vertices[vids[1]!]!, building: { type: 'city', playerId: 'player1' } };
-    return { ...s, vertices, winner: opts.winner ? 'player1' : null, phase: opts.winner ? 'GAME_OVER' : 'MAIN' };
+    return {
+      ...s, vertices,
+      merchant: opts.merchant ? { playerId: 'player1', tileId: Object.keys(s.tiles)[0]! } : null,
+      winner: opts.winner ? 'player1' : null,
+      phase: opts.winner ? 'GAME_OVER' : 'MAIN',
+    } as GameState;
   }
 
   it('メトロポリス/守護VP/isCk を集計する（cities はメトロポリス含む総数）', () => {
@@ -134,5 +139,13 @@ describe('buildPlayerRecap（騎士と商人）', () => {
 
   it('守護VPが高いと「守護」を含む講評になる（メトロポリス無し）', () => {
     expect(buildPlayerRecap(ckState({ defenderVP: 3 }), 'player1').comment).toContain('守護');
+  });
+
+  it('商人コマ保持と進歩カード永久VPを内訳用に集計する', () => {
+    const r = buildPlayerRecap(ckState({ merchant: true, progressVP: 2 }), 'player1');
+    expect(r.hasMerchant).toBe(true);
+    expect(r.progressVP).toBe(2);
+    // 商人を持たない相手は false。
+    expect(buildPlayerRecap(ckState({ merchant: true }), 'player2').hasMerchant).toBe(false);
   });
 });

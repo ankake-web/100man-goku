@@ -1804,13 +1804,18 @@ function buildVictoryScoreboard(): HTMLDivElement {
     const plainCities = Math.max(0, r.cities - r.metropolises); // メトロポリスは別チップで出すので二重計上しない
     if (r.settlements > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.settlement, `×${r.settlements}`, false, '開拓地（各1点）'));
     if (plainCities > 0)   bd.appendChild(scoreChipIcon(ASSETS.piece.city, `×${plainCities}`, false, '都市（各2点）'));
-    // 騎士と商人: メトロポリス（各+2点）。基本ゲームには存在しない。
-    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.metropolisGate, `×${r.metropolises}（+${r.metropolises * 2}）`, true, 'メトロポリス（各+2点）'));
+    // 騎士と商人: メトロポリス（各4点：都市の基本2点＋発展ボーナス2点）。基本ゲームには存在しない。
+    // 都市チップから除外している（plainCities）ため、ここで都市基本2点も含めた合計4点を表示し、★VPと内訳を一致させる。
+    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.metropolisGate, `×${r.metropolises}（+${r.metropolises * 4}）`, true, 'メトロポリス（各4点）'));
     if (r.hasLongestRoad)  bd.appendChild(scoreChipIcon(ASSETS.action.road, '最長+2', true, '最長交易路'));
     // 最大騎士力は基本ゲームのみ（騎士と商人は騎士コマ制のため非表示）。
     if (!r.isCk && r.hasLargestArmy) bd.appendChild(scoreChipIcon(ASSETS.knight.basic, '最大+2', true, '最大騎士力'));
     // 騎士と商人: 蛮族撃退の守護者VP。
     if (r.isCk && r.defenderVP > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.defenderBadge, `守護+${r.defenderVP}`, true, '蛮族を退けた守護者（各+1点）'));
+    // 騎士と商人: 商人コマ保持（+1点・公開）。
+    if (r.isCk && r.hasMerchant) bd.appendChild(scoreChipIcon(ASSETS.piece.merchant, '商人+1', true, '商人コマ保持中（+1点）'));
+    // 騎士と商人: 進歩カードの永久勝利点（印刷/立憲、各+1点・公開）。
+    if (r.isCk && r.progressVP > 0) bd.appendChild(scoreChipIcon(null, `★永久+${r.progressVP}`, true, '進歩カードの永久勝利点（印刷/立憲など・各+1点）'));
     // 航海者: 新しい島への入植（各+2点）。専用素材が無いため記号で表示。
     if (r.islandBonus > 0) bd.appendChild(scoreChipIcon(null, `🏝+${r.islandBonus * 2}`, true, '新しい島への入植（各+2点）'));
     // VPカード枚数は自分・勝者のみ開示（他プレイヤーは秘匿のまま）。
@@ -2481,6 +2486,13 @@ function maybeYourTurnCue(prevState: GameState, newState: GameState): void {
   if (newState.phase === 'MAIN' && newCur && newCur !== prevCur) {
     showTurnToast(newCur, newCur === me);
   }
+  // 初期配置（SETUP）: 自分の番で開拓地/道を盤面に置く必要があるので盤面へ自動スクロール。
+  // 手番開始（開拓地）と開拓地→道のサブフェーズ移行の両方で発火させる。CPU/相手の番では動かさない。
+  const isSetup = newState.phase === 'SETUP_FORWARD' || newState.phase === 'SETUP_BACKWARD';
+  if (isSetup && newState.setupSubPhase != null && newCur === me && currentPid(newState) === me
+      && (prevCur !== newCur || prevState.setupSubPhase !== newState.setupSubPhase)) {
+    scrollToBoard();
+  }
 }
 
 // 手番開始トースト（盤面上に短く「○○の番」。レイアウトは崩さない absolute 配置）。
@@ -2875,6 +2887,7 @@ function runTransitionFx(
   maybeYourTurnCue(prevState, state);
   maybeScrollToTradeOffer(prevState, state);
   maybeNoticeCityDowngrade(prevState, state);
+  maybeNoticeRobberMove(prevState, state);
   // 発明家: 数字入替が成立したら「効いた」ことを明示（数字トークンが入れ替わるだけで気づきにくいため）。
   if (action?.type === 'PLAY_PROGRESS' && action.choice?.inventorTiles) {
     showBoardNotice('🔄 タイルの数字を入れ替えました', '#7fb0ff');
@@ -2896,6 +2909,18 @@ function maybeNoticeCityDowngrade(prevState: GameState, newState: GameState): vo
     showBoardNotice('⚔ 盤面で光っている自分の都市をタップして格下げ', '#ff8a5a');
     scrollToBoard();
   }, 2700);
+}
+
+// 7のロール／騎士カード／強盗追い払いの後、ROBBER フェーズに入ったら、移動するのが自分（LAN=viewer/
+// ローカル=人間）のときに盤面へ自動スクロールして「盗賊の移動を行ってください」と案内する。
+// 盗賊を動かすのは常に手番プレイヤーなので currentPid===自分 で判定。phase の立ち上がり（prev≠ROBBER）
+// のみで発火させ、既に ROBBER 中の再描画では鳴らさない。CPU/相手の7では発火しない。
+function maybeNoticeRobberMove(prevState: GameState, newState: GameState): void {
+  const me = selfPlayerId();
+  if (!me) return;
+  if (!(newState.turnPhase === 'ROBBER' && prevState.turnPhase !== 'ROBBER' && currentPid(newState) === me)) return;
+  showBoardNotice('🦹 盤面のタイルをタップして盗賊の移動を行ってください', '#ff8a5a');
+  scrollToBoard();
 }
 
 // 建設フィードバック(C-4): 開拓地/都市はスケールインのポップ、道は辺をなぞる描画。
@@ -2927,6 +2952,15 @@ function runWithDiceAnim(action: Action | undefined, prevState: GameState, finis
 }
 
 // ターン終了時など、盤面を画面内に出す（スマホで操作パネルまでスクロールしている状態から戻す）。
+// ゲーム生成/再同期の直後（runTransitionFx を経由しない経路）で、今が自分（ローカル人間/LAN=viewer）の
+// 初期配置（SETUP）番なら盤面へスクロールする直接チェック。maybeYourTurnCue は手番遷移時のみ働くため、
+// 「最初から自分が手番」「自分のSETUP中に再接続」のケースを取りこぼすのを補う。
+function maybeScrollForMySetup(s: GameState | null): void {
+  if (!s) return;
+  const isSetup = s.phase === 'SETUP_FORWARD' || s.phase === 'SETUP_BACKWARD';
+  if (isSetup && s.setupSubPhase != null && currentPid(s) === selfPlayerId()) scrollToBoard();
+}
+
 function scrollToBoard(): void {
   const board = document.getElementById('board-area') ?? document.getElementById('board');
   try {
@@ -2945,8 +2979,7 @@ function dispatch(action: Action): void {
     if (pcard?.type === 'merchant' && pHuman && !action.choice?.merchantTileId
         && state.turnPhase === 'TRADE_BUILD' && merchantTileIds(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove(); // カード詳細モーダルを閉じる
-      setBuildMode('placeMerchant');
-      scrollToBoard();                                    // 盤面（光った候補）を見せる
+      setBuildMode('placeMerchant'); // setBuildMode が盤面へ自動スクロールする
       showBoardNotice('🏪 商人を置く資源タイルをタップしてください');
       return;
     }
@@ -2956,7 +2989,6 @@ function dispatch(action: Action): void {
       document.querySelector('.help-overlay')?.remove();
       inventorFirstTile = null;
       setBuildMode('inventorSwap');
-      scrollToBoard();                                    // 盤面（光った候補）を見せる
       showBoardNotice('🔄 数字を入れ替える1つ目のタイルをタップ');
       return;
     }
@@ -2965,7 +2997,6 @@ function dispatch(action: Action): void {
         && state.turnPhase === 'TRADE_BUILD' && bishopTileIds(state).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('placeBishop');
-      scrollToBoard();
       showBoardNotice('⛪ 盗賊を置くタイルをタップ（隣接の全相手から1枚ずつ奪う）');
       return;
     }
@@ -2974,7 +3005,6 @@ function dispatch(action: Action): void {
         && state.turnPhase === 'TRADE_BUILD' && diplomatRemovableRoads(state, ppid).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectDiplomatRoad');
-      scrollToBoard();
       showBoardNotice('📜 撤去する相手の端の道をタップ');
       return;
     }
@@ -2983,7 +3013,6 @@ function dispatch(action: Action): void {
         && state.turnPhase === 'TRADE_BUILD' && deserterTargets(state, ppid).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectDeserterKnight');
-      scrollToBoard();
       showBoardNotice('🏃 消す相手の騎士をタップ（同じ強さの騎士を得る）');
       return;
     }
@@ -2995,7 +3024,6 @@ function dispatch(action: Action): void {
       if (affordable) {
         document.querySelector('.help-overlay')?.remove();
         setBuildMode('selectMedicineSettlement');
-        scrollToBoard();
         showBoardNotice('💊 都市にする自分の開拓地をタップ（麦1＋鉱石2）');
         return;
       }
@@ -3012,7 +3040,6 @@ function dispatch(action: Action): void {
       pendingMetropolisTrack = action.track;
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectMetropolis');
-      scrollToBoard();
       showBoardNotice('🏛 メトロポリスにする自分の都市をタップ（+2点）');
       return;
     }
@@ -3083,9 +3110,11 @@ function dispatch(action: Action): void {
 
     if (action.type === 'PLAY_ROAD_BUILDING') {
       buildMode = 'road';
+      // 道を置くのは盤面なので自動スクロール（自分の手番のときだけ。CPUは自動配置）。
+      if (currentPid(state) === selfPlayerId()) scrollToBoard();
     }
 
-    // 街道建設カード使用中は引き続き道建設モードを維持
+    // 街道建設カード使用中は引き続き道建設モードを維持（2本目以降は同じ盤面なので再スクロールしない）
     if (state.roadBuildingRoadsRemaining > 0) {
       buildMode = 'road';
     }
@@ -3160,8 +3189,10 @@ function dispatch(action: Action): void {
 
 function setBuildMode(mode: BuildMode): void {
   buildMode = mode;
-  // 建設モードに入ったら横持ちシートは畳む（盤面をタップしやすく）。
-  if (mode !== 'idle') landscapeSheetUserOpen = false;
+  // 建設モードに入ったら横持ちシートは畳み、盤面へ自動スクロール（操作対象を必ず見せる）。
+  // 解除('idle')やトグルOFFでは動かさない。setBuildMode の呼び出し元は人間のUIボタンと
+  // dispatch の進歩カード/メトロポリス割込みのみ（CPUは通らない）なので人間操作時だけ働く。
+  if (mode !== 'idle') { landscapeSheetUserOpen = false; scrollToBoard(); }
   // モード変更で仮置きプレビューは破棄（別の建設物を選び直したとみなす）。
   if (uiPhase.type === 'placePreview') uiPhase = { type: 'idle' };
   // 船移動モード以外へ移ったら選択中の移動元を解除。
@@ -3252,6 +3283,19 @@ function setUIPhase(phase: UIPhase): void {
       if (fromTile) animateRobberMove(fromTile, phase.tileId);
     }
     robberPreviewedTile = phase.tileId;
+    // コマが移動先へスライドした後、略奪相手を選ぶパネル（盤面下の #ui）へ自動スクロール。
+    // スライド(約560ms)の完了後に出すため遅延。海賊はスライドが無いので短め。途中で選び終えたら中止。
+    const gen = gameGeneration;
+    const targetTile = phase.tileId;
+    setTimeout(() => {
+      if (gen !== gameGeneration || uiPhase.type !== 'robberTarget' || uiPhase.tileId !== targetTile) return;
+      // robberTarget 中の .action-buttons は略奪相手ピッカー（modal-panel）のみを含む。
+      const el = (document.querySelector('#ui .action-buttons .modal-panel')
+        ?? document.querySelector('#ui .action-buttons')
+        ?? document.querySelector('#ui .turn-panel')
+        ?? document.getElementById('ui')) as HTMLElement | null;
+      el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    }, phase.kind === 'pirate' ? 160 : 620);
   } else if (phase.type !== 'robberTarget') {
     robberPreviewedTile = null;
   }
@@ -3503,6 +3547,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
   hideReconnecting();
   redraw();
+  maybeScrollForMySetup(state); // LAN開始直後が自分のSETUP配置番なら盤面へスクロール
 }
 
 // ============================================================
@@ -3598,6 +3643,7 @@ function handleNetMessage(msg: import('./net/protocol').ServerMessage): void {
       state = msg.state;
       pendingNetStates = []; // 正本を受け直したので保留中の旧配信は破棄
       redraw();
+      maybeScrollForMySetup(state); // 復帰時に自分のSETUP配置番なら盤面へスクロール
       break;
     case 'state':
       // サーバが適用済みの正本（マスク済み）。演出はアクション種別で再現する。
@@ -3722,7 +3768,10 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
     moveShipFrom = null;
     moveKnightFrom = null;
   }
-  if (action?.type === 'PLAY_ROAD_BUILDING') buildMode = 'road';
+  if (action?.type === 'PLAY_ROAD_BUILDING') {
+    buildMode = 'road';
+    if (currentPid(state) === selfPlayerId()) scrollToBoard(); // viewer の手番のみ盤面へ
+  }
   if (state.roadBuildingRoadsRemaining > 0) buildMode = 'road';
 
   // 交易/発展カード/盗賊/ターン終了などの後はモーダルUIを閉じる（CPU path と同様）。
@@ -3809,6 +3858,7 @@ function startGame(cfg: HomeConfig): void {
 
   boardViewport = { scale: 1, tx: 0, ty: 0 }; // 新規ゲームはズームをリセット
   redraw();
+  maybeScrollForMySetup(state); // 開始直後が自分のSETUP配置番なら盤面へスクロール
   scheduleAiTurn();
 }
 
