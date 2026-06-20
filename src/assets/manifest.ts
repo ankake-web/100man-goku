@@ -17,6 +17,10 @@ import cityRed from './city-red.png';
 import cityBlue from './city-blue.png';
 import cityPurple from './city-purple.png';
 import cityOrange from './city-orange.png';
+import metropolisRed from './metropolis-red.png';
+import metropolisBlue from './metropolis-blue.png';
+import metropolisPurple from './metropolis-purple.png';
+import metropolisOrange from './metropolis-orange.png';
 import shipRed from './ship-red.png';
 import shipBlue from './ship-blue.png';
 import shipPurple from './ship-purple.png';
@@ -115,6 +119,7 @@ export type ColorKey = 'red' | 'blue' | 'purple' | 'orange';
 
 const HOUSE: Record<ColorKey, string> = { red: houseRed, blue: houseBlue, purple: housePurple, orange: houseOrange };
 const CITY: Record<ColorKey, string> = { red: cityRed, blue: cityBlue, purple: cityPurple, orange: cityOrange };
+const METROPOLIS: Record<ColorKey, string> = { red: metropolisRed, blue: metropolisBlue, purple: metropolisPurple, orange: metropolisOrange };
 const SHIP: Record<ColorKey, string> = { red: shipRed, blue: shipBlue, purple: shipPurple, orange: shipOrange };
 
 /**
@@ -171,6 +176,7 @@ export const ASSETS = {
 /** プレイヤー色の駒画像（盤面用）。色キーが不明なら赤にフォールバック。 */
 export function houseImg(color: ColorKey): string { return HOUSE[color] ?? HOUSE.red; }
 export function cityImg(color: ColorKey): string { return CITY[color] ?? CITY.red; }
+export function metropolisImg(color: ColorKey): string { return METROPOLIS[color] ?? METROPOLIS.red; }
 export function shipImg(color: ColorKey): string { return SHIP[color] ?? SHIP.red; }
 
 /** トラック種別→トラック色（プレースホルダ/カード裏の色味）。 */
