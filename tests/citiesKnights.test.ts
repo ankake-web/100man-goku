@@ -992,3 +992,55 @@ describe('C&K ルール監査の修正', () => {
     expect(s.players.player1!.remainingSettlements).toBe(4);  // 5-1
   });
 });
+
+describe('C&K 商人カード: 手動タイル選択', () => {
+  // player1 の建物を「2つ以上の資源タイルに隣接する頂点」に置き、商人カードを持たせた状態。
+  async function merchantState(): Promise<{ s: GameState; vid: string; resTiles: string[] }> {
+    const { TILE_RESOURCE_MAP } = await import('../src/constants');
+    const g = makeGameState({ expansion: 'cities_knights' } as Partial<GameState>);
+    // 隣接資源タイルが2つ以上ある頂点を探す。
+    let vid = '', resTiles: string[] = [];
+    for (const v of Object.values(g.vertices)) {
+      const rs = v.adjacentTileIds.filter(t => g.tiles[t] && TILE_RESOURCE_MAP[g.tiles[t]!.type] != null);
+      if (rs.length >= 2) { vid = v.id; resTiles = rs; break; }
+    }
+    const s: GameState = {
+      ...g,
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', currentPlayerIndex: 0, diceRolledThisTurn: true,
+      players: {
+        ...g.players,
+        player1: makePlayer('player1', { progressCards: [{ id: 'm1', type: 'merchant', deck: 'trade' }] }),
+      },
+      vertices: { ...g.vertices, [vid]: { ...g.vertices[vid]!, building: { type: 'settlement', playerId: 'player1' } } },
+    };
+    return { s, vid, resTiles };
+  }
+
+  it('merchantTileIds は自分の建物に隣接する資源タイルを返す', async () => {
+    const { merchantTileIds } = await import('../src/engine/citiesKnights');
+    const { s, resTiles } = await merchantState();
+    const ids = new Set(merchantTileIds(s, 'player1'));
+    for (const t of resTiles) expect(ids.has(t)).toBe(true);
+  });
+
+  it('choice.merchantTileId で指定したタイルに商人を置く（自動選択しない）', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { s, resTiles } = await merchantState();
+    // pip最大でない方（resTiles[1]）を敢えて選ぶ → 自動(best)と区別できる。
+    const chosen = resTiles[resTiles.length - 1]!;
+    const r = applyAction(s, { type: 'PLAY_PROGRESS', cardId: 'm1', choice: { merchantTileId: chosen } });
+    expect(r.merchant).toEqual({ playerId: 'player1', tileId: chosen });
+    expect((r.players.player1!.progressCards ?? []).length).toBe(0); // カードは消費
+  });
+
+  it('候補外の merchantTileId は無効として自動配置にフォールバック', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { merchantTileIds } = await import('../src/engine/citiesKnights');
+    const { s } = await merchantState();
+    const valid = new Set(merchantTileIds(s, 'player1'));
+    const bogus = Object.keys(s.tiles).find(t => !valid.has(t))!; // 隣接でないタイル
+    const r = applyAction(s, { type: 'PLAY_PROGRESS', cardId: 'm1', choice: { merchantTileId: bogus } });
+    expect(r.merchant).not.toBeNull();
+    expect(valid.has(r.merchant!.tileId)).toBe(true); // 候補内に自動配置
+  });
+});

@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -197,6 +197,25 @@ export function nearestTileId(
   return best;
 }
 
+/** 点(x,y)に最も近い「商人を置ける自分の隣接資源タイル」を返す（騎士と商人・進歩カード商人）。なければ null。 */
+export function nearestMerchantTileId(
+  state: GameState, pid: PlayerId, x: number, y: number, maxDist = 70,
+): string | null {
+  const valid = new Set(merchantTileIds(state, pid));
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const tid of valid) {
+    const vids = state.tileToVertices[tid] ?? [];
+    let cx = 0, cy = 0, n = 0;
+    for (const vid of vids) { const v = state.vertices[vid]; if (v) { cx += v.pixel.x; cy += v.pixel.y; n++; } }
+    if (n === 0) continue;
+    cx /= n; cy /= n;
+    const d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+    if (d <= bestD) { bestD = d; best = tid; }
+  }
+  return best;
+}
+
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -358,6 +377,17 @@ export function attachBoardEvents(
       const ptc = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptc ? nearestChaseRobberVertexId(state, pid, ptc.x, ptc.y) : null;
       if (vid) dispatch({ type: 'CHASE_ROBBER', vertexId: vid });
+      return;
+    }
+
+    // ---- 騎士と商人: 商人カードのタイル配置（光った自分の隣接資源タイルをタップ → PLAY_PROGRESS）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'placeMerchant') {
+      const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
+      let tid = (e.target as SVGElement).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
+      if (!tid && ptm) tid = nearestMerchantTileId(state, pid, ptm.x, ptm.y);
+      else if (tid && !new Set(merchantTileIds(state, pid)).has(tid)) tid = null; // 候補外の直接ヒットは無効
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'merchant');
+      if (tid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { merchantTileId: tid } });
       return;
     }
 

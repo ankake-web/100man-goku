@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -666,6 +666,9 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'upgradeKnight') {
         // 騎士と商人・騎士の手動昇格: 昇格できる自分の騎士頂点を光らせる。
         opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canUpgradeKnight(state, pid, vid)));
+      } else if (mode === 'placeMerchant') {
+        // 騎士と商人・商人カード: 自分の建物に隣接する資源タイルを光らせて盤面で選ばせる。
+        opts.validTileIds = new Set(merchantTileIds(state, pid));
       }
     }
   }
@@ -919,6 +922,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'buildKnight') return { text: '🛡 騎士を置く頂点をタップ', alert: false };
       if (buildMode === 'activateKnight') return { text: '⚡ 起動する騎士をタップ', alert: false };
       if (buildMode === 'upgradeKnight') return { text: '⬆ 昇格する騎士をタップ', alert: false };
+      if (buildMode === 'placeMerchant') return { text: '🏪 商人を置く資源タイルをタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -2632,6 +2636,20 @@ function scrollToBoard(): void {
 }
 
 function dispatch(action: Action): void {
+  // 騎士と商人・商人カード: 人間が使う時は自動配置せず、盤面で資源タイルをタップさせる。
+  // 候補が2つ以上ある時のみ盤面選択へ（0/1個なら従来どおりエンジンが自動配置）。
+  if (action.type === 'PLAY_PROGRESS' && !action.choice?.merchantTileId && !diceAnimating) {
+    const mpid = currentPid(state);
+    const mcard = state.players[mpid]?.progressCards?.find(c => c.id === action.cardId);
+    const mHuman = state.players[mpid]?.type === 'human' || mpid === selfPlayerId();
+    if (mcard?.type === 'merchant' && mHuman
+        && state.turnPhase === 'TRADE_BUILD' && merchantTileIds(state, mpid).length > 1) {
+      document.querySelector('.help-overlay')?.remove(); // カード詳細モーダルを閉じる
+      showBoardNotice('🏪 商人を置く資源タイルをタップしてください');
+      setBuildMode('placeMerchant');
+      return;
+    }
+  }
   // 自分がターンを終了したら盤面へスクロールして次の状況を見せる（スマホ）。
   if (action.type === 'END_TURN') scrollToBoard();
   // LAN対戦: ローカル applyAction は禁止（正本はサーバ）。Action はサーバへ送る。
@@ -2684,7 +2702,9 @@ function dispatch(action: Action): void {
       action.type === 'BUILD_KNIGHT' ||
       action.type === 'ACTIVATE_KNIGHT' ||
       action.type === 'UPGRADE_KNIGHT' ||
-      action.type === 'BUILD_CITY_WALL'
+      action.type === 'BUILD_CITY_WALL' ||
+      // 商人カードのタイル配置（placeMerchant）完了後もモードを残さない。
+      action.type === 'PLAY_PROGRESS'
     ) {
       buildMode = 'idle';
     }
@@ -3288,7 +3308,8 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
     ? Object.values(prevState.tiles).find(t => t.hasRobber)?.id
     : undefined;
 
-  if (action && (action.type === 'BUILD_ROAD' || action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY')) {
+  if (action && (action.type === 'BUILD_ROAD' || action.type === 'BUILD_SETTLEMENT' || action.type === 'BUILD_CITY'
+      || action.type === 'PLAY_PROGRESS')) {
     buildMode = 'idle';
   }
   // ターン終了で建設モード/船移動選択を解除（次ターンにモードが残るのを防ぐ・LAN）。

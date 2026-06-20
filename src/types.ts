@@ -392,6 +392,8 @@ export interface ProgressChoice {
   dice?: readonly [number, number];
   // 発明家: 数字トークンを入れ替える2タイルのID。
   inventorTiles?: readonly [TileId, TileId];
+  // 商人: 商人コマを置く資源タイルのID（自分の建物に隣接する陸タイル）。
+  merchantTileId?: TileId;
 }
 
 export type Action =

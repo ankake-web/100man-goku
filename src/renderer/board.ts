@@ -10,6 +10,7 @@ import { ASSETS, houseImg, cityImg, metropolisImg, shipImg, type ColorKey } from
 
 const robberImg = ASSETS.piece.robber;
 const pirateImg = ASSETS.piece.pirate;
+const merchantImg = ASSETS.piece.merchant;
 const shipRed = shipImg('red');
 const knightBasicImg = ASSETS.knight.basic;
 
@@ -49,6 +50,9 @@ export interface BoardRenderOptions {
   previewShipEdgeId?: string;
   // 航海者: 海賊コマのいる海タイルID（🏴‍☠️ マーカーを描く）。
   piratePosition?: string;
+  // 騎士と商人: 商人コマのいる陸タイルID＋所有者の色（盤面に商人フィギュアを描く）。
+  merchantTileId?: string;
+  merchantColor?: string;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
 }
@@ -262,6 +266,27 @@ function renderTile(
     img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', pirateImg);
     pg.appendChild(img);
     g.appendChild(pg);
+  }
+
+  // 騎士と商人: 商人コマ（資源タイルに乗る・所有者色のリングで識別）。
+  // 数字チップ／強盗と被らないよう、タイル上部寄り（中心より上）に置く。
+  if (opts?.merchantTileId === tile.id && merchantImg) {
+    const touch = isTouchDevice();
+    const my = cy - size * 0.34;
+    const w = size * (touch ? 0.78 : 0.66);
+    const mg = svgEl('g');
+    mg.classList.add('merchant-piece');
+    // 所有者色の足元リング（誰の商人か一目で分かるように）。
+    const ring = svgEl('ellipse');
+    setAttrs(ring, { cx, cy: my + w * 0.30, rx: w * 0.30, ry: w * 0.10,
+      fill: 'rgba(0,0,0,0.28)', stroke: opts.merchantColor ?? '#caa14a', 'stroke-width': 2.5 });
+    mg.appendChild(ring);
+    const img = svgEl('image');
+    setAttrs(img, { x: cx - w / 2, y: my - w * 0.62, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
+    img.setAttribute('href', merchantImg);
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', merchantImg);
+    mg.appendChild(img);
+    g.appendChild(mg);
   }
 
   return g;
@@ -653,10 +678,15 @@ export function renderBoard(
   }
 
   // --- タイル（最下層） ---
+  // 騎士と商人: 商人コマの位置・所有者色を opts に注入（renderTile で描画）。
+  const merchant = state.merchant;
+  const tileOpts: BoardRenderOptions | undefined = merchant
+    ? { ...(opts ?? {}), merchantTileId: merchant.tileId, merchantColor: PLAYER_HEX_COLOR[merchant.playerId] ?? '#caa14a' }
+    : opts;
   const tileGroup = svgEl('g');
   tileGroup.setAttribute('class', 'tiles');
   for (const tile of Object.values(state.tiles)) {
-    tileGroup.appendChild(renderTile(tile, ox, oy, size, opts));
+    tileGroup.appendChild(renderTile(tile, ox, oy, size, tileOpts));
   }
   content.appendChild(tileGroup);
 
