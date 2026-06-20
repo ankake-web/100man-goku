@@ -11,7 +11,7 @@ import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trad
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgressLoose,
-  playerHasMovableKnight, playerHasChasableKnight, inventorTiles, plainCityVertexIds,
+  playerHasMovableKnight, playerHasChasableKnight, inventorTiles, plainCityVertexIds, progressDiscardCandidates,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
@@ -560,6 +560,29 @@ function buildCityDowngradeUI(state: GameState, pid: PlayerId, dispatch: (a: Act
     const label = `都市（隣接 ${nums.sort((a, b) => a - b).join('・') || '—'}）`;
     row.appendChild(makeImgBtn(cityImg(PLAYER_COLOR_KEY[pid] ?? 'red'), label, 'btn-build', false,
       () => dispatch({ type: 'DOWNGRADE_CITY', playerId: pid, vertexId: vid })));
+  }
+  div.appendChild(row);
+  return div;
+}
+
+// 騎士と商人: 進歩カード上限超過（5枚目を引いた）→ 捨てる1枚を選ぶモーダル。
+// 勝利点カード(憲法/印刷機)は上限対象外なので候補に出さない。
+function buildProgressDiscardUI(state: GameState, pid: PlayerId, dispatch: (a: Action) => void): HTMLDivElement {
+  const div = el('div', 'modal-panel');
+  const header = el('div', 'modal-header');
+  header.textContent = '📜 進歩カードが5枚：捨てる1枚を選ぶ';
+  div.appendChild(header);
+  div.appendChild(Object.assign(el('div', 'modal-section-label'),
+    { textContent: '手札上限は4枚です。捨てるカードを1枚選んでください' }));
+  const candidates = new Set(progressDiscardCandidates(state, pid));
+  const row = el('div', 'ck-pc-row');
+  for (const c of state.players[pid]?.progressCards ?? []) {
+    if (!candidates.has(c.id)) continue; // VPカードは捨てられない
+    const icon = ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck];
+    const btn = makeImgBtn(icon, PROGRESS_CARD_NAME[c.type], 'btn-build', false,
+      () => dispatch({ type: 'DISCARD_PROGRESS', playerId: pid, cardId: c.id }));
+    btn.title = PROGRESS_CARD_DESC[c.type];
+    row.appendChild(btn);
   }
   div.appendChild(row);
   return div;
@@ -1642,6 +1665,15 @@ function buildActionButtons(
     const me = lanMode && viewerId != null ? viewerId : pending.find(p => state.players[p]?.type === 'human');
     if (!me || !pending.includes(me)) return null;
     div.appendChild(buildCityDowngradeUI(state, me, dispatch));
+    return div;
+  }
+
+  // ---- 騎士と商人: 進歩カード上限超過（5枚目）の捨て札選択（多人数解決）----
+  if (state.turnPhase === 'PROGRESS_DISCARD') {
+    const pending = state.pendingProgressDiscard ?? [];
+    const me = lanMode && viewerId != null ? viewerId : pending.find(p => state.players[p]?.type === 'human');
+    if (!me || !pending.includes(me)) return null;
+    div.appendChild(buildProgressDiscardUI(state, me, dispatch));
     return div;
   }
 

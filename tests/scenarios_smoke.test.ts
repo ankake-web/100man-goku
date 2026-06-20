@@ -34,6 +34,8 @@ function playToEnd(scenario: ScenarioId, seed: number): GameState {
       pid = s.playerOrder.find(p => ((s.pendingGoldChoice ?? {})[p] ?? 0) > 0) ?? pid;
     } else if (s.phase === 'MAIN' && s.turnPhase === 'CITY_DOWNGRADE') {
       pid = (s.pendingCityDowngrade ?? [])[0] ?? pid; // 蛮族敗北の都市格下げは対象プレイヤーが解決
+    } else if (s.phase === 'MAIN' && s.turnPhase === 'PROGRESS_DISCARD') {
+      pid = (s.pendingProgressDiscard ?? [])[0] ?? pid; // 進歩カード上限超過の捨て札は対象プレイヤーが解決
     }
     const action = chooseAction(s, pid, { rng });
     if (!action) break;
