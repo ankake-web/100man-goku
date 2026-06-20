@@ -391,10 +391,14 @@ export function attachBoardEvents(
     }
 
     // ---- 騎士と商人: 騎士を起動するモード（起動できる自分の騎士をタップ → ACTIVATE_KNIGHT）----
+    // タッチ時は誤起動防止に確認バーを挟む（建物配置と同じ流儀）。マウスは即実行。
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'activateKnight') {
       const pta = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = pta ? nearestActivateKnightVertexId(state, pid, pta.x, pta.y) : null;
-      if (vid) dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: vid });
+      if (vid) {
+        if (requireConfirm()) setUIPhase({ type: 'placePreview', kind: 'activateKnight', targetId: vid });
+        else dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: vid });
+      }
       return;
     }
 
@@ -402,7 +406,10 @@ export function attachBoardEvents(
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'upgradeKnight') {
       const ptu = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptu ? nearestUpgradeKnightVertexId(state, pid, ptu.x, ptu.y) : null;
-      if (vid) dispatch({ type: 'UPGRADE_KNIGHT', vertexId: vid });
+      if (vid) {
+        if (requireConfirm()) setUIPhase({ type: 'placePreview', kind: 'upgradeKnight', targetId: vid });
+        else dispatch({ type: 'UPGRADE_KNIGHT', vertexId: vid });
+      }
       return;
     }
 
@@ -421,7 +428,11 @@ export function attachBoardEvents(
       if (!tid && ptm) tid = nearestMerchantTileId(state, pid, ptm.x, ptm.y);
       else if (tid && !new Set(merchantTileIds(state, pid)).has(tid)) tid = null; // 候補外の直接ヒットは無効
       const card = state.players[pid]?.progressCards?.find(c => c.type === 'merchant');
-      if (tid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { merchantTileId: tid } });
+      if (tid && card) {
+        // 商人はカードを消費するため、タッチ時は確認バーを挟んで誤配置を防ぐ。
+        if (requireConfirm()) setUIPhase({ type: 'placePreview', kind: 'placeMerchant', targetId: tid });
+        else dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { merchantTileId: tid } });
+      }
       return;
     }
 
@@ -523,10 +534,19 @@ function placeShipEdge(
 
 // 仮置きプレビューを確定して実アクションへ変換する（main.ts の確認バーから呼ぶ）。
 export function resolvePlacePreviewAction(
-  state: GameState, pid: PlayerId, kind: 'settlement' | 'city' | 'road' | 'ship', targetId: string,
+  state: GameState, pid: PlayerId,
+  kind: 'settlement' | 'city' | 'road' | 'ship' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant',
+  targetId: string,
 ): Action | null {
   if (kind === 'road') return resolveEdgeAction(state, pid, 'road', targetId);
   if (kind === 'ship') return canBuildShip(state, pid, targetId) ? { type: 'BUILD_SHIP', edgeId: targetId } : null;
+  // 騎士と商人: 即時1タップ系（起動/昇格/商人）もタッチ時は確認バーを挟む。
+  if (kind === 'activateKnight') return canActivateKnight(state, pid, targetId) ? { type: 'ACTIVATE_KNIGHT', vertexId: targetId } : null;
+  if (kind === 'upgradeKnight') return canUpgradeKnight(state, pid, targetId) ? { type: 'UPGRADE_KNIGHT', vertexId: targetId } : null;
+  if (kind === 'placeMerchant') {
+    const card = state.players[pid]?.progressCards?.find(c => c.type === 'merchant');
+    return card ? { type: 'PLAY_PROGRESS', cardId: card.id, choice: { merchantTileId: targetId } } : null;
+  }
   return resolveVertexAction(state, pid, kind, targetId);
 }
 

@@ -849,7 +849,10 @@ function redraw(skipBoard = false): void {
     if (uiPhase.type === 'placePreview') {
       if (uiPhase.kind === 'road') opts.previewEdgeId = uiPhase.targetId;
       else if (uiPhase.kind === 'ship') opts.previewShipEdgeId = uiPhase.targetId;
-      else opts.previewVertexId = uiPhase.targetId;
+      else if (uiPhase.kind === 'settlement' || uiPhase.kind === 'city') opts.previewVertexId = uiPhase.targetId;
+      // 商人は選んだタイル、騎士の起動/昇格は選んだ騎士頂点を青で「これを確定」と明示。
+      else if (uiPhase.kind === 'placeMerchant') opts.selectedTileId = uiPhase.targetId;
+      else if (uiPhase.kind === 'activateKnight' || uiPhase.kind === 'upgradeKnight') opts.selectedVertexId = uiPhase.targetId;
     }
     return opts;
   };
@@ -3001,13 +3004,17 @@ function isPlaceablePhase(s: GameState): boolean {
 function updatePlaceConfirmBar(): void {
   document.getElementById('place-confirm')?.remove();
   if (!state || uiPhase.type !== 'placePreview') return;
-  const label = uiPhase.kind === 'road' ? '道' : uiPhase.kind === 'ship' ? '船' : uiPhase.kind === 'city' ? '都市' : '開拓地';
+  // 騎士と商人の即時系（起動/昇格/商人）は「建てる？」でなく動作に合わせた文言にする。
+  const actionKind = uiPhase.kind === 'activateKnight' || uiPhase.kind === 'upgradeKnight' || uiPhase.kind === 'placeMerchant';
+  const label = uiPhase.kind === 'road' ? '道' : uiPhase.kind === 'ship' ? '船' : uiPhase.kind === 'city' ? '都市'
+    : uiPhase.kind === 'activateKnight' ? '騎士を起動' : uiPhase.kind === 'upgradeKnight' ? '騎士を昇格'
+    : uiPhase.kind === 'placeMerchant' ? 'ここに商人を配置' : '開拓地';
 
   const bar = document.createElement('div');
   bar.id = 'place-confirm';
   const text = document.createElement('span');
   text.className = 'place-confirm-text';
-  text.textContent = `${label}をここに建てる？`;
+  text.textContent = actionKind ? `${label}する？` : `${label}をここに建てる？`;
 
   const ok = document.createElement('button');
   ok.className = 'place-confirm-ok';

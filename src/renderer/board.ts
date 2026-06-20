@@ -57,6 +57,8 @@ export interface BoardRenderOptions {
   downgradeVertexIds?: Set<string>;
   // 騎士と商人・発明家: 1枚目に選んだタイル（2枚目を待つ＝確定済みとして強調）。
   selectedTileId?: string;
+  // 騎士と商人: タッチ確認中に選択した頂点（騎士の起動/昇格対象）を青で明示。
+  selectedVertexId?: string;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
 }
@@ -568,6 +570,12 @@ function renderVertices(
         const vr = svgEl('ellipse');
         setAttrs(vr, { cx: vx, cy: footY, rx: r * 1.6, ry: r * 0.82, fill: 'none', stroke: '#00ff88', 'stroke-width': 2 * bs });
         kg.appendChild(vr);
+      }
+      // タッチ確認中に選んだ騎士は青リングで「これを起動/昇格」と明示。
+      if (opts?.selectedVertexId === vertex.id) {
+        const sr = svgEl('ellipse');
+        setAttrs(sr, { cx: vx, cy: footY, rx: r * 1.95, ry: r * 1.0, fill: 'none', stroke: '#4ea3ff', 'stroke-width': 3 * bs });
+        kg.appendChild(sr);
       }
       // 騎士コマ画像。
       const kw = 27 * bs;

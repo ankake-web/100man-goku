@@ -149,7 +149,7 @@ export type UIPhase =
   | { type: 'goldChoice'; playerId: PlayerId; slots: (ResourceType | null)[] }
   | { type: 'monopoly'; resource: ResourceType | null }
   | { type: 'robberTarget'; tileId: string; opponents: PlayerId[]; kind?: 'robber' | 'pirate' }
-  | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road' | 'ship'; targetId: string }
+  | { type: 'placePreview'; kind: 'settlement' | 'city' | 'road' | 'ship' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant'; targetId: string }
   | { type: 'playerTradeOffer'; give: ResourceHand; receive: ResourceHand; targetPids: PlayerId[] };
 
 // ============================================================
@@ -240,11 +240,12 @@ function phaseText(state: GameState): string {
   const currentPid = state.playerOrder[state.currentPlayerIndex] ?? '';
   const current = state.players[currentPid];
   const isCpuTurn = current?.type === 'ai';
-  const cpuName = current?.name ?? 'CPU';
 
+  // CPU手番では誰の番かはバナー/手番順バーに既出のため、フェーズ説明では名前を繰り返さず
+  // 「何をしているか」だけを出す（縦持ちで固定情報が嵩むのを避ける）。
   if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
     const half = state.phase === 'SETUP_FORWARD' ? '前半' : '後半';
-    if (isCpuTurn) return `セットアップ${half}：${cpuName} 配置中…`;
+    if (isCpuTurn) return `セットアップ${half}：配置中…`;
     return state.setupSubPhase === 'PLACE_SETTLEMENT'
       ? `セットアップ${half}：開拓地を置く`
       : `セットアップ${half}：道を置く`;
@@ -252,18 +253,18 @@ function phaseText(state: GameState): string {
 
   switch (state.turnPhase) {
     case 'PRE_ROLL':
-      return isCpuTurn ? `${cpuName} の手番…` : 'ダイスを振る';
+      return isCpuTurn ? '手番中…' : 'ダイスを振る';
     case 'ROBBER':
-      return isCpuTurn ? `${cpuName} が盗賊を移動中…` : '盗賊を動かすタイルをクリック';
+      return isCpuTurn ? '盗賊を移動中…' : '盗賊を動かすタイルをクリック';
     case 'DISCARD': {
-      // 捨て札は手番者とは限らない（手札8枚以上の全員が対象）。
+      // 捨て札は手番者とは限らない（手札8枚以上の全員が対象）ので、対象者名は出す。
       const discardPid = findPendingDiscarder(state);
       const dp = discardPid ? state.players[discardPid] : null;
       if (dp?.type === 'ai') return `${dp.name} が手札を捨てています…`;
       return '半数を捨ててください';
     }
     case 'TRADE_BUILD':
-      return isCpuTurn ? `${cpuName} の交易・建設…` : '交易・建設';
+      return isCpuTurn ? '交易・建設中…' : '交易・建設';
     case 'END':
       return 'ターン終了処理中';
     default:
@@ -439,7 +440,8 @@ function buildRobberTargetUI(
   if (uiPhase.type !== 'robberTarget') return div;
   const isPirate = uiPhase.kind === 'pirate';
   const header = el('div', 'modal-header');
-  header.textContent = isPirate ? '🏴‍☠️ 海賊：奪う相手を選んでください' : '🦹 強盗：盗む相手を選んでください';
+  header.append(inlineIc(isPirate ? ASSETS.piece.pirate : ASSETS.piece.robber, 'inline-ic'),
+    document.createTextNode(isPirate ? ' 海賊：奪う相手を選んでください' : ' 強盗：盗む相手を選んでください'));
   div.appendChild(header);
 
   const row = el('div', 'modal-res-row');
@@ -550,7 +552,7 @@ function buildBankTradeUI(
 function buildProgressDiscardUI(state: GameState, pid: PlayerId, dispatch: (a: Action) => void): HTMLDivElement {
   const div = el('div', 'modal-panel');
   const header = el('div', 'modal-header');
-  header.textContent = '📜 進歩カードが5枚：捨てる1枚を選ぶ';
+  header.append(glyph('ic-cards'), document.createTextNode(' 進歩カードが5枚：捨てる1枚を選ぶ'));
   div.appendChild(header);
   div.appendChild(Object.assign(el('div', 'modal-section-label'),
     { textContent: 'カードをタップして効果を確認し、捨てるか決めてください（手札上限4枚）' }));
@@ -650,7 +652,7 @@ function buildYearOfPlentyUI(
     uiPhase.type === 'yearOfPlenty' ? uiPhase.slots : [null, null];
 
   const header = el('div', 'modal-header');
-  header.textContent = '🌾 年の豊穣：資源2枚を受け取る';
+  header.append(inlineIc(RESOURCE_IMG.grain, 'inline-ic'), document.createTextNode(' 年の豊穣：資源2枚を受け取る'));
   div.appendChild(header);
 
   const status = el('div', 'modal-section-label');
@@ -833,7 +835,8 @@ function buildPlayerTradeOfferUI(
 
   const lc = isLandscapeCompact(); // 横持ちは短ラベルで圧縮
   const header = el('div', 'modal-header');
-  header.textContent = lc ? '🤝 交易を提案' : '🤝 プレイヤー間交易：オファー作成';
+  header.append(inlineIc(ASSETS.action.playerTrade, 'inline-ic'),
+    document.createTextNode(lc ? ' 交易を提案' : ' プレイヤー間交易：オファー作成'));
   div.appendChild(header);
 
   // ---- 現在の交換内容サマリ（一目で分かるように）----
@@ -951,7 +954,8 @@ function buildLanPendingTradeUI(
 
   const lc = isLandscapeCompact();
   const header = el('div', 'modal-header');
-  header.textContent = lc ? '🤝 交易' : '🤝 プレイヤー間交易';
+  header.append(inlineIc(ASSETS.action.playerTrade, 'inline-ic'),
+    document.createTextNode(lc ? ' 交易' : ' プレイヤー間交易'));
   div.appendChild(header);
 
   // 交換内容（提案者が渡す ⇅ 提案者が欲しい）— 公開情報
@@ -1074,9 +1078,10 @@ function buildPendingTradeUI(
 
   const header = el('div', 'modal-header');
   if (isCpuInitiated) {
-    header.textContent = `🤝 ${initiator?.name ?? trade.initiatorId} から交易提案`;
+    header.append(inlineIc(ASSETS.action.playerTrade, 'inline-ic'),
+      document.createTextNode(` ${initiator?.name ?? trade.initiatorId} から交易提案`));
   } else {
-    header.textContent = '🤝 プレイヤー間交易';
+    header.append(inlineIc(ASSETS.action.playerTrade, 'inline-ic'), document.createTextNode(' プレイヤー間交易'));
   }
   div.appendChild(header);
 
@@ -1811,7 +1816,10 @@ function buildActionButtons(
     div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
   }
 
-  div.appendChild(makeBtn('ターン終了', 'btn-end', false, () => dispatch({ type: 'END_TURN' })));
+  // ターン終了は「手番を進める／戻れない操作」なので、建設ボタン群から区切り線＋余白で離して
+  // 全幅の独立行にし、まだ建設したいのに誤って押す事故を防ぐ。
+  div.appendChild(el('div', 'action-sep'));
+  div.appendChild(makeBtn('ターン終了', 'btn-end btn-end-turn', false, () => dispatch({ type: 'END_TURN' })));
   return div;
 }
 
@@ -2292,8 +2300,22 @@ function buildPlayerPanel(
       .filter(v => v.knight?.playerId === pId && v.knight.active).length;
     const walls = Object.values(state.vertices)
       .filter(v => v.building?.playerId === pId && (v.building as { wall?: boolean }).wall).length;
+    // 改善トラックは短ラベル(交/政/科)を維持。騎士・城壁は絵文字をやめ素材アイコンで表記統一。
     const ck = el('div', 'ck-status');
-    ck.textContent = `交${imp.trade}/政${imp.politics}/科${imp.science}　🛡騎士${kActive}${walls > 0 ? `　🧱城壁${walls}` : ''}`;
+    const impEl = el('span', 'ck-imp');
+    impEl.textContent = `交${imp.trade}/政${imp.politics}/科${imp.science}`;
+    impEl.title = '都市改善 交易/政治/科学';
+    ck.appendChild(impEl);
+    const knEl = el('span', 'ck-stat');
+    knEl.title = '起動済みの騎士';
+    knEl.append(inlineIc(knightImg, 'stat-ic'), Object.assign(el('span'), { textContent: String(kActive) }));
+    ck.appendChild(knEl);
+    if (walls > 0) {
+      const wlEl = el('span', 'ck-stat');
+      wlEl.title = '城壁';
+      wlEl.append(inlineIc(ASSETS.piece.cityWall, 'stat-ic'), Object.assign(el('span'), { textContent: String(walls) }));
+      ck.appendChild(wlEl);
+    }
     div.appendChild(ck);
   }
 

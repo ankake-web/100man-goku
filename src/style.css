@@ -785,6 +785,9 @@ h1 {
 .action-buttons > .modal-panel,
 .action-buttons > .ck-build,
 .action-buttons > .turn-phase-text { grid-column: 1 / -1; }
+/* ターン終了ボタンを建設ボタン群から区切り線＋余白で隔離（誤タップ防止）。 */
+.action-buttons > .action-sep { grid-column: 1 / -1; height: 1px; background: rgba(255,255,255,0.16); margin: 7px 0 1px; }
+.action-buttons > .btn-end-turn { grid-column: 1 / -1; }
 
 .action-btn {
   padding: 9px 12px;
@@ -1929,7 +1932,8 @@ h1 {
 .ck-comm-coin  { background: rgba(255,205,70,0.22); }
 .ck-comm-cloth { background: rgba(110,200,240,0.2); }
 .ck-comm-paper { background: rgba(220,220,220,0.2); }
-.ck-status { font-size: 0.78rem; color: rgba(255,255,255,0.74); margin-top: 7px; }
+.ck-status { font-size: 0.78rem; color: rgba(255,255,255,0.74); margin-top: 7px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.ck-status .ck-stat { display: inline-flex; align-items: center; gap: 2px; }
 /* 自分の進歩カードをパネルに常時表示（他人のターンでも確認できるように）。小さな札をタップで詳細。 */
 .panel-pc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
 .panel-pc-label { font-size: 0.78rem; color: #e8d9a8; font-weight: 700; flex: 0 0 auto; }
