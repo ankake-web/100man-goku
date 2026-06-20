@@ -421,6 +421,29 @@ describe('LAN mixed human+CPU: server-side CPU drive', () => {
     expect(nextCpuAction(allDone, () => 0.5)).toBeNull();
   });
 
+  it('騎士と商人: 商品込みで上限超のCPUを捨て札対象に選ぶ（資源のみ判定だと盗賊前で永久停止する回帰）', () => {
+    const base = tradeReadyState({}, {});
+    const ck: GameState = {
+      ...base,
+      expansion: 'cities_knights',
+      turnPhase: 'DISCARD',
+      discardedThisRound: [],
+      players: {
+        ...base.players,
+        player2: {
+          ...base.players.player2!, type: 'ai', aiDifficulty: 'normal',
+          hand: makeHand({ wood: 3, brick: 2 }),        // 資源5
+          commodities: { coin: 2, cloth: 1, paper: 0 }, // 商品3 → 合計8（=捨て対象）
+        },
+      },
+    };
+    const step = nextCpuAction(ck, () => 0.5);
+    // 資源のみ(5<8)で数えると選ばれず null になり捨て札フェーズが終わらなかった。
+    expect(step?.pid).toBe('player2');
+    expect(step?.action.type).toBe('DISCARD_RESOURCES');
+    expect(() => applyAction(ck, step!.action, createRng(1))).not.toThrow();
+  });
+
   it('makes a CPU accept a beneficial trade but reject one that costs a needed resource', () => {
     // 受諾: CPU(player2) は不足している wood を受け取り、余剰(brick2)から brick1 を渡す
     const acceptBase = tradeReadyState({ wood: 2 }, { brick: 2 });
