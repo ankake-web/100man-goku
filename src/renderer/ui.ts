@@ -10,7 +10,7 @@ import { hasEnoughResources, playerHasMovableShip } from '../engine/actions';
 import { canBankTrade, getEffectiveTradeRate, isCommodity } from '../engine/trade';
 import { findPendingDiscarder, discardCount, robbableCardCount } from '../engine/robber';
 import {
-  isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgress,
+  isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgressLoose,
   playerHasMovableKnight, playerHasChasableKnight, inventorTiles, plainCityVertexIds,
 } from '../engine/citiesKnights';
 import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
@@ -1358,7 +1358,11 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
       b.style.borderLeft = `5px solid ${PLAYER_COLORS[o] ?? '#888'}`;
       row.appendChild(b);
     }
-    if (eligible.length === 0) row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '対象がいません' }));
+    if (eligible.length === 0) {
+      row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '対象がいません' }));
+      // 効果が空でもカードを消費して使える（手札整理）。
+      row.appendChild(makeBtn('効果なしで使う（カードを消費）', 'btn-end', false, () => play({})));
+    }
   }
   wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
   return wrap;
@@ -1574,7 +1578,7 @@ function appendCkBuildSection(
     sec.appendChild(pcTitle);
     const pcRow = el('div', 'ck-pc-row');
     for (const c of cards) {
-      const can = canPlayProgress(state, pid, c.id);
+      const can = canPlayProgressLoose(state, pid, c.id); // 効果が空でも使える（消費される）
       // 進歩カードは25種すべて専用アート。未登録のみトラック色のカード裏（科学=緑/商業=黄/政治=青）。
       const icon = ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck];
       // タップで「効果説明＋使う/やめる」のカード詳細を表示（使用前に効果が分かるように）。

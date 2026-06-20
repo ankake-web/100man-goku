@@ -21,7 +21,7 @@ import {
   isCk, applyEventDie, distributeCkProduction,
   canBuildKnight, buildKnight, canActivateKnight, activateKnight, canUpgradeKnight, upgradeKnight,
   canBuildImprovement, buildImprovement, canBuildCityWall, buildCityWall,
-  canPlayProgress, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber, ckSetupSecondCity,
+  canPlayProgress, canPlayProgressLoose, playProgress, canMoveKnight, moveKnight, canChaseRobber, chaseRobber, ckSetupSecondCity,
   downgradeCity,
 } from './citiesKnights';
 import { executeBankTrade, canBankTrade, offerTrade, respondTrade, confirmTrade, cancelTrade } from './trade';
@@ -725,7 +725,8 @@ export function applyAction(
       const okPhase = state.phase === 'MAIN'
         && (state.turnPhase === 'TRADE_BUILD' || (isAlchemist && state.turnPhase === 'PRE_ROLL'));
       if (!okPhase) throw new Error('PLAY_PROGRESS: wrong phase for this card');
-      if (!canPlayProgress(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
+      // 人間は効果が空でも使える（消費される）。受理は緩い判定で。CPUは canPlayProgress で効果成立時のみ選ぶ。
+      if (!canPlayProgressLoose(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
       return checkVictory(playProgress(state, pid, action.cardId, rng, action.choice), pid);
     }
     case 'MOVE_KNIGHT': {
