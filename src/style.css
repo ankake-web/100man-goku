@@ -2893,13 +2893,48 @@ h1 {
 #board-area.mini-mode {
   --board-draw-width: min(100%, calc(78vh * 800 / 700));
 }
+/* 自分のパネルを大きく上段に、他プレイヤーを小さく下段の横並びに（人数で自動分割）。 */
 #board-area.mini-mode .mini-panels {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
   left: 50%;
   right: auto;
   transform: translateX(-50%);
   width: var(--board-draw-width);
+  padding: 4px;
+  gap: 4px;
 }
+/* 自分パネル: 大きめ・上段の左寄せ（右上の☰メニューを避ける）。
+   ※ .mini-panel{position:absolute} を確実に上書きするため #board-area.mini-mode で特異度を上げる。 */
+#board-area.mini-mode .mini-self {
+  position: static;
+  align-self: flex-start;
+  max-width: 64%;
+  font-size: clamp(0.74rem, 3.8vw, 0.95rem);
+  background: rgba(10,12,18,0.82);
+  gap: 2px;
+}
+#board-area.mini-mode .mini-self .mini-dot { width: 12px; height: 12px; }
+#board-area.mini-mode .mini-self .mini-vp { font-size: 1.05em; }
+/* 他プレイヤー: 下段に横並び・等分（1〜3人をいい感じに分割）。 */
+#board-area.mini-mode .mini-opps {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+}
+#board-area.mini-mode .mini-opp {
+  position: static;
+  flex: 1 1 0;
+  max-width: 33%;
+  min-width: 0;
+  font-size: clamp(0.54rem, 2.7vw, 0.7rem);
+}
+#board-area.mini-mode .mini-opp .mini-name { max-width: 4.5em; }
 .mini-panel {
   position: absolute;
   display: flex;

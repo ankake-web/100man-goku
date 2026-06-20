@@ -1906,15 +1906,7 @@ export function clipByWidth(s: string, maxWidth = 8): string {
   return out;
 }
 
-// スマホ縦持ち用ミニパネルの四隅割り当て（人数別にバランスよく配置）。
-const MINI_CORNERS: Record<number, string[]> = {
-  1: ['corner-tl'],
-  2: ['corner-tl', 'corner-tr'],
-  3: ['corner-tl', 'corner-tr', 'corner-bl'],
-  4: ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'],
-};
-
-// 盤面四隅のミニプレイヤーパネルを #board-area に重ねて描画する（縦持ちスマホ専用）。
+// 盤面に重ねるミニプレイヤーパネル（縦持ちスマホ専用）。自分=上段大／他=下段小の横並び。
 // 表示する公開情報のみ: 名前 / VP / 手札枚数 / 現手番 / 最長・最大の小アイコン。
 // 他プレイヤーの手札内訳・発展カード内容は出さない（手札は枚数のみ＝公開情報）。
 function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
@@ -1923,12 +1915,13 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
   boardArea.querySelector('.mini-panels')?.remove();
 
   const order = state.playerOrder;
-  const corners = MINI_CORNERS[order.length] ?? MINI_CORNERS[4]!;
   const currentPid = state.playerOrder[state.currentPlayerIndex];
   const selfPid = viewerId ?? state.playerOrder.find(p => state.players[p]?.type === 'human');
 
+  // レイアウト: 自分のパネルを大きく上に、他プレイヤーを小さく下段に横並び（人数で自動分割）。
   const wrap = el('div', 'mini-panels');
-  order.forEach((pid, i) => {
+  const oppsWrap = el('div', 'mini-opps');
+  order.forEach((pid) => {
     const p = state.players[pid];
     if (!p) return;
     const isSelf = viewerId != null ? pid === viewerId : p.type === 'human';
@@ -1941,7 +1934,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     const mine = pid === selfPid;
     const color = PLAYER_COLORS[pid] ?? '#aaa';
 
-    const panel = el('div', `mini-panel ${corners[i] ?? 'corner-tl'}${isCurrent ? ' current' : ''}${isCurrent && mine ? ' mine' : ''}`);
+    const panel = el('div', `mini-panel ${mine ? 'mini-self' : 'mini-opp'}${isCurrent ? ' current' : ''}${isCurrent && mine ? ' mine' : ''}`);
     panel.dataset.pid = pid;
     panel.style.setProperty('--mini-color', color);
 
@@ -1970,8 +1963,11 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     }
 
     panel.append(row1, row2);
-    wrap.appendChild(panel);
+    // 自分は上段（大）、他プレイヤーは下段の横並び（小）。
+    if (mine) wrap.appendChild(panel);
+    else oppsWrap.appendChild(panel);
   });
+  wrap.appendChild(oppsWrap);
   boardArea.appendChild(wrap);
 }
 
