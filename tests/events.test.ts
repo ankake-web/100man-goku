@@ -6,10 +6,12 @@
 // DOM/CTM 変換は実機目視（命中率そのもの）に委ね、ここでは幾何ロジックを担保する。
 
 import { describe, it, expect } from 'vitest';
-import { nearestValidVertexId, nearestValidEdgeId, resolvePlacePreviewAction, clampViewport } from '../src/renderer/events';
+import { nearestValidVertexId, nearestValidEdgeId, nearestBuildKnightVertexId, resolvePlacePreviewAction, clampViewport } from '../src/renderer/events';
 import { applyAction } from '../src/engine/game';
 import { canBuildRoad } from '../src/engine/actions';
-import { makeGameState } from './helpers';
+import { canBuildKnight } from '../src/engine/citiesKnights';
+import { makeGameState, makePlayer } from './helpers';
+import { makeHand } from '../src/constants';
 import type { GameState } from '../src/types';
 
 function setupSettlementState(): GameState {
@@ -43,6 +45,35 @@ describe('nearestValidVertexId', () => {
     s = applyAction(s, { type: 'BUILD_SETTLEMENT', vertexId: vid });
     // 占有頂点と距離ルールで近傍も不可 → 近傍に合法頂点が無く null。
     expect(nearestValidVertexId(s, 'player1', 'settlement', x, y)).not.toBe(vid);
+  });
+});
+
+describe('nearestBuildKnightVertexId (騎士の手動配置)', () => {
+  // 道に接した空き頂点＋ore/woolありの CK 状態を作る。
+  function ckKnightState(): { s: GameState; vid: string } {
+    const base = makeGameState({ phase: 'MAIN', turnPhase: 'TRADE_BUILD', expansion: 'cities_knights' });
+    const vid = Object.keys(base.vertices)[0]!;
+    const eid = base.vertices[vid]!.adjacentEdgeIds[0]!;
+    const s: GameState = {
+      ...base,
+      players: { ...base.players, player1: makePlayer('player1', { hand: makeHand({ ore: 1, wool: 1 }) }) },
+      edges: { ...base.edges, [eid]: { ...base.edges[eid]!, road: { playerId: 'player1' } } },
+    };
+    return { s, vid };
+  }
+
+  it('道に接した空き頂点をタップすると騎士配置先として返す', () => {
+    const { s, vid } = ckKnightState();
+    expect(canBuildKnight(s, 'player1', vid)).toBe(true); // 前提
+    const { x, y } = s.vertices[vid]!.pixel;
+    expect(nearestBuildKnightVertexId(s, 'player1', x, y)).toBe(vid);
+  });
+
+  it('資源不足なら配置先なし（null）', () => {
+    const { s, vid } = ckKnightState();
+    const broke: GameState = { ...s, players: { ...s.players, player1: makePlayer('player1', { hand: makeHand({}) }) } };
+    const { x, y } = broke.vertices[vid]!.pixel;
+    expect(nearestBuildKnightVertexId(broke, 'player1', x, y)).toBeNull();
   });
 });
 

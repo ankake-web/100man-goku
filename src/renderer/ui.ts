@@ -1469,9 +1469,9 @@ function appendCkBuildSection(
   sec.appendChild(knLabel);
   const knightRow = el('div', 'ck-knight-row');
   const firstV = (pred: (vid: string) => boolean): string | undefined => Object.keys(state.vertices).find(pred);
-  const buildVid = firstV(v => canBuildKnight(state, pid, v));
-  knightRow.appendChild(makeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], buildVid ? 'btn-build' : 'btn-disabled', !buildVid,
-    () => buildVid && dispatch({ type: 'BUILD_KNIGHT', vertexId: buildVid })));
+  // 騎士の配置は盤面で頂点を選ぶ（自動配置をやめ、置く場所を自分で選べるように）。
+  const canBuildKn = !!firstV(v => canBuildKnight(state, pid, v));
+  knightRow.appendChild(modeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], 'buildKnight', canBuildKn, buildMode, setBuildMode));
   const actVid = firstV(v => canActivateKnight(state, pid, v));
   knightRow.appendChild(makeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], actVid ? 'btn-build' : 'btn-disabled', !actVid,
     () => actVid && dispatch({ type: 'ACTIVATE_KNIGHT', vertexId: actVid })));
