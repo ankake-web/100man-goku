@@ -17,7 +17,6 @@ import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, i
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
 import type { BuildMode } from './events';
 
-const COMMODITY_EMOJI: Record<CommodityType, string> = { coin: '🪙', cloth: '🧵', paper: '📜' };
 // 画像参照は中央マニフェスト経由（単一の真実）。
 import { ASSETS, assetImg, houseImg, cityImg, type ColorKey } from '../assets/manifest';
 
@@ -35,6 +34,19 @@ function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
 // 小さなインラインアイコン画像（テキスト/ラベル/ログ等に混ぜる）。欠損(null)はプレースホルダへ。
 function inlineIc(src: string | null | undefined, cls = 'inline-ic'): HTMLImageElement {
   return assetImg(src ?? null, cls, '', '');
+}
+// 資源/商品の「アイコン画像＋テキスト」を span へ詰める（交易・捨て札UI等で絵文字を画像へ置換）。
+function setIconText(target: HTMLElement, imgSrc: string, text: string): void {
+  target.textContent = '';
+  target.append(inlineIc(imgSrc, 'inline-ic'), document.createTextNode(text));
+}
+// 「選択中：◯ ・ ◯ ・ ？」を絵文字でなく素材画像で描く（金タイル/年の豊穣の選択状況）。
+function appendChosenIcons(target: HTMLElement, slots: (ResourceType | null)[]): void {
+  target.textContent = '選択中：';
+  slots.forEach((s, i) => {
+    if (i > 0) target.append(' ・ ');
+    target.append(s ? inlineIc(RESOURCE_IMG[s], 'inline-ic') : document.createTextNode('？'));
+  });
 }
 // CSSグリフ（道など素材画像が無いもの）。glyphCls 自身が em ベースの形状/サイズを持つ。
 function glyph(glyphCls: string, extra = ''): HTMLSpanElement {
@@ -176,10 +188,6 @@ const CORNER_LAYOUT_MIN_WIDTH = 1200;
 function isLandscapeCompact(): boolean {
   return window.innerWidth > window.innerHeight && window.innerHeight <= 600;
 }
-
-const RESOURCE_EMOJI: Record<ResourceType, string> = {
-  wood: '🌲', brick: '🧱', wool: '🐑', grain: '🌾', ore: '⛰',
-};
 
 // 資源アイコン画像（手札カード・交易チップ用）。テキスト埋め込み箇所は絵文字のまま。
 const RESOURCE_IMG: Record<ResourceType, string> = {
@@ -370,7 +378,7 @@ function buildDiscardUI(
       setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] - 1 }, selectedCommodities: selectedComm });
     });
     const info = el('span', 'modal-res-info');
-    info.textContent = `${RESOURCE_EMOJI[r]} ${player.hand[r]}枚 → 捨:${selected[r]}`;
+    setIconText(info, RESOURCE_IMG[r], ` ${player.hand[r]}枚 → 捨:${selected[r]}`);
     const plus = makeBtn('+', 'btn-small', selected[r] >= player.hand[r] || chosen >= target, () => {
       setUIPhase({ type: 'discard', playerId: discardPid, selected: { ...selected, [r]: selected[r] + 1 }, selectedCommodities: selectedComm });
     });
@@ -396,7 +404,7 @@ function buildDiscardUI(
         setUIPhase({ type: 'discard', playerId: discardPid, selected, selectedCommodities: { ...selectedComm, [c]: cur - 1 } });
       });
       const info = el('span', 'modal-res-info');
-      info.textContent = `${COMMODITY_EMOJI[c]} ${comm[c]}枚 → 捨:${cur}`;
+      setIconText(info, COMMODITY_IMG[c], ` ${comm[c]}枚 → 捨:${cur}`);
       const plus = makeBtn('+', 'btn-small', cur >= comm[c] || chosen >= target, () => {
         setUIPhase({ type: 'discard', playerId: discardPid, selected, selectedCommodities: { ...selectedComm, [c]: cur + 1 } });
       });
@@ -475,7 +483,6 @@ function buildBankTradeUI(
   const give    = uiPhase.type === 'bankTrade' ? uiPhase.give : null;
   const receive = uiPhase.type === 'bankTrade' ? uiPhase.receive : null;
   const ck = isCk(state);
-  const kindEmoji = (k: TradeKind): string => isCommodity(k) ? COMMODITY_EMOJI[k] : RESOURCE_EMOJI[k as ResourceType];
   const heldOf = (k: TradeKind): number => isCommodity(k) ? (player.commodities ?? { coin: 0, cloth: 0, paper: 0 })[k] : player.hand[k as ResourceType];
   const bankOf = (k: TradeKind): number => isCommodity(k) ? (state.commodityBank ?? { coin: 0, cloth: 0, paper: 0 })[k] : state.bank[k as ResourceType];
 
@@ -520,12 +527,12 @@ function buildBankTradeUI(
     if (receive !== null) {
       const rate = getEffectiveTradeRate(state, pid, give);
       const valid = canBankTrade(state, pid, give, receive);
-      div.appendChild(makeBtn(
-        `✓ ${rate}枚の${kindEmoji(give)} → 1枚の${kindEmoji(receive)}`,
-        valid ? 'btn-primary' : 'btn-disabled',
-        !valid,
-        () => dispatch({ type: 'BANK_TRADE', give, receive }),
-      ));
+      // 実行ボタンのアイコンも絵文字でなく素材画像にする。
+      const execBtn = el('button', `action-btn ${valid ? 'btn-primary' : 'btn-disabled'}`);
+      execBtn.disabled = !valid;
+      execBtn.append('✓ ', `${rate}枚の`, inlineIc(kindIcon(give), 'inline-ic'), ' → 1枚の', inlineIc(kindIcon(receive), 'inline-ic'));
+      if (valid) execBtn.addEventListener('click', () => dispatch({ type: 'BANK_TRADE', give, receive }));
+      div.appendChild(execBtn);
     }
   }
 
@@ -556,7 +563,7 @@ export function buildGoldChoiceUI(
   div.appendChild(header);
 
   const status = el('div', 'modal-section-label');
-  status.textContent = `選択中：${slots.map(s => (s ? RESOURCE_EMOJI[s] : '？')).join(' ・ ')}`;
+  appendChosenIcons(status, slots);
   div.appendChild(status);
 
   const resRow = el('div', 'modal-res-row');
@@ -564,8 +571,9 @@ export function buildGoldChoiceUI(
     const chosen = slots.filter(s => s === r).length;
     // バンク在庫を超えて同一資源は選べない（金もバンクからの受け取り）。
     const canAdd = chosen < state.bank[r] && slots.some(s => s === null);
-    const btn = makeBtn(
-      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}${chosen > 0 ? ` ×${chosen}` : ''}`,
+    const btn = makeImgBtn(
+      RESOURCE_IMG[r],
+      `${RESOURCE_NAMES[r]}${chosen > 0 ? ` ×${chosen}` : ''}`,
       chosen > 0 ? 'btn-active' : canAdd ? 'btn-build' : 'btn-disabled',
       !canAdd,
       () => {
@@ -617,17 +625,16 @@ function buildYearOfPlentyUI(
   div.appendChild(header);
 
   const status = el('div', 'modal-section-label');
-  const s0 = slots[0] ? RESOURCE_EMOJI[slots[0]] : '？';
-  const s1 = slots[1] ? RESOURCE_EMOJI[slots[1]] : '？';
-  status.textContent = `選択中：${s0} ・ ${s1}`;
+  appendChosenIcons(status, slots);
   div.appendChild(status);
 
   const resRow = el('div', 'modal-res-row');
   for (const r of RESOURCE_TYPES) {
     const inBank = state.bank[r] > 0;
     const count = slots.filter(s => s === r).length;
-    const btn = makeBtn(
-      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}${count > 0 ? ` ×${count}` : ''}`,
+    const btn = makeImgBtn(
+      RESOURCE_IMG[r],
+      `${RESOURCE_NAMES[r]}${count > 0 ? ` ×${count}` : ''}`,
       count > 0 ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled',
       !inBank,
       () => {
@@ -679,8 +686,9 @@ function buildMonopolyUI(
 
   const resRow = el('div', 'modal-res-row');
   for (const r of RESOURCE_TYPES) {
-    const btn = makeBtn(
-      `${RESOURCE_EMOJI[r]} ${RESOURCE_NAMES[r]}`,
+    const btn = makeImgBtn(
+      RESOURCE_IMG[r],
+      RESOURCE_NAMES[r],
       resource === r ? 'btn-active' : 'btn-build',
       false,
       () => setUIPhase({ type: 'monopoly', resource: r }),
@@ -839,7 +847,7 @@ function buildPlayerTradeOfferUI(
       setUIPhase({ type: 'playerTradeOffer', give: { ...give, [r]: give[r] - 1 }, receive, targetPids }),
     ));
     const info = el('span', 'modal-res-info');
-    info.textContent = `${RESOURCE_EMOJI[r]} 手${player.hand[r]} 渡${give[r]}`;
+    setIconText(info, RESOURCE_IMG[r], ` 手${player.hand[r]} 渡${give[r]}`);
     cell.appendChild(info);
     cell.appendChild(makeBtn('+', 'btn-small', give[r] >= player.hand[r], () =>
       setUIPhase({ type: 'playerTradeOffer', give: { ...give, [r]: give[r] + 1 }, receive, targetPids }),
@@ -860,7 +868,7 @@ function buildPlayerTradeOfferUI(
       setUIPhase({ type: 'playerTradeOffer', give, receive: { ...receive, [r]: receive[r] - 1 }, targetPids }),
     ));
     const info = el('span', 'modal-res-info');
-    info.textContent = `${RESOURCE_EMOJI[r]} 要求${receive[r]}`;
+    setIconText(info, RESOURCE_IMG[r], ` 要求${receive[r]}`);
     cell.appendChild(info);
     cell.appendChild(makeBtn('+', 'btn-small', false, () =>
       setUIPhase({ type: 'playerTradeOffer', give, receive: { ...receive, [r]: receive[r] + 1 }, targetPids }),
@@ -1267,7 +1275,7 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
   } else { // master_merchant
     label.textContent = '相手を選ぶ（自分よりVPが高い相手）';
     const myVp = pid ? calcVP(state, pid) : 0;
-    const cardsOf = (o: PlayerId): number => state.players[o]!.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + state.players[o]!.hand[r], 0);
+    const cardsOf = (o: PlayerId): number => robbableCardCount(state, o); // 資源＋商品（大商人は商品も奪える）
     const eligible = state.playerOrder.filter(o => o !== pid && calcVP(state, o) > myVp && cardsOf(o as PlayerId) > 0) as PlayerId[];
     for (const o of eligible) {
       const b = makeBtn(`${state.players[o]!.name}（★${calcVP(state, o)}）`, 'btn-build', false, () => play({ targetPlayerId: o }));
@@ -1928,9 +1936,8 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     const isWinner = state.phase === 'GAME_OVER' && pid === state.winner;
     // 自分・勝者は内部VP（VPカード込み）、他プレイヤーは公開VPのみ（秘匿維持）。
     const vp = (isSelf || isWinner) ? calcVP(state, pid as PlayerId) : calcPublicVP(state, pid as PlayerId);
-    const handTotal = isSelf
-      ? RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0)
-      : (p.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0));
+    // 手札枚数は資源＋商品（騎士と商人）。7の捨て札・強盗の対象枚数と一致させる。
+    const handTotal = robbableCardCount(state, pid as PlayerId);
     const isCurrent = pid === currentPid && state.phase !== 'GAME_OVER';
     const mine = pid === selfPid;
     const color = PLAYER_COLORS[pid] ?? '#aaa';
@@ -2020,9 +2027,8 @@ function buildPlayerPanel(
   h3.appendChild(nameRow);
   // 2行目: VP + 順位 + コンパクト統計（開拓地/都市/手札枚数）。1行固定で折り返さない。
   const bd = calcVPBreakdown(state, pId);
-  const handTotal = isSelf
-    ? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0)
-    : (player.handCount ?? RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0));
+  // 手札枚数は資源＋商品（騎士と商人）。7の捨て札・強盗の対象枚数と一致させる。
+  const handTotal = robbableCardCount(state, pId);
   const statRow = el('span', 'panel-stat-row');
   const vpSpan = el('span', 'panel-vp');
   // 自分: 内部VP（VPカード込み）、他プレイヤー: 公開VPのみ
@@ -2036,7 +2042,7 @@ function buildPlayerPanel(
   const counts = el('span', 'stat-counts');
   const sChip = statChip(houseImg(ckey), bd.settlements); sChip.title = '開拓地';
   const cChip = statChip(cityImg(ckey), bd.cities); cChip.title = '都市';
-  const hChip = statChip(null, handTotal, 'stat-hand', 'ic-cards'); hChip.title = '手札（枚数）';
+  const hChip = statChip(null, handTotal, 'stat-hand', 'ic-cards'); hChip.title = isCk(state) ? '手札（資源＋商品の枚数）' : '手札（枚数）';
   counts.append(sChip, cChip, hChip);
   statRow.appendChild(counts);
   h3.appendChild(statRow);
