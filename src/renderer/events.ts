@@ -171,6 +171,24 @@ export function nearestUpgradeKnightVertexId(state: GameState, pid: PlayerId, x:
   return nearestVertexMatching(state, vid => canUpgradeKnight(state, pid, vid), x, y, maxDist);
 }
 
+/** 点(x,y)に最も近いタイル（中心=頂点平均）のIDを maxDist 内で返す。盗賊のタイル選択スナップ用。 */
+export function nearestTileId(
+  state: GameState, x: number, y: number, maxDist = 70,
+): string | null {
+  let best: string | null = null;
+  let bestD = maxDist * maxDist;
+  for (const tid of Object.keys(state.tiles)) {
+    const vids = state.tileToVertices[tid] ?? [];
+    let cx = 0, cy = 0, n = 0;
+    for (const vid of vids) { const v = state.vertices[vid]; if (v) { cx += v.pixel.x; cy += v.pixel.y; n++; } }
+    if (n === 0) continue;
+    cx /= n; cy /= n;
+    const d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+    if (d <= bestD) { bestD = d; best = tid; }
+  }
+  return best;
+}
+
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -250,10 +268,13 @@ export function attachBoardEvents(
     const pid = state.playerOrder[state.currentPlayerIndex]!;
     const mode = getBuildMode();
 
-    // ---- 盗賊フェーズ: タイル（大きいので closest で十分）----
+    // ---- 盗賊フェーズ: タイル。直接ヒット優先、外したら最近傍タイルへスナップ（光ったタイルを選びやすく）----
     if (state.phase === 'MAIN' && state.turnPhase === 'ROBBER') {
-      const tileEl = target.closest('[data-tile-id]');
-      const tileId = tileEl?.getAttribute('data-tile-id');
+      let tileId = target.closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
+      if (!tileId) {
+        const pt = clickToBoardPixel(svg, e.clientX, e.clientY);
+        if (pt) tileId = nearestTileId(state, pt.x, pt.y);
+      }
       if (tileId) handleTileClick(tileId, state, pid, setUIPhase, dispatch);
       return;
     }

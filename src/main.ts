@@ -730,6 +730,8 @@ let cpuPlayerTradeOfferedThisTurn = false;
 
 // ダイスのロール演出中フラグ。演出中は新たなアクションを無視（多重ロール等を防止）。
 let diceAnimating = false;
+// 資源/商品の分配アニメ中フラグ。CPUの次手（特に次のダイス）を待たせ、サイコロと飛行アニメの被りを防ぐ。
+let resourceAnimating = false;
 
 // 画面右上メニュー（ホーム/BGM/SE/CPU速度）の開閉状態
 let gameMenuOpen = false;
@@ -1256,23 +1258,35 @@ function scheduleHumanTradeAutoReject(): void {
 
 function scheduleAiTurn(): void {
   if (!state || state.phase === 'GAME_OVER') return;
+  // 資源分配アニメ中はCPUの次手を待つ（クリア時に再呼び出しされる）。サイコロとの被り防止。
+  if (resourceAnimating) return;
 
   const gen = gameGeneration;
 
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
-    // 捨て札済み(discardedThisRound)の AI は除外（cpuIsResponsible / safeFallbackAction と同一条件）。
+    // 捨て札済み(discardedThisRound)の AI は除外。判定は discardCount（騎士と商人は資源＋商品）で。
     // 16枚以上から半分捨てても8枚以上残るため、これが無いと同じ AI を再選択して違法な
     // 二重捨てを dispatch し、watchdog(8秒) まで進行が止まる。
-    const discardPid = state.playerOrder.find(pid => {
-      if (state.players[pid]?.type !== 'ai') return false;
-      if ((state.discardedThisRound ?? []).includes(pid)) return false;
-      const h = state.players[pid]!.hand;
-      return RESOURCE_TYPES.reduce((s, r) => s + h[r], 0) >= 8;
-    });
+    const discardPid = state.playerOrder.find(pid =>
+      state.players[pid]?.type === 'ai'
+      && !(state.discardedThisRound ?? []).includes(pid)
+      && discardCount(state, pid) > 0);
     if (discardPid) {
       setTimeout(() => {
         if (gen !== gameGeneration) return;
         runCpuStep(discardPid, {});
+      }, aiDelayMs());
+    }
+    return;
+  }
+
+  // 騎士と商人: 蛮族敗北での都市格下げ待ち。対象 CPU を1人ずつ自動解決（DISCARD と同様）。
+  if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
+    const dpid = (state.pendingCityDowngrade ?? []).find(p => state.players[p]?.type === 'ai');
+    if (dpid) {
+      setTimeout(() => {
+        if (gen !== gameGeneration) return;
+        runCpuStep(dpid, {});
       }, aiDelayMs());
     }
     return;
@@ -1365,7 +1379,7 @@ function armCpuWatchdog(): void {
   cpuWatchdog = setTimeout(() => {
     cpuWatchdog = null;
     if (gen !== gameGeneration) return;
-    if (diceAnimating) { armCpuWatchdog(); return; }      // 演出中は待つ
+    if (diceAnimating || resourceAnimating) { armCpuWatchdog(); return; } // 演出/分配アニメ中は待つ
     if (!cpuIsResponsible()) return;                      // 人間の番になっていれば何もしない
     if (progressToken() !== token) { armCpuWatchdog(); return; } // 進んでいれば再武装
     // 一定時間進まなかった → 合法な安全行動で進める
@@ -2068,6 +2082,11 @@ function triggerResourceAnimation(
       }
     }
   }
+  // 飛行が出た場合は完了までCPUの次手（特に次のダイス）を待たせ、サイコロと飛行の被りを防ぐ。
+  if (delay > 0) {
+    resourceAnimating = true;
+    setTimeout(() => { resourceAnimating = false; scheduleAiTurn(); }, delay + RES_FLY_MS + 120);
+  }
 }
 
 // 自分のプレイヤーID（LAN=viewer、単一端末=human）。手番強調・得点演出の基準。
@@ -2172,7 +2191,9 @@ function maybeScrollToTradeOffer(prevState: GameState, newState: GameState): voi
   if (!me) return;
   const offerForMe = (s: GameState): boolean => {
     const t = s.pendingTrade;
-    return !!(t && t.state === 'TRADE_RESPONSE' && t.targetPlayerIds.includes(me) && !t.responses[me]);
+    // 申し込みが来て自分が未応答の対象である間（TRADE_OFFER/RESPONSE 両方）。
+    // 以前は TRADE_RESPONSE のみ見ており、最初の TRADE_OFFER で盤面通知が出なかった。
+    return !!(t && (t.state === 'TRADE_OFFER' || t.state === 'TRADE_RESPONSE') && t.targetPlayerIds.includes(me) && !t.responses[me]);
   };
   if (offerForMe(newState) && !offerForMe(prevState)) {
     // まず盤面に「交易の申し込み」メッセージを出して気づかせ、その後ゆっくり提案UIへスクロールする。
