@@ -18,6 +18,7 @@ import {
 } from './audio';
 import { renderLanLobby } from './net/lanLobby';
 import { LanClient } from './net/lanClient';
+import { LAN_SYNCED_ACTIONS } from './net/protocol';
 import { generateRandomPlayerName, pickCpuNames } from './net/names';
 import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
@@ -2970,14 +2971,9 @@ function boardCanAct(): boolean {
 }
 
 // LAN で送信を許可する Action（クライアント側ガード。サーバでも二重に検証）。
-const LAN_CLIENT_ALLOWED = new Set<Action['type']>([
-  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'MOVE_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
-  'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
-  'MOVE_ROBBER', 'MOVE_PIRATE', 'DISCARD_RESOURCES', 'CHOOSE_GOLD',
-  'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
-  'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
-  'FINISH_ROAD_BUILDING',
-]);
+// クライアント送信フィルタ。サーバ受理リストと同一の単一の真実(LAN_SYNCED_ACTIONS)から生成する
+// （二重管理のズレで騎士と商人の操作が送られず「ボタン無反応」になっていた回帰の根治）。
+const LAN_CLIENT_ALLOWED = new Set<Action['type']>(LAN_SYNCED_ACTIONS);
 
 // ロビーから started を受け取った時に呼ばれる。以降のメッセージは main が受ける。
 function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient): void {

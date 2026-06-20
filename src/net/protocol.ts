@@ -17,6 +17,22 @@ import type { ScenarioId } from '../engine/scenarios';
 // WebSocket のパス（Vite dev サーバと同一オリジン上に同居）
 export const LAN_WS_PATH = '/lan';
 
+// LAN対戦で同期する Action 種別の「単一の真実」。
+// クライアントの送信フィルタ(LAN_CLIENT_ALLOWED)とサーバの受理ホワイトリスト(LAN_ALLOWED_ACTIONS)は
+// 必ずこの配列から生成する。二重管理でズレると「ボタンを押しても無反応」になるため一元化する。
+// 新しい操作（拡張含む）は必ずここへ追加すること。
+export const LAN_SYNCED_ACTIONS: ReadonlyArray<Action['type']> = [
+  // 基本＋航海者
+  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'MOVE_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
+  'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
+  'MOVE_ROBBER', 'MOVE_PIRATE', 'DISCARD_RESOURCES', 'CHOOSE_GOLD',
+  'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
+  'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY', 'FINISH_ROAD_BUILDING',
+  // 騎士と商人
+  'BUILD_IMPROVEMENT', 'BUILD_KNIGHT', 'ACTIVATE_KNIGHT', 'UPGRADE_KNIGHT',
+  'BUILD_CITY_WALL', 'MOVE_KNIGHT', 'CHASE_ROBBER', 'PLAY_PROGRESS',
+];
+
 // LAN の手番順モード（ホストが設定）。random=毎回シャッフル / joined=入室順。
 export type LanOrderMode = 'random' | 'joined';
 

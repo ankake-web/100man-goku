@@ -29,7 +29,7 @@ import { buildActionLog, MAX_LOG_ENTRIES } from '../src/engine/log';
 import { nextCpuAction, cpuFallbackAction } from '../src/engine/lanCpu';
 import { generateRandomPlayerName, resolveUniqueName, pickCpuName } from '../src/net/names';
 import { RESOURCE_TYPES, COMMODITY_TYPES } from '../src/constants';
-import { LAN_WS_PATH } from '../src/net/protocol';
+import { LAN_WS_PATH, LAN_SYNCED_ACTIONS } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage, LobbyPlayer, LanOrderMode } from '../src/net/protocol';
 import type { PlayerId, PlayerColor, PlayerType, GameState, Action, LogEntry, AiDifficulty } from '../src/types';
 import type { PlayerSpec } from '../src/engine/createState';
@@ -42,23 +42,8 @@ import type { PlayerOrderMode } from '../src/engine/setup';
 
 // LAN 同期する Action（サーバ側ホワイトリスト）。
 // MVP4 で交易・捨て札・盗賊・発展カード使用・勝利まで全主要操作を許可する。
-export const LAN_ALLOWED_ACTIONS = new Set<Action['type']>([
-  // 基本操作（MVP3）
-  'ROLL_DICE', 'BUILD_ROAD', 'BUILD_SHIP', 'BUILD_SETTLEMENT', 'BUILD_CITY',
-  'BUY_DEV_CARD', 'END_TURN', 'DECLARE_VICTORY',
-  // 航海者: 船の移動（航海）/ 金タイル産出の任意資源選択
-  'MOVE_SHIP', 'CHOOSE_GOLD',
-  // 7 / 捨て札 / 盗賊 / 海賊（MVP4・航海者）
-  'MOVE_ROBBER', 'MOVE_PIRATE', 'DISCARD_RESOURCES',
-  // 交易（MVP4）
-  'OFFER_TRADE', 'RESPOND_TRADE', 'CONFIRM_TRADE', 'CANCEL_TRADE', 'BANK_TRADE',
-  // 発展カード使用（MVP4）
-  'PLAY_KNIGHT', 'PLAY_ROAD_BUILDING', 'PLAY_YEAR_OF_PLENTY', 'PLAY_MONOPOLY',
-  'FINISH_ROAD_BUILDING',
-  // 騎士と商人: 都市改善・騎士（建設/起動/昇格/移動）・城壁・強盗追い払い・進歩カード使用
-  'BUILD_IMPROVEMENT', 'BUILD_KNIGHT', 'ACTIVATE_KNIGHT', 'UPGRADE_KNIGHT',
-  'BUILD_CITY_WALL', 'MOVE_KNIGHT', 'CHASE_ROBBER', 'PLAY_PROGRESS',
-]);
+// サーバ受理ホワイトリスト。クライアント送信フィルタと同じ単一の真実(LAN_SYNCED_ACTIONS)から生成。
+export const LAN_ALLOWED_ACTIONS = new Set<Action['type']>(LAN_SYNCED_ACTIONS);
 
 // 捨て札 Action の正当性検証（サーバ正本でのみ判定。資源＋商品＝騎士と商人）。
 // 「ちょうど required 枚」「各資源/商品が所持範囲内」を満たすときのみ true。
