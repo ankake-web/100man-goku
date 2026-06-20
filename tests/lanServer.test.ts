@@ -18,7 +18,7 @@ import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
 import { attachLanServer, requiredActor, redactActionFor, genCode, __resetRoomsForTest, isValidDiscard, LAN_ALLOWED_ACTIONS } from '../server/lanServer';
 import type { LanServerOptions } from '../server/lanServer';
-import { LAN_WS_PATH } from '../src/net/protocol';
+import { LAN_WS_PATH, LAN_SYNCED_ACTIONS } from '../src/net/protocol';
 import type { ClientMessage, ServerMessage } from '../src/net/protocol';
 import { makeGameState, makePlayer } from './helpers';
 
@@ -198,6 +198,11 @@ describe('lanServer integration (M8)', () => {
   it('LAN allowlist が騎士と商人の操作を全て許可する（回帰: オンラインでCKアクションが押せない）', () => {
     const ckActions = ['BUILD_IMPROVEMENT', 'BUILD_KNIGHT', 'ACTIVATE_KNIGHT', 'UPGRADE_KNIGHT',
       'BUILD_CITY_WALL', 'MOVE_KNIGHT', 'CHASE_ROBBER', 'PLAY_PROGRESS'] as const;
+    // クライアント送信フィルタとサーバ受理リストの単一の真実(LAN_SYNCED_ACTIONS)にCK操作が含まれること。
+    // これが欠けるとクライアントが送らない/サーバが弾く＝オンラインで無反応になる。
+    for (const t of ckActions) expect(LAN_SYNCED_ACTIONS.includes(t)).toBe(true);
+    // サーバ側 Set は共有リストから生成される（client/server がズレない）。
+    expect(LAN_ALLOWED_ACTIONS.size).toBe(new Set(LAN_SYNCED_ACTIONS).size);
     for (const t of ckActions) expect(LAN_ALLOWED_ACTIONS.has(t)).toBe(true);
   });
 
