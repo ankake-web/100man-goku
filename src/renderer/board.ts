@@ -522,25 +522,13 @@ function renderVertices(
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
       img.classList.add('building-img');
       // 蛮族敗北の格下げ対象は赤い危険ハイライト、それ以外の有効ターゲット（都市化等）は緑。
+      // 騎士と商人: 城壁付きの都市は「コマの形に沿った黒いフチ」で囲って壁ありを示す。
+      // 格下げ(赤)中はそちらを優先（city-wall は filter で黒フチ、building-downgrade は赤発光で排他）。
+      const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
       if (opts?.downgradeVertexIds?.has(vertex.id)) img.classList.add('building-downgrade');
       else if (isValid) img.classList.add('building-valid');
+      else if (hasWall) img.classList.add('building-walled');
       vg.appendChild(img);
-      // 騎士と商人: 城壁付きの都市は黒い枠で囲い「壁あり」を一目で分かるようにする。
-      const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
-      if (hasWall) {
-        const fw = w * 0.96, fh = w * 0.66;
-        const fx = vx - fw / 2, fy = by - w * 0.66;
-        // 外側の太い黒枠＋内側の細い石色枠で「城壁」らしく見せる。
-        const outer = svgEl('rect');
-        setAttrs(outer, { x: fx, y: fy, width: fw, height: fh, rx: w * 0.11,
-          fill: 'none', stroke: '#0a0a0a', 'stroke-width': 3.4 * bs, 'stroke-linejoin': 'round' });
-        outer.classList.add('city-wall-frame');
-        vg.appendChild(outer);
-        const inner = svgEl('rect');
-        setAttrs(inner, { x: fx + 1.4 * bs, y: fy + 1.4 * bs, width: fw - 2.8 * bs, height: fh - 2.8 * bs, rx: w * 0.09,
-          fill: 'none', stroke: '#7d736a', 'stroke-width': 1.2 * bs, 'stroke-linejoin': 'round', opacity: 0.85 });
-        vg.appendChild(inner);
-      }
     } else if (vertex.knight) {
       // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
       // 起動=くっきり、非起動=薄め。

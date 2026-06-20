@@ -404,6 +404,14 @@ h1 {
 /* 建物フィギュア画像。都市化など有効ターゲットは緑の発光で示す。 */
 .building-img { pointer-events: none; }
 .building-valid { filter: drop-shadow(0 0 3px #00ff88) drop-shadow(0 0 6px #00ff88); }
+/* 騎士と商人: 城壁付きの都市はコマの形に沿った黒いフチで「壁あり」を示す（多方向の影で輪郭化）。 */
+.building-walled {
+  filter:
+    drop-shadow(1.4px 0 0 #050505) drop-shadow(-1.4px 0 0 #050505)
+    drop-shadow(0 1.4px 0 #050505) drop-shadow(0 -1.4px 0 #050505)
+    drop-shadow(1px 1px 0 #050505) drop-shadow(-1px -1px 0 #050505)
+    drop-shadow(1px -1px 0 #050505) drop-shadow(-1px 1px 0 #050505);
+}
 /* 蛮族敗北の格下げ対象都市: 赤く点滅させて「タップで格下げ」を強く示す。 */
 .building-downgrade { animation: bldgDowngradePulse 1s ease-in-out infinite; }
 @keyframes bldgDowngradePulse {
