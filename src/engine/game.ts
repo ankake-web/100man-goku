@@ -156,7 +156,8 @@ export function applyAction(
         next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で進歩カード抽選
         // 蛮族敗北で都市格下げの選択が要る場合は、まず格下げ（CITY_DOWNGRADE）を解決してから
         // 生産/捨て札へ（イベントダイスは生産ダイスより先に解決する公式順序とも一致）。
-        return ckPostEventTransition(next, total);
+        // 蛮族撃退の守護者VPで勝利点目標に到達した場合は、その手番でそのまま勝利確定させる。
+        return checkVictory(ckPostEventTransition(next, total), pid);
       }
 
       if (total === 7) {

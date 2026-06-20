@@ -976,6 +976,9 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
       vertices = v2; break;
     }
     case 'engineer': {
+      // 公式: 城壁は最大3。上限到達後に技師を使ってもカードは消費するが4つ目は建てない
+      //（城壁数は7の捨て札しきい値 8+2×城壁 に直結するため上限超過は不正）。
+      if (wallCount(removed, pid) >= CK_MAX_WALLS) break;
       const id = Object.keys(vertices).find(v => vertices[v]!.building?.playerId === pid && vertices[v]!.building?.type === 'city' && !vertices[v]!.building?.metropolis && !(vertices[v]!.building as { wall?: boolean }).wall);
       if (id) vertices = { ...vertices, [id]: { ...vertices[id]!, building: { ...vertices[id]!.building!, wall: true } } };
       break;

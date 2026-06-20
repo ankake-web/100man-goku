@@ -293,6 +293,52 @@ describe('C&K 蛮族防衛の報酬', () => {
     expect(calcVP(r, 'player1')).toBe(calcVP(s, 'player1')); // 同点はVPが増えない
   });
 
+  it('【フル経路】守護者VPで勝利点目標に到達したら、その手番(ROLL_DICE)で勝利確定する', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { buildProgressDecks } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const { CK_BARBARIAN_MAX } = await import('../src/constants');
+    const s = barbState((g, vs) => ({
+      ...g,
+      phase: 'MAIN', turnPhase: 'PRE_ROLL', currentPlayerIndex: 0,
+      victoryTarget: 3,                          // 都市2VP + 守護者VP1 = 3 で到達
+      barbarianPosition: CK_BARBARIAN_MAX - 1,
+      alchemistForcedDice: [3, 4],               // 生産ダイス固定(=7・産出で紛れない)
+      progressDecks: buildProgressDecks(createRng(1)),
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1' } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, knight: { playerId: 'player1', strength: 3, active: true } },
+      },
+    } as Partial<GameState>));
+    const r = applyAction(s, { type: 'ROLL_DICE' }, () => 0.1); // 0.1<0.5 → 'ship' で襲来
+    expect(r.players.player1!.defenderVP).toBe(1);
+    expect(r.phase).toBe('GAME_OVER');
+    expect(r.winner).toBe('player1');
+  });
+
+  it('engineer: 城壁が上限(3)なら4つ目を建てない（カードは消費される）', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const wallsOf = (st: GameState, pid: PlayerId): number =>
+      Object.values(st.vertices).filter(v => v.building?.playerId === pid && (v.building as { wall?: boolean }).wall).length;
+    const s = barbState((g, vs) => ({
+      ...g,
+      players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'eng', type: 'engineer', deck: 'science' }] }) },
+      vertices: {
+        ...g.vertices,
+        [vs[0]!]: { ...g.vertices[vs[0]!]!, building: { type: 'city', playerId: 'player1', wall: true } },
+        [vs[1]!]: { ...g.vertices[vs[1]!]!, building: { type: 'city', playerId: 'player1', wall: true } },
+        [vs[2]!]: { ...g.vertices[vs[2]!]!, building: { type: 'city', playerId: 'player1', wall: true } },
+        [vs[3]!]: { ...g.vertices[vs[3]!]!, building: { type: 'city', playerId: 'player1' } }, // 未城壁
+      },
+    }));
+    expect(wallsOf(s, 'player1')).toBe(3);
+    const r = playProgress(s, 'player1', 'eng', createRng(1));
+    expect(wallsOf(r, 'player1')).toBe(3); // 上限のため4つ目は建たない
+    expect((r.players.player1!.progressCards ?? []).length).toBe(0); // カードは消費
+  });
+
   it('同点で手札上限4の防衛者も5枚目を引き、捨て札選択（PROGRESS_DISCARD）の対象になる', async () => {
     const { resolveBarbarianAttack, buildProgressDecks } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');

@@ -3060,6 +3060,20 @@ function setUIPhase(phase: UIPhase): void {
 
 // SVG ボードイベントは一度だけ登録
 let boardEventsAttached = false;
+// 盤面クリック/ジェスチャの登録は一度だけ（ローカル/LAN 共通の単一経路）。
+// ※ startGame と startLanGame で別々に attachBoardEvents を呼ぶと引数の渡し忘れ（発明家の
+//   getter/setter 欠落で inventorSwap が無反応になった回帰）が起きるため、必ずこの関数に集約する。
+function attachBoardEventsOnce(): void {
+  if (boardEventsAttached) return;
+  attachBoardEvents(
+    svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct,
+    () => moveShipFrom, setMoveShipFrom,
+    () => moveKnightFrom, setMoveKnightFrom,
+    () => inventorFirstTile, setInventorFirst,
+  );
+  attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
+  boardEventsAttached = true;
+}
 
 // 盤面のピンチズーム/パンの永続ビューポート（viewBox座標系）。
 let boardViewport: BoardViewport = { scale: 1, tx: 0, ty: 0 };
@@ -3272,11 +3286,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   client.setOnClose(attemptReconnect);
 
   // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
-  if (!boardEventsAttached) {
-    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct, () => moveShipFrom, setMoveShipFrom, () => moveKnightFrom, setMoveKnightFrom, () => inventorFirstTile, setInventorFirst);
-    attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
-    boardEventsAttached = true;
-  }
+  attachBoardEventsOnce();
 
   boardViewport = { scale: 1, tx: 0, ty: 0 }; // 新規対戦はズームをリセット
 
@@ -3587,20 +3597,7 @@ function startGame(cfg: HomeConfig): void {
 
   // ボードイベントは初回のみ登録（二重登録防止）
   if (!boardEventsAttached) {
-    attachBoardEvents(
-      svgBoard,
-      () => state,
-      () => buildMode,
-      setUIPhase,
-      dispatch,
-      boardCanAct,
-      () => moveShipFrom,
-      setMoveShipFrom,
-      () => moveKnightFrom,
-      setMoveKnightFrom,
-    );
-    attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
-    boardEventsAttached = true;
+    attachBoardEventsOnce();
   }
 
   boardViewport = { scale: 1, tx: 0, ty: 0 }; // 新規ゲームはズームをリセット

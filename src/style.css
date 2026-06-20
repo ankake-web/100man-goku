@@ -2845,6 +2845,18 @@ h1 {
   color: #fff;
   font-weight: bold;
 }
+/* 長いニックネームでも手番順バーが折り返して縦に伸びないよう、名前を省略表示で上限。 */
+.turn-order-name {
+  display: inline-block; max-width: 7ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+/* 商人/発明家の盤面選択中の常駐ヒント（操作パネル上部）。青系で目立たせる。 */
+.board-select-hint {
+  width: 100%; box-sizing: border-box;
+  padding: 7px 10px; margin-bottom: 6px;
+  border-radius: 8px; font-size: 0.86rem; font-weight: 700;
+  color: #dcebff; background: rgba(50,96,224,0.22); border: 1px solid rgba(110,150,255,0.5);
+}
 .turn-order-dot {
   display: inline-block;
   width: 8px; height: 8px;

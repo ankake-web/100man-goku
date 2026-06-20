@@ -1644,6 +1644,16 @@ function buildActionButtons(
   if (state.phase !== 'MAIN') return null;
   const div = el('div', 'action-buttons');
 
+  // 商人/発明家の盤面選択中は「何をタップするか」を操作パネルに常駐表示する
+  // （board-notice は2.2秒で消えてしまい、迷っている間に指示が無くなるため）。
+  if (buildMode === 'placeMerchant' || buildMode === 'inventorSwap') {
+    const hint = el('div', 'board-select-hint');
+    hint.textContent = buildMode === 'placeMerchant'
+      ? '🏪 盤面で光った資源タイルをタップして商人を置く'
+      : '🔄 盤面で光ったタイルを2つ選んで数字を入れ替える';
+    div.appendChild(hint);
+  }
+
   // ---- DISCARD ----
   if (state.turnPhase === 'DISCARD') {
     // 捨て札UIは「人間が捨てる対象のとき」だけ表示する。
