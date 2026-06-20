@@ -1418,7 +1418,9 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   box.appendChild(desc);
 
   // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
-  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist' || card.type === 'inventor';
+  // 商人・発明家は「使う」後に盤面でタイルを選ぶ（dispatch 側で placeMerchant/inventorSwap へ）ため
+  // モーダルの選択UIは出さない（needsChoice から除外）。
+  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist';
   const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
 
   const actions = el('div', 'pc-info-actions');

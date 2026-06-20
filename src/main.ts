@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -669,6 +669,10 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'placeMerchant') {
         // 騎士と商人・商人カード: 自分の建物に隣接する資源タイルを光らせて盤面で選ばせる。
         opts.validTileIds = new Set(merchantTileIds(state, pid));
+      } else if (mode === 'inventorSwap') {
+        // 騎士と商人・発明家: 入替可能タイルを光らせる。1枚目選択後はそれ以外を入替先候補に。
+        const all = inventorTiles(state);
+        opts.validTileIds = new Set(inventorFirstTile == null ? all : all.filter(t => t !== inventorFirstTile));
       }
     }
   }
@@ -702,6 +706,9 @@ let moveShipFrom: string | null = null;
 // 騎士と商人・騎士移動モードで選択中の移動元頂点ID（未選択は null）。
 let moveKnightFrom: string | null = null;
 function setMoveKnightFrom(vid: string | null): void { moveKnightFrom = vid; redraw(); }
+// 騎士と商人・発明家(inventorSwap)で1枚目に選んだタイルID（未選択は null）。2枚目をタップで入替。
+let inventorFirstTile: string | null = null;
+function setInventorFirst(tid: string | null): void { inventorFirstTile = tid; redraw(); }
 let uiPhase: UIPhase = { type: 'idle' };
 let lastConfig: HomeConfig | null = null;
 
@@ -924,6 +931,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'activateKnight') return { text: '⚡ 起動する騎士をタップ', alert: false };
       if (buildMode === 'upgradeKnight') return { text: '⬆ 昇格する騎士をタップ', alert: false };
       if (buildMode === 'placeMerchant') return { text: '🏪 商人を置く資源タイルをタップ', alert: true };
+      if (buildMode === 'inventorSwap') return { text: inventorFirstTile ? '🔄 入れ替え先のタイルをタップ' : '🔄 入れ替える1つ目のタイルをタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -2655,17 +2663,26 @@ function scrollToBoard(): void {
 }
 
 function dispatch(action: Action): void {
-  // 騎士と商人・商人カード: 人間が使う時は自動配置せず、盤面で資源タイルをタップさせる。
-  // 候補が2つ以上ある時のみ盤面選択へ（0/1個なら従来どおりエンジンが自動配置）。
-  if (action.type === 'PLAY_PROGRESS' && !action.choice?.merchantTileId && !diceAnimating) {
-    const mpid = currentPid(state);
-    const mcard = state.players[mpid]?.progressCards?.find(c => c.id === action.cardId);
-    const mHuman = state.players[mpid]?.type === 'human' || mpid === selfPlayerId();
-    if (mcard?.type === 'merchant' && mHuman
-        && state.turnPhase === 'TRADE_BUILD' && merchantTileIds(state, mpid).length > 1) {
+  // 騎士と商人: 人間が「商人/発明家」を使う時は自動でなく盤面でタイルを選ばせる。
+  if (action.type === 'PLAY_PROGRESS' && !diceAnimating) {
+    const ppid = currentPid(state);
+    const pcard = state.players[ppid]?.progressCards?.find(c => c.id === action.cardId);
+    const pHuman = state.players[ppid]?.type === 'human' || ppid === selfPlayerId();
+    // 商人: 候補が2つ以上ある時のみ盤面選択（0/1個なら従来どおりエンジンが自動配置）。
+    if (pcard?.type === 'merchant' && pHuman && !action.choice?.merchantTileId
+        && state.turnPhase === 'TRADE_BUILD' && merchantTileIds(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove(); // カード詳細モーダルを閉じる
       showBoardNotice('🏪 商人を置く資源タイルをタップしてください');
       setBuildMode('placeMerchant');
+      return;
+    }
+    // 発明家: 入替候補が2つ以上ある時、盤面で2タイルを順にタップして数字を入れ替える。
+    if (pcard?.type === 'inventor' && pHuman && !action.choice?.inventorTiles
+        && state.turnPhase === 'TRADE_BUILD' && inventorTiles(state).length >= 2) {
+      document.querySelector('.help-overlay')?.remove();
+      showBoardNotice('🔄 数字を入れ替える2つのタイルを順にタップ');
+      inventorFirstTile = null;
+      setBuildMode('inventorSwap');
       return;
     }
   }
@@ -2814,6 +2831,7 @@ function setBuildMode(mode: BuildMode): void {
   // 船移動モード以外へ移ったら選択中の移動元を解除。
   if (mode !== 'moveShip') moveShipFrom = null;
   if (mode !== 'moveKnight') moveKnightFrom = null;
+  if (mode !== 'inventorSwap') inventorFirstTile = null;
   redraw();
 }
 
@@ -3105,7 +3123,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
 
   // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
   if (!boardEventsAttached) {
-    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct, () => moveShipFrom, setMoveShipFrom, () => moveKnightFrom, setMoveKnightFrom);
+    attachBoardEvents(svgBoard, () => state, () => buildMode, setUIPhase, dispatch, boardCanAct, () => moveShipFrom, setMoveShipFrom, () => moveKnightFrom, setMoveKnightFrom, () => inventorFirstTile, setInventorFirst);
     attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
     boardEventsAttached = true;
   }
