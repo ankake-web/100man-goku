@@ -6,7 +6,7 @@ import type { GameState, Tile, HarborType, Harbor } from '../types';
 import { HEX_SIZE } from '../constants';
 import { axialToPixel } from '../engine/board';
 // 画像参照は中央マニフェスト経由（単一の真実）。
-import { ASSETS, houseImg, cityImg, shipImg, type ColorKey } from '../assets/manifest';
+import { ASSETS, houseImg, cityImg, metropolisImg, shipImg, type ColorKey } from '../assets/manifest';
 
 const robberImg = ASSETS.piece.robber;
 const pirateImg = ASSETS.piece.pirate;
@@ -29,6 +29,7 @@ const mapByColor = (fn: (c: ColorKey) => string): Record<string, string> =>
   Object.fromEntries(COLORS.map(c => [c, fn(c)]));
 const HOUSE_IMG: Record<string, string> = mapByColor(houseImg);
 const CITY_IMG: Record<string, string> = mapByColor(cityImg);
+const METROPOLIS_IMG: Record<string, string> = mapByColor(metropolisImg);
 const SHIP_IMG: Record<string, string> = mapByColor(shipImg);
 
 // ============================================================
@@ -477,32 +478,24 @@ function renderVertices(
       // 開拓地＝家、都市＝城のフィギュア画像。屋根/上部がプレイヤー色に着色済み。
       const ckey = BUILDING_COLOR_KEY[vertex.building.playerId] ?? 'red';
       const isCity = vertex.building.type === 'city';
-      const w = (isCity ? 32 : 24) * bs;          // 表示サイズ
+      // 騎士と商人: メトロポリス(勝利点4)はプレイヤー色の大きな城コマ（王冠付き）で表示。
+      const isMetro = isCity && !!vertex.building.metropolis;
+      const w = (isMetro ? 42 : isCity ? 32 : 24) * bs;   // メトロポリスは一回り大きく
       const by = vy + 5.2 * bs;                    // 足元の基準（旧コマの影位置に合わせる）
       // 接地影
       const shadow = svgEl('ellipse');
-      setAttrs(shadow, { cx: vx, cy: by, rx: w * (isCity ? 0.30 : 0.26), ry: w * 0.06,
+      setAttrs(shadow, { cx: vx, cy: by, rx: w * (isMetro ? 0.32 : isCity ? 0.30 : 0.26), ry: w * 0.06,
         fill: 'rgba(0,0,0,0.30)', stroke: 'none' });
       vg.appendChild(shadow);
       // フィギュア画像（足元 by が下に来るよう配置）
       const img = svgEl('image');
-      const href = isCity ? CITY_IMG[ckey]! : HOUSE_IMG[ckey]!;
+      const href = isMetro ? METROPOLIS_IMG[ckey]! : isCity ? CITY_IMG[ckey]! : HOUSE_IMG[ckey]!;
       setAttrs(img, { x: vx - w / 2, y: by - w * 0.9, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
       img.setAttribute('href', href);
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
       img.classList.add('building-img');
       if (isValid) img.classList.add('building-valid');   // 都市化など有効ターゲット
       vg.appendChild(img);
-      // 騎士と商人: メトロポリス(勝利点4)は「門」コマを都市に重ねて表示。
-      if (vertex.building.metropolis) {
-        const gw = w * 0.86;
-        const gate = svgEl('image');
-        gate.classList.add('metropolis-mark');
-        setAttrs(gate, { x: vx - gw / 2, y: by - w * 0.9 - gw * 0.4, width: gw, height: gw, preserveAspectRatio: 'xMidYMid meet' });
-        gate.setAttribute('href', ASSETS.piece.metropolisGate);
-        gate.setAttributeNS('http://www.w3.org/1999/xlink', 'href', ASSETS.piece.metropolisGate);
-        vg.appendChild(gate);
-      }
     } else if (vertex.knight) {
       // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
       // 起動=くっきり、非起動=薄め。
