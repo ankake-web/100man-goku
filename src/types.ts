@@ -454,7 +454,7 @@ export type Action =
   | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
   | { type: 'MOVE_KNIGHT';         fromVertexId: VertexId; toVertexId: VertexId }
   | { type: 'CHASE_ROBBER';        vertexId: VertexId } // 騎士で強盗を追い払う（ROBBERフェーズへ遷移）
-  | { type: 'PLAY_PROGRESS';       cardId: string; choice?: ProgressChoice }
+  | { type: 'PLAY_PROGRESS';       cardId: string; choice?: ProgressChoice; cardType?: ProgressCardType } // cardType: 使用札の種類（公開情報）。LANで他プレイヤーが盤面表示するため送信側が付与する。
   | { type: 'OFFER_TRADE';         offer: TradeOffer; targetPlayerIds: PlayerId[] }
   | { type: 'RESPOND_TRADE';       response: PlayerResponse }
   | { type: 'CONFIRM_TRADE';       responderId: PlayerId }

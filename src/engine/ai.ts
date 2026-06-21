@@ -805,6 +805,28 @@ function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade
   return chooseTradeBuildNormal(state, pid, skipPlayerTrade, rng);
 }
 
+// ---- 騎士と商人・'strong' 専用: 余剰資源で騎士を整備する（守護VP/都市防衛） ----
+// 都市が無いうちは拡張優先で何もしない。麦/鉄に厚みがある時だけ起動・建設・昇格する
+// （cities/settlements 等の VP 建設を全て検討した後に呼ばれるため、拡張資源を奪わない）。
+function strongKnightDevelopment(state: GameState, pid: PlayerId): Action | null {
+  const p = state.players[pid]!;
+  const myCities = Object.values(state.vertices).filter(v => v.building?.playerId === pid && v.building.type === 'city').length;
+  if (myCities === 0) return null;
+  const knightCount = Object.values(state.vertices).filter(v => v.knight?.playerId === pid).length;
+  // 1) 非起動騎士を起動（麦に厚みがある時。守備力を実効化して蛮族防衛に備える）。
+  const inactive = Object.keys(state.vertices).find(vid => canActivateKnight(state, pid, vid));
+  if (inactive && p.hand.grain >= 3) return { type: 'ACTIVATE_KNIGHT', vertexId: inactive };
+  // 2) 騎士を増やす（都市数+1まで。木材・羊毛に余裕がある時）。
+  if (knightCount <= myCities && p.hand.wood >= 1 && p.hand.wool >= 1) {
+    const build = Object.keys(state.vertices).find(v => canBuildKnight(state, pid, v));
+    if (build) return { type: 'BUILD_KNIGHT', vertexId: build };
+  }
+  // 3) 既存騎士を昇格（政治レベル到達＋鉄/麦に厚みがある時）。強い騎士で守護VPを独占する。
+  const up = Object.keys(state.vertices).find(vid => canUpgradeKnight(state, pid, vid));
+  if (up && p.hand.ore >= 2 && p.hand.grain >= 2) return { type: 'UPGRADE_KNIGHT', vertexId: up };
+  return null;
+}
+
 // ---- 騎士と商人: 拡張固有の建設判断（都市改善＋騎士による防衛） ----
 function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number): Action | null {
   const p = state.players[pid]!;
@@ -824,7 +846,12 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
       const h = state.metropolis?.[t];
       return (imp[t] === 3 && !h) || (imp[t] === 4 && !!h && h.playerId !== pid);
     });
-    const pick = metro ?? [...buyable].sort((a, b) => imp[a] - imp[b])[0]!;
+    // 通常: 安い低レベル側から均等に伸ばす。'strong': 高レベル側を一点集中で伸ばし
+    //   メトロポリス(+2VP)へ一直線に到達する（13点ゲームで非常に効く）。
+    const difficulty = getDifficulty(state, pid);
+    const pick = metro ?? (difficulty === 'strong'
+      ? [...buyable].sort((a, b) => imp[b] - imp[a])[0]!
+      : [...buyable].sort((a, b) => imp[a] - imp[b])[0]!);
     return { type: 'BUILD_IMPROVEMENT', track: pick };
   }
 
@@ -1140,6 +1167,14 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   // 7. 手詰まりなら手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
   const progress = chooseProgressCardAction(state, pid);
   if (progress) return progress;
+
+  // 7.5 騎士と商人・'strong' 専用: 余剰資源を守備力（騎士）へ変換する。
+  //   都市/開拓地/船/道/発展/進歩カードを全て検討した「後」なので拡張を阻害しない。
+  //   騎士は蛮族防衛を勝ち切って守護VPを稼ぎ、都市の格下げ（VP喪失）も防ぐ＝CKで強くなる。
+  if (isCk(state)) {
+    const knightDev = strongKnightDevelopment(state, pid);
+    if (knightDev) return knightDev;
+  }
 
   // 8. 余剰を貯め込まない: 余った資源をバンク交易で発展カード等に変換（建設可能化）
   const useSurplus = tryBankTrade(state, pid);

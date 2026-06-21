@@ -1443,6 +1443,29 @@ describe('C&K 進歩カードの手動選択（追加6種）', () => {
     expect(r.vertices[enemyVids[0]!]!.knight).not.toBeNull();
   });
 
+  it('外交官: 自分の道も撤去候補。撤去するとコマが戻り無料で建て直せる', async () => {
+    const { playProgress, diplomatRemovableRoads } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const g = ckGame(x => ({ ...x, players: { ...x.players, player1: makePlayer('player1', { progressCards: [{ id: 'dp', type: 'diplomat', deck: 'politics' }] }) } }));
+    const eids = Object.keys(g.edges);
+    const mine = eids[0]!;
+    const homeVid = g.edges[mine]!.vertexIds[0]!; // mine の片端に自分の開拓地（再建設の足場）。
+    // mine と頂点を共有しない孤立辺を相手の道に（両方とも端の道＝撤去候補）。
+    const theirs = eids.find(e => e !== mine && !g.edges[e]!.vertexIds.some(v => g.edges[mine]!.vertexIds.includes(v)))!;
+    const s: GameState = { ...g,
+      vertices: { ...g.vertices, [homeVid]: { ...g.vertices[homeVid]!, building: { type: 'settlement', playerId: 'player1' } } },
+      edges: { ...g.edges,
+        [mine]: { ...g.edges[mine]!, road: { playerId: 'player1' } },
+        [theirs]: { ...g.edges[theirs]!, road: { playerId: 'player2' } },
+      } };
+    expect(new Set(diplomatRemovableRoads(s, 'player1'))).toEqual(new Set([mine, theirs])); // 自分の道も候補に含む
+    const roadsBefore = s.players.player1!.remainingRoads;
+    const r = playProgress(s, 'player1', 'dp', createRng(1), { diplomatEdgeId: mine });
+    expect(r.edges[mine]!.road).toBeNull();                          // 自分の道を撤去
+    expect(r.players.player1!.remainingRoads).toBe(roadsBefore + 1); // コマが手元に戻る
+    expect(r.roadBuildingRoadsRemaining).toBe(1);                    // 別の場所へ無料で1本建て直せる
+  });
+
   it('スパイ: 盗む相手と札を指名できる', async () => {
     const { playProgress } = await import('../src/engine/citiesKnights');
     const { createRng } = await import('../src/engine/setup');

@@ -1004,7 +1004,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'placeMerchant') return { text: '🏪 商人を置く資源タイルをタップ', alert: true };
       if (buildMode === 'inventorSwap') return { text: inventorFirstTile ? '🔄 入れ替え先のタイルをタップ' : '🔄 入れ替える1つ目のタイルをタップ', alert: true };
       if (buildMode === 'placeBishop') return { text: '⛪ 盗賊を置くタイルをタップ', alert: true };
-      if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する相手の道をタップ', alert: true };
+      if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する道をタップ（自分の道は建て直し可）', alert: true };
       if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の騎士をタップ', alert: true };
       if (buildMode === 'selectMedicineSettlement') return { text: '💊 都市にする開拓地をタップ', alert: true };
       if (buildMode === 'selectMetropolis') return { text: '🏛 メトロポリスにする都市をタップ', alert: true };
@@ -1691,6 +1691,15 @@ function totalCardsOf(s: GameState, pid: string): number {
   const com = p.commodityCount ?? (p.commodities ? COMMODITY_TYPES.reduce((a, c) => a + p.commodities![c], 0) : 0);
   return res + com;
 }
+// 公開情報の資源/商品の合計枚数（他者はマスクで handCount/commodityCount、自分は実手札）。
+function resCountOf(s: GameState, pid: string): number {
+  const p = s.players[pid]; if (!p) return 0;
+  return p.handCount ?? RESOURCE_TYPES.reduce((a, r) => a + p.hand[r], 0);
+}
+function comCountOf(s: GameState, pid: string): number {
+  const p = s.players[pid]; if (!p) return 0;
+  return p.commodityCount ?? (p.commodities ? COMMODITY_TYPES.reduce((a, c) => a + p.commodities![c], 0) : 0);
+}
 
 // 略奪演出: 伏せカード(種類非公開)が被害者パネル→略奪者パネルへ1枚飛ぶ。
 function animateStealCard(fromPid: string, toPid: string): void {
@@ -2282,7 +2291,10 @@ function triggerResourceAnimation(
       if (exact.length > 0) {
         for (const e of exact) flyables.push({ img: e.img, origin: c0, n: e.n });
       } else {
-        const gain = totalCardsOf(newState, pid) - totalCardsOf(oldState, pid);
+        // 資源・商品それぞれの増分を別々に見る。片方が減りもう片方が増える札
+        // （例: 商業港=資源を渡し商品を得る）でも、増えた側を伏せ札で見せる。
+        const gain = Math.max(0, resCountOf(newState, pid) - resCountOf(oldState, pid))
+                   + Math.max(0, comCountOf(newState, pid) - comCountOf(oldState, pid));
         if (gain > 0) flyables.push({ img: '', origin: c0, n: gain, hidden: true });
       }
     }
@@ -2353,8 +2365,12 @@ function showPlayedProgressCard(prevState: GameState, newState: GameState, actio
   if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
   const actor = prevState.playerOrder[prevState.currentPlayerIndex];
   if (!actor) return;
-  // 公開フィールドを最優先。無い場合のみ自分の手番の手札から（自分の札は prevState で公開）フォールバック。
-  const cardType = (newState.lastProgressPlay?.playerId === actor ? newState.lastProgressPlay.cardType : undefined)
+  // 札種の特定（優先順）:
+  //  1. action.cardType … 送信側が載せた公開情報（LANで他プレイヤーでも常に分かる・サーバ更新不要）
+  //  2. newState.lastProgressPlay … サーバが刻む公開フィールド（サーバ更新時のフォールバック）
+  //  3. prevState の使用者手札 … 単一端末/自分の手番（自分の札は公開）のフォールバック
+  const cardType = action.cardType
+    ?? (newState.lastProgressPlay?.playerId === actor ? newState.lastProgressPlay.cardType : undefined)
     ?? prevState.players[actor]?.progressCards?.find(c => c.id === action.cardId)?.type;
   if (!cardType) return;
   const host = document.getElementById('board-area');
@@ -3042,7 +3058,7 @@ function dispatch(action: Action): void {
         && state.turnPhase === 'TRADE_BUILD' && diplomatRemovableRoads(state, ppid).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectDiplomatRoad');
-      showBoardNotice('📜 撤去する相手の端の道をタップ');
+      showBoardNotice('📜 撤去する端の道をタップ（自分の道なら別の場所に建て直せる）');
       return;
     }
     // 脱走兵: 消す相手の騎士を盤面で選ぶ（同強度の騎士を自分が得る）。
@@ -3879,7 +3895,14 @@ function netDispatch(action: Action): void {
     currentPid(state);
   if (actor !== viewerPlayerId) return; // 自分の操作できる場面のみ送信
   vibrateForAction(action); // 自分の操作の触覚は送信時に即返す（LANの往復待ちを避ける）
-  lanClient.send({ t: 'action', action });
+  // 進歩カード使用は「何を使ったか」が公開情報。送信側が札種を載せておくと、相手クライアントは
+  // サーバの lastProgressPlay（サーバ更新依存）に頼らず盤面表示できる（サーバが旧版でも転送される）。
+  let out = action;
+  if (action.type === 'PLAY_PROGRESS' && !action.cardType) {
+    const ct = state.players[actor]?.progressCards?.find(c => c.id === action.cardId)?.type;
+    if (ct) out = { ...action, cardType: ct };
+  }
+  lanClient.send({ t: 'action', action: out });
 }
 
 function startGame(cfg: HomeConfig): void {
@@ -4003,3 +4026,4 @@ document.addEventListener('click', (e) => {
 
 // 起動時: 保存された resume 情報があれば自動で再接続を試みる（リロード復帰）。
 renderHome(homeDiv, startGame, startLanGame, loadResume() ?? undefined);
+

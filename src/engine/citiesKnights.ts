@@ -725,12 +725,15 @@ function enemyKnightAdjacentToMyRoad(state: GameState, pid: PlayerId): string | 
   }
   return best;
 }
-/** diplomat: 撤去できる相手の「端の道」一覧（端点の一方に建物無し・同色の他の道が続かない）。盤面選択の候補。 */
+/**
+ * diplomat: 撤去できる「端の道」一覧（端点の一方に建物無し・同色の他の道が続かない）。盤面選択の候補。
+ * 公式: 相手の道だけでなく「自分の道」も対象（自分の道を撤去した場合は別の場所へ無料で1本建て直せる）。
+ */
 export function diplomatRemovableRoads(state: GameState, pid: PlayerId): string[] {
   const out: string[] = [];
   for (const [eid, e] of Object.entries(state.edges)) {
     const owner = e.road?.playerId;
-    if (!owner || owner === pid) continue;
+    if (!owner) continue; // 自分の道も対象に含める（owner===pid を除外しない）
     const isOpen = e.vertexIds.some(vtxId => {
       const vtx = state.vertices[vtxId];
       if (!vtx || vtx.building) return false;
@@ -934,11 +937,27 @@ function playIntrigue(state: GameState, pid: PlayerId, choice?: ProgressChoice):
 }
 
 function playDiplomat(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
-  // 手動で撤去する相手の端の道を選べる（choice.diplomatEdgeId）。候補内なら採用。なければ自動。
+  // 手動で撤去する「端の道」を選べる（choice.diplomatEdgeId・自分の道も対象）。候補内なら採用。
+  // 未指定（CPU等）は相手の端の道を自動で撤去する。
   const chosen = choice?.diplomatEdgeId;
   const eid = (chosen && diplomatRemovableRoads(state, pid).includes(chosen)) ? chosen : removableOpponentRoad(state, pid);
   if (!eid) return state;
-  return updateLongestRoad({ ...state, edges: { ...state.edges, [eid]: { ...state.edges[eid]!, road: null } } });
+  const owner = state.edges[eid]?.road?.playerId;
+  if (!owner) return state;
+  // 撤去した道のコマは所有者の手元へ戻す（remainingRoads+1）。
+  const ownerP = state.players[owner]!;
+  let next: GameState = updateLongestRoad({
+    ...state,
+    players: { ...state.players, [owner]: { ...ownerP, remainingRoads: ownerP.remainingRoads + 1 } },
+    edges: { ...state.edges, [eid]: { ...state.edges[eid]!, road: null } },
+  });
+  // 自分の道を撤去したら、別の場所へ無料で道を1本だけ建て直せる（公式）。建てられる場所がある時のみ。
+  if (owner === pid) {
+    const free: GameState = { ...next, roadBuildingRoadsRemaining: 1 };
+    const canRebuild = next.players[pid]!.remainingRoads > 0 && Object.keys(next.edges).some(e => canBuildRoad(free, pid, e));
+    if (canRebuild) next = free;
+  }
+  return next;
 }
 
 function playSpy(state: GameState, pid: PlayerId, rng: () => number, choice?: ProgressChoice): GameState {
