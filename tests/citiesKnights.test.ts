@@ -1350,3 +1350,140 @@ describe('C&K クレーンのコスト割引', () => {
     expect(r.players.player1!.commodities!.cloth).toBe(3); // 5 - (improvementCost(2)=3 - 割引1 = 2)
   });
 });
+
+describe('C&K 進歩カードの手動選択（追加6種）', () => {
+  function ckGame(extra: (g: GameState) => GameState): GameState {
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', diceRolledThisTurn: true, currentPlayerIndex: 0,
+      players: { player1: makePlayer('player1'), player2: makePlayer('player2'), player3: makePlayer('player3') },
+      playerOrder: ['player1', 'player2', 'player3'],
+    } as Partial<GameState>);
+    return extra(g);
+  }
+
+  it('商業港: 渡す資源と取る商品を指名（持たない相手とは不成立）', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ckGame(g => ({
+      ...g,
+      players: {
+        ...g.players,
+        player1: makePlayer('player1', { progressCards: [{ id: 'ch', type: 'commercial_harbor', deck: 'trade' }], hand: makeHand({ wood: 2, ore: 1 }), commodities: { coin: 0, cloth: 0, paper: 0 } }),
+        player2: makePlayer('player2', { commodities: { coin: 0, cloth: 2, paper: 0 } }),
+        player3: makePlayer('player3', { commodities: { coin: 0, cloth: 0, paper: 0 } }),
+      },
+    }));
+    const r = playProgress(s, 'player1', 'ch', createRng(1), { commercialGive: 'wood', commercialTake: 'cloth' });
+    expect(r.players.player1!.hand.wood).toBe(1);          // 布を持つ player2 にだけ木1を渡す
+    expect(r.players.player1!.hand.ore).toBe(1);           // 指名外の資源は減らない
+    expect(r.players.player1!.commodities!.cloth).toBe(1);
+    expect(r.players.player2!.hand.wood).toBe(1);
+    expect(r.players.player2!.commodities!.cloth).toBe(1);
+  });
+
+  it('商船隊: 2:1で交易する種類を指名できる', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ckGame(g => ({ ...g, players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'mf', type: 'merchant_fleet', deck: 'trade' }] }) } }));
+    const r = playProgress(s, 'player1', 'mf', createRng(1), { fleetType: 'ore' });
+    expect(r.players.player1!.merchantFleetType).toBe('ore');
+  });
+
+  it('鍛冶屋: 指定した自分の騎士（最大2体）だけ昇格', async () => {
+    const { playProgress, smithKnightTargets } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s0 = ckGame(g => ({ ...g, players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'sm', type: 'smith', deck: 'science' }] }) } }));
+    const vids = Object.keys(s0.vertices).slice(0, 3);
+    const s: GameState = { ...s0, vertices: {
+      ...s0.vertices,
+      [vids[0]!]: { ...s0.vertices[vids[0]!]!, knight: { playerId: 'player1', strength: 1, active: false } },
+      [vids[1]!]: { ...s0.vertices[vids[1]!]!, knight: { playerId: 'player1', strength: 1, active: false } },
+      [vids[2]!]: { ...s0.vertices[vids[2]!]!, knight: { playerId: 'player1', strength: 2, active: false } },
+    } };
+    expect(new Set(smithKnightTargets(s, 'player1'))).toEqual(new Set(vids));
+    const r = playProgress(s, 'player1', 'sm', createRng(1), { smithVertexIds: [vids[1]!, vids[2]!] });
+    expect(r.vertices[vids[0]!]!.knight!.strength).toBe(1); // 据え置き
+    expect(r.vertices[vids[1]!]!.knight!.strength).toBe(2);
+    expect(r.vertices[vids[2]!]!.knight!.strength).toBe(3);
+  });
+
+  it('技師: 指定した自分の都市にだけ城壁を建てる', async () => {
+    const { playProgress, engineerWallCities } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s0 = ckGame(g => ({ ...g, players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'en', type: 'engineer', deck: 'science' }] }) } }));
+    const vids = Object.keys(s0.vertices).slice(0, 2);
+    const s: GameState = { ...s0, vertices: {
+      ...s0.vertices,
+      [vids[0]!]: { ...s0.vertices[vids[0]!]!, building: { type: 'city', playerId: 'player1' } },
+      [vids[1]!]: { ...s0.vertices[vids[1]!]!, building: { type: 'city', playerId: 'player1' } },
+    } };
+    expect(new Set(engineerWallCities(s, 'player1'))).toEqual(new Set(vids));
+    const r = playProgress(s, 'player1', 'en', createRng(1), { engineerVertexId: vids[1]! });
+    expect((r.vertices[vids[1]!]!.building as { wall?: boolean }).wall).toBe(true);
+    expect((r.vertices[vids[0]!]!.building as { wall?: boolean }).wall ?? false).toBe(false);
+  });
+
+  it('陰謀: 自分の道に隣接する指定した敵騎士を退去', async () => {
+    const { playProgress, intrigueKnightTargets } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s0 = ckGame(g => ({ ...g, players: { ...g.players, player1: makePlayer('player1', { progressCards: [{ id: 'in', type: 'intrigue', deck: 'politics' }] }) } }));
+    const enemyVids = Object.keys(s0.vertices).filter(vid => (s0.vertices[vid]!.adjacentEdgeIds?.length ?? 0) > 0).slice(0, 2);
+    let s: GameState = s0;
+    for (const vid of enemyVids) {
+      const eid = s.vertices[vid]!.adjacentEdgeIds[0]!;
+      s = { ...s,
+        vertices: { ...s.vertices, [vid]: { ...s.vertices[vid]!, knight: { playerId: 'player2', strength: 1, active: true } } },
+        edges: { ...s.edges, [eid]: { ...s.edges[eid]!, road: { playerId: 'player1' } } },
+      };
+    }
+    expect(new Set(intrigueKnightTargets(s, 'player1'))).toEqual(new Set(enemyVids));
+    const r = playProgress(s, 'player1', 'in', createRng(1), { intrigueVertexId: enemyVids[1]! });
+    expect(r.vertices[enemyVids[1]!]!.knight).toBeNull();
+    expect(r.vertices[enemyVids[0]!]!.knight).not.toBeNull();
+  });
+
+  it('スパイ: 盗む相手と札を指名できる', async () => {
+    const { playProgress } = await import('../src/engine/citiesKnights');
+    const { createRng } = await import('../src/engine/setup');
+    const s = ckGame(g => ({
+      ...g,
+      players: {
+        ...g.players,
+        player1: makePlayer('player1', { progressCards: [{ id: 'sp', type: 'spy', deck: 'politics' }] }),
+        player2: makePlayer('player2', { progressCards: [{ id: 'a', type: 'smith', deck: 'science' }, { id: 'b', type: 'crane', deck: 'science' }] }),
+        player3: makePlayer('player3', { progressCards: [{ id: 'c', type: 'warlord', deck: 'politics' }] }),
+      },
+    }));
+    const r = playProgress(s, 'player1', 'sp', createRng(1), { spyTargetPlayerId: 'player2', spyCardId: 'b' });
+    expect((r.players.player1!.progressCards ?? []).map(c => c.id)).toEqual(['b']);
+    expect((r.players.player2!.progressCards ?? []).map(c => c.id)).toEqual(['a']);
+    expect((r.players.player3!.progressCards ?? []).length).toBe(1); // 指名外は不変
+  });
+});
+
+describe('C&K 進歩カード使用の公開（lastProgressPlay）', () => {
+  // 進歩カードを使うと「誰が何を使ったか」は公開情報。LANで使用者の手札が秘匿されても
+  // 他プレイヤーが盤面演出（showPlayedProgressCard）を出せるよう、state に公開で載る。
+  it('PLAY_PROGRESS で lastProgressPlay に使用者と札種が載り、マスクしても残る', async () => {
+    const { applyAction } = await import('../src/engine/game');
+    const { maskStateFor } = await import('../src/engine/mask');
+    const { createRng } = await import('../src/engine/setup');
+    const g = makeGameState({
+      expansion: 'cities_knights',
+      phase: 'MAIN', turnPhase: 'TRADE_BUILD', diceRolledThisTurn: true, currentPlayerIndex: 0,
+      players: {
+        player1: makePlayer('player1', { progressCards: [{ id: 'pr', type: 'printer', deck: 'science' }] }),
+        player2: makePlayer('player2'),
+      },
+      playerOrder: ['player1', 'player2'],
+    } as Partial<GameState>);
+    const r = applyAction(g, { type: 'PLAY_PROGRESS', cardId: 'pr' }, createRng(1));
+    expect(r.lastProgressPlay).toEqual({ playerId: 'player1', cardType: 'printer' });
+    // 相手視点のマスク済み state でも札種は公開のまま（盤面演出に必須）。
+    const masked = maskStateFor(r, 'player2');
+    expect(masked.lastProgressPlay).toEqual({ playerId: 'player1', cardType: 'printer' });
+    // 使用者の手札（進歩カード）は相手視点では秘匿されたまま。
+    expect(masked.players.player1!.progressCards).toEqual([]);
+  });
+});

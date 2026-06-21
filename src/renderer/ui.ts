@@ -1377,6 +1377,74 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
     return wrap;
   }
+  if (card.type === 'merchant_fleet') {
+    // 商船隊: このターン 2:1 で交易する1種（資源5＋商品3）を選ぶ。
+    label.textContent = '2:1で交易する種類を選ぶ（このターン中）';
+    for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ fleetType: r })));
+    for (const c of COMMODITY_TYPES) row.appendChild(makeImgBtn(COMMODITY_IMG[c], COMMODITY_NAMES[c], 'btn-build', false, () => play({ fleetType: c })));
+    wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
+    return wrap;
+  }
+  if (card.type === 'commercial_harbor') {
+    // 商業港: 各相手に渡す資源1種＋もらう商品1種を指名（全相手共通の宣言型）。
+    label.textContent = '渡す資源と もらう商品を選ぶ（各相手と交換）';
+    const me = pid ? state.players[pid] : null;
+    let give: ResourceType | null = null;
+    let take: CommodityType | null = null;
+    const giveRow = el('div', 'pc-choice-row');
+    const takeRow = el('div', 'pc-choice-row');
+    const confirm = makeBtn('▶ 交換する', 'btn-disabled', false, () => { if (give && take) play({ commercialGive: give, commercialTake: take }); });
+    const render = (): void => {
+      giveRow.textContent = ''; takeRow.textContent = '';
+      for (const r of RESOURCE_TYPES) {
+        const held = me?.hand[r] ?? 0;
+        const cls = held <= 0 ? 'btn-disabled' : (give === r ? 'btn-active' : 'btn-build');
+        giveRow.appendChild(makeImgBtn(RESOURCE_IMG[r], `${RESOURCE_NAMES[r]} ×${held}`, cls, held <= 0, () => { give = r; render(); }));
+      }
+      for (const c of COMMODITY_TYPES) {
+        takeRow.appendChild(makeImgBtn(COMMODITY_IMG[c], COMMODITY_NAMES[c], take === c ? 'btn-active' : 'btn-build', false, () => { take = c; render(); }));
+      }
+      confirm.disabled = !(give && take);
+      confirm.className = `action-btn ${give && take ? 'btn-primary' : 'btn-disabled'}`;
+    };
+    render();
+    wrap.append(label,
+      Object.assign(el('div', 'pc-choice-sub'), { textContent: '渡す資源（自分の手札から1種）' }), giveRow,
+      Object.assign(el('div', 'pc-choice-sub'), { textContent: 'もらう商品（各相手から1枚ずつ）' }), takeRow,
+      confirm, makeBtn('やめる', 'btn-end', false, cancel));
+    return wrap;
+  }
+  if (card.type === 'spy') {
+    // スパイ: 盗む相手を選ぶ。相手の進歩カードが見える（単一端末＝非マスク）なら盗む札も選ばせる。
+    // LANでは相手の札が秘匿（progressCards=[]）のため、相手だけ選び札は無作為。
+    label.textContent = 'カードを盗む相手を選ぶ';
+    const cntOf = (o: PlayerId): number => state.players[o]?.progressCardCount ?? state.players[o]?.progressCards?.length ?? 0;
+    const opps = state.playerOrder.filter(o => o !== pid && cntOf(o as PlayerId) > 0) as PlayerId[];
+    if (opps.length === 0) {
+      row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '進歩カードを持つ相手がいません' }));
+      row.appendChild(makeBtn('効果なしで使う（カードを消費）', 'btn-end', false, () => play({})));
+      wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
+      return wrap;
+    }
+    const chooseTarget = (o: PlayerId): void => {
+      const cards = state.players[o]?.progressCards ?? [];
+      if (cards.length > 0) {
+        // 相手の札が見えている: 盗む1枚を選ばせる（公式: 相手の手札を見て選ぶ）。
+        label.textContent = `${state.players[o]!.name} から盗む札を選ぶ`;
+        row.textContent = '';
+        for (const c of cards) row.appendChild(makeImgBtn(ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck], PROGRESS_CARD_NAME[c.type], 'btn-build', false, () => play({ spyTargetPlayerId: o, spyCardId: c.id })));
+      } else {
+        play({ spyTargetPlayerId: o }); // 秘匿: 相手だけ指定し札は無作為
+      }
+    };
+    for (const o of opps) {
+      const b = makeBtn(`${state.players[o]!.name}（📜${cntOf(o)}）`, 'btn-build', false, () => chooseTarget(o));
+      b.style.borderLeft = `5px solid ${PLAYER_COLORS[o] ?? '#888'}`;
+      row.appendChild(b);
+    }
+    wrap.append(label, row, makeBtn('やめる', 'btn-end', false, cancel));
+    return wrap;
+  }
   if (card.type === 'resource_monopoly') {
     label.textContent = '奪う資源を選ぶ';
     for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ resource: r })));
@@ -1432,7 +1500,8 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
   // 商人・発明家は「使う」後に盤面でタイルを選ぶ（dispatch 側で placeMerchant/inventorSwap へ）ため
   // モーダルの選択UIは出さない（needsChoice から除外）。
-  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist' || card.type === 'crane';
+  const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist' || card.type === 'crane'
+    || card.type === 'merchant_fleet' || card.type === 'commercial_harbor' || card.type === 'spy';
   const play = (choice?: ProgressChoice): void => { overlay.remove(); dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, ...(choice ? { choice } : {}) }); };
 
   const actions = el('div', 'pc-info-actions');

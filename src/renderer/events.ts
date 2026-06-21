@@ -4,7 +4,7 @@
 
 import type { GameState, Action, PlayerId, CkTrack } from '../types';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from '../engine/actions';
-import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements, metropolisCityChoices } from '../engine/citiesKnights';
+import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBuildKnight, canActivateKnight, canUpgradeKnight, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements, metropolisCityChoices, smithKnightTargets, engineerWallCities, intrigueKnightTargets } from '../engine/citiesKnights';
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
@@ -19,7 +19,7 @@ import type { BoardViewport } from './board';
 // 型定義
 // ============================================================
 
-export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight' | 'selectMedicineSettlement' | 'selectMetropolis';
+export type BuildMode = 'idle' | 'road' | 'ship' | 'settlement' | 'city' | 'moveShip' | 'moveKnight' | 'chaseRobber' | 'buildKnight' | 'activateKnight' | 'upgradeKnight' | 'placeMerchant' | 'inventorSwap' | 'placeBishop' | 'selectDiplomatRoad' | 'selectDeserterKnight' | 'selectMedicineSettlement' | 'selectMetropolis' | 'selectSmithKnight' | 'selectEngineerCity' | 'selectIntrigueKnight';
 
 // タップ命中の許容半径（盤面ピクセル単位。頂点間隔は HEX_SIZE=60）。
 // 見た目の点/線より広く取り、指でも外れにくくする。最近傍の合法ターゲットを選ぶため、
@@ -283,6 +283,24 @@ export function nearestMetropolisVertexId(state: GameState, pid: PlayerId, x: nu
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
+/** 鍛冶屋(smith): 点(x,y)に最も近い「1段昇格できる自分の騎士頂点」を返す。なければ null。 */
+export function nearestSmithKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const valid = new Set(smithKnightTargets(state, pid));
+  return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
+}
+
+/** 技師(engineer): 点(x,y)に最も近い「城壁を建てられる自分の都市頂点」を返す。なければ null。 */
+export function nearestEngineerCityVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const valid = new Set(engineerWallCities(state, pid));
+  return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
+}
+
+/** 陰謀(intrigue): 点(x,y)に最も近い「自分の道/船に隣接する敵騎士頂点」を返す。なければ null。 */
+export function nearestIntrigueKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
+  const valid = new Set(intrigueKnightTargets(state, pid));
+  return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
+}
+
 /** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -354,6 +372,9 @@ export function attachBoardEvents(
   setInventorFirst: (tid: string | null) => void = () => {},
   // 騎士と商人・メトロポリス手動選択(selectMetropolis)モード: 今+1する都市改善ツリー。
   getMetropolisTrack: () => CkTrack | null = () => null,
+  // 騎士と商人・鍛冶屋(selectSmithKnight)モード: 1体目に選んだ騎士頂点ID（2体目のタップで昇格）。
+  getSmithFirst: () => string | null = () => null,
+  setSmithFirst: (vid: string | null) => void = () => {},
 ): void {
   svg.addEventListener('click', (e) => {
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
@@ -550,6 +571,42 @@ export function attachBoardEvents(
       else if (vid && !new Set(metropolisCityChoices(state, pid)).has(vid)) vid = null; // 候補外の直接ヒットは無効
       const track = getMetropolisTrack();
       if (vid && track) dispatch({ type: 'BUILD_IMPROVEMENT', track, metropolisVertexId: vid });
+      return;
+    }
+
+    // ---- 騎士と商人: 鍛冶屋の騎士昇格（最大2体）。1体目タップで選択、2体目で昇格。候補1体なら即実行。----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectSmithKnight') {
+      const pts = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = pts ? nearestSmithKnightVertexId(state, pid, pts.x, pts.y) : null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'smith');
+      if (!vid || !card) { if (getSmithFirst()) setSmithFirst(null); return; } // 空タップで選択解除
+      const first = getSmithFirst();
+      if (!first) {
+        // 候補が1体しかいないなら2体目を待たず即昇格。2体以上なら1体目を選択。
+        if (smithKnightTargets(state, pid).length <= 1) { dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { smithVertexIds: [vid] } }); return; }
+        setSmithFirst(vid); return;
+      }
+      if (vid === first) { setSmithFirst(null); return; } // 同じ騎士の再タップ＝解除
+      dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { smithVertexIds: [first, vid] } });
+      setSmithFirst(null);
+      return;
+    }
+
+    // ---- 騎士と商人: 技師の城壁建設（光った自分の都市をタップ → PLAY_PROGRESS engineerVertexId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectEngineerCity') {
+      const pte = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = pte ? nearestEngineerCityVertexId(state, pid, pte.x, pte.y) : null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'engineer');
+      if (vid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { engineerVertexId: vid } });
+      return;
+    }
+
+    // ---- 騎士と商人: 陰謀の敵騎士退去（光った敵騎士をタップ → PLAY_PROGRESS intrigueVertexId）----
+    if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectIntrigueKnight') {
+      const pti2 = clickToBoardPixel(svg, e.clientX, e.clientY);
+      const vid = pti2 ? nearestIntrigueKnightVertexId(state, pid, pti2.x, pti2.y) : null;
+      const card = state.players[pid]?.progressCards?.find(c => c.type === 'intrigue');
+      if (vid && card) dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { intrigueVertexId: vid } });
       return;
     }
 

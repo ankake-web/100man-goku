@@ -291,6 +291,9 @@ export interface GameState {
   barbarianAttacks?: number;
   // 騎士と商人: 直近のイベントダイスの目（'ship'=蛮族前進 / 色=進歩カード抽選）。
   lastEventDie?: 'ship' | CkTrack;
+  // 騎士と商人: 直近に使われた進歩カード（公開情報）。使用した瞬間に種類を全員へ見せる演出に使う。
+  // LANでは使用者の手札がマスクされ札種を引けないため、ここに公開で載せて他プレイヤーにも表示できるようにする。
+  lastProgressPlay?: { playerId: PlayerId; cardType: ProgressCardType } | null;
   // 騎士と商人: 各メトロポリスの保持者と所在頂点（ツリーごとに最大1人・盤面で一意）。
   // Lv5到達者が Lv4保持者から奪取するために頂点IDを保持する。
   metropolis?: Partial<Record<CkTrack, { playerId: PlayerId; vertexId: VertexId }>>;
@@ -409,6 +412,20 @@ export interface ProgressChoice {
   deserterVertexId?: VertexId;
   // 医術(medicine): 都市に格上げする自分の開拓地の頂点ID。
   medicineVertexId?: VertexId;
+  // 商業港(commercial_harbor): 各相手に渡す自分の資源1種＋各相手から要求する商品1種を指名（全相手共通）。
+  commercialGive?: ResourceType;
+  commercialTake?: CommodityType;
+  // 商船隊(merchant_fleet): このターン 2:1 で交易する1種（資源 or 商品）。
+  fleetType?: TradeKind;
+  // 鍛冶屋(smith): 1段昇格する自分の騎士の頂点ID（最大2体）。
+  smithVertexIds?: readonly VertexId[];
+  // 技師(engineer): 城壁を建てる自分の都市の頂点ID。
+  engineerVertexId?: VertexId;
+  // 陰謀(intrigue): 退去させる「自分の道/船に隣接する敵騎士」の頂点ID。
+  intrigueVertexId?: VertexId;
+  // スパイ(spy): 進歩カードを盗む相手と、盗む札のID（公式: 相手の手札を見て1枚選ぶ）。
+  spyTargetPlayerId?: PlayerId;
+  spyCardId?: string;
 }
 
 export type Action =

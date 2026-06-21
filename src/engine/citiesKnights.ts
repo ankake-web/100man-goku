@@ -687,6 +687,20 @@ export function deserterTargets(state: GameState, pid: PlayerId): string[] {
     return !!k && k.playerId !== pid;
   });
 }
+/** smith: 1段昇格できる自分の騎士頂点ID一覧（強度<3。盤面選択の候補・最大2体まで選ぶ）。 */
+export function smithKnightTargets(state: GameState, pid: PlayerId): string[] {
+  return Object.keys(state.vertices).filter(vid => {
+    const k = state.vertices[vid]?.knight;
+    return k?.playerId === pid && k.strength < 3;
+  });
+}
+/** engineer: 城壁を建てられる自分の都市頂点ID一覧（都市・非メトロポリス・城壁なし。盤面選択の候補）。 */
+export function engineerWallCities(state: GameState, pid: PlayerId): string[] {
+  return Object.keys(state.vertices).filter(vid => {
+    const b = state.vertices[vid]?.building;
+    return b?.playerId === pid && b.type === 'city' && !b.metropolis && !(b as { wall?: boolean }).wall;
+  });
+}
 /** deserter: 相手の最強の騎士頂点。 */
 function strongestOpponentKnight(state: GameState, pid: PlayerId): { vid: string; strength: number } | null {
   let best: { vid: string; strength: number } | null = null;
@@ -820,17 +834,23 @@ function playMerchant(state: GameState, pid: PlayerId, choice?: ProgressChoice):
   return { ...state, merchant: { playerId: pid, tileId: tid } };
 }
 
-function playCommercialHarbor(state: GameState, pid: PlayerId): GameState {
+function playCommercialHarbor(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
   const players = { ...state.players };
   const me = players[pid]!;
   let myHand = { ...me.hand };
   let myComm = { ...commodities(me) };
+  // 手動（宣言型）: 渡す資源1種＋要求する商品1種を全相手共通で指名（choice）。
+  //   未指定なら従来の自動（相手ごとに「自分の最多資源⇄相手の最多商品」）。
+  const fixedGive = choice?.commercialGive ?? null;
+  const fixedTake = choice?.commercialTake ?? null;
   for (const o of state.playerOrder) {
     if (o === pid) continue;
     const opp = players[o]!;
-    const giveRes = RESOURCE_TYPES.filter(r => myHand[r] > 0).sort((a, b) => myHand[b] - myHand[a])[0];
-    const takeCom = COMMODITY_TYPES.filter(c => commodities(opp)[c] > 0).sort((a, b) => commodities(opp)[b] - commodities(opp)[a])[0];
+    const giveRes = fixedGive ?? RESOURCE_TYPES.filter(r => myHand[r] > 0).sort((a, b) => myHand[b] - myHand[a])[0];
+    const takeCom = fixedTake ?? COMMODITY_TYPES.filter(c => commodities(opp)[c] > 0).sort((a, b) => commodities(opp)[b] - commodities(opp)[a])[0];
     if (!giveRes || !takeCom) continue;
+    // 渡せる資源が手元に無い／要求商品をその相手が持たない場合は、この相手とは交換不成立。
+    if (myHand[giveRes] <= 0 || commodities(opp)[takeCom] <= 0) continue;
     myHand = { ...myHand, [giveRes]: myHand[giveRes] - 1 };
     myComm = { ...myComm, [takeCom]: myComm[takeCom] + 1 };
     players[o] = { ...opp, hand: { ...opp.hand, [giveRes]: opp.hand[giveRes] + 1 }, commodities: { ...commodities(opp), [takeCom]: commodities(opp)[takeCom] - 1 } };
@@ -891,8 +911,24 @@ function playDeserter(state: GameState, pid: PlayerId, choice?: ProgressChoice):
   return { ...state, vertices };
 }
 
-function playIntrigue(state: GameState, pid: PlayerId): GameState {
-  const vid = enemyKnightAdjacentToMyRoad(state, pid);
+/** intrigue: 自分の道/船に隣接する敵騎士の頂点ID一覧（盤面選択の候補）。 */
+export function intrigueKnightTargets(state: GameState, pid: PlayerId): string[] {
+  const out: string[] = [];
+  for (const [vid, v] of Object.entries(state.vertices)) {
+    const k = v.knight;
+    if (!k || k.playerId === pid) continue;
+    const adjMine = v.adjacentEdgeIds.some(eid => {
+      const e = state.edges[eid];
+      return e?.road?.playerId === pid || e?.ship?.playerId === pid;
+    });
+    if (adjMine) out.push(vid);
+  }
+  return out;
+}
+function playIntrigue(state: GameState, pid: PlayerId, choice?: ProgressChoice): GameState {
+  // 手動で退去させる敵騎士を選べる（choice.intrigueVertexId）。候補内なら採用。なければ自動（最強）。
+  const chosen = choice?.intrigueVertexId;
+  const vid = (chosen && intrigueKnightTargets(state, pid).includes(chosen)) ? chosen : enemyKnightAdjacentToMyRoad(state, pid);
   if (!vid) return state;
   return { ...state, vertices: { ...state.vertices, [vid]: { ...state.vertices[vid]!, knight: null } } };
 }
@@ -905,12 +941,17 @@ function playDiplomat(state: GameState, pid: PlayerId, choice?: ProgressChoice):
   return updateLongestRoad({ ...state, edges: { ...state.edges, [eid]: { ...state.edges[eid]!, road: null } } });
 }
 
-function playSpy(state: GameState, pid: PlayerId, rng: () => number): GameState {
+function playSpy(state: GameState, pid: PlayerId, rng: () => number, choice?: ProgressChoice): GameState {
   const opps = state.playerOrder.filter(o => o !== pid && (state.players[o]!.progressCards?.length ?? 0) > 0);
   if (opps.length === 0) return state;
-  const target = [...opps].sort((a, b) => (state.players[b]!.progressCards?.length ?? 0) - (state.players[a]!.progressCards?.length ?? 0))[0]!;
+  // 手動: 盗む相手と札を指名できる（公式: 相手の手札を見て1枚選ぶ）。未指定/不正なら自動（最多保持の相手から無作為）。
+  const chosenTarget = choice?.spyTargetPlayerId;
+  const target = (chosenTarget && opps.includes(chosenTarget))
+    ? chosenTarget
+    : [...opps].sort((a, b) => (state.players[b]!.progressCards?.length ?? 0) - (state.players[a]!.progressCards?.length ?? 0))[0]!;
   const tc = state.players[target]!.progressCards ?? [];
-  const idx = Math.floor(rng() * tc.length);
+  const chosenIdx = choice?.spyCardId ? tc.findIndex(c => c.id === choice.spyCardId) : -1;
+  const idx = chosenIdx >= 0 ? chosenIdx : Math.floor(rng() * tc.length);
   const stolen = tc[idx]!;
   const me = state.players[pid]!;
   return {
@@ -1017,13 +1058,13 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
     case 'medicine':         return playMedicine(removed, pid, choice);
     case 'inventor':         return playInventor(removed, pid, choice);
     case 'merchant':         return playMerchant(removed, pid, choice);
-    case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: chooseFleetType(removed, pid) } } };
-    case 'commercial_harbor': return playCommercialHarbor(removed, pid);
+    case 'merchant_fleet':   return { ...removed, players: { ...removed.players, [pid]: { ...removed.players[pid]!, merchantFleetType: choice?.fleetType ?? chooseFleetType(removed, pid) } } };
+    case 'commercial_harbor': return playCommercialHarbor(removed, pid, choice);
     case 'bishop':           return playBishop(removed, pid, rng, choice);
     case 'deserter':         return playDeserter(removed, pid, choice);
     case 'diplomat':         return playDiplomat(removed, pid, choice);
-    case 'intrigue':         return playIntrigue(removed, pid);
-    case 'spy':              return playSpy(removed, pid, rng);
+    case 'intrigue':         return playIntrigue(removed, pid, choice);
+    case 'spy':              return playSpy(removed, pid, rng, choice);
   }
 
   // ---- 既存10種: locals パターン ----
@@ -1036,7 +1077,10 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
   switch (card.type) {
     case 'smith': {
       const v2 = { ...vertices };
-      const targets = Object.keys(v2)
+      // 手動: 昇格する自分の騎士（最大2体・強度<3）を選べる（choice.smithVertexIds）。未指定/不正なら自動（最弱2体）。
+      const valid = new Set(smithKnightTargets(state, pid));
+      const picked = (choice?.smithVertexIds ?? []).filter(id => valid.has(id)).slice(0, 2);
+      const targets = picked.length > 0 ? picked : Object.keys(v2)
         .filter(id => v2[id]!.knight?.playerId === pid && v2[id]!.knight!.strength < 3)
         .sort((a, b) => v2[a]!.knight!.strength - v2[b]!.knight!.strength).slice(0, 2);
       for (const id of targets) { const k = v2[id]!.knight!; v2[id] = { ...v2[id]!, knight: { ...k, strength: (k.strength + 1) as 1 | 2 | 3 } }; }
@@ -1046,7 +1090,10 @@ export function playProgress(state: GameState, pid: PlayerId, cardId: string, rn
       // 公式: 城壁は最大3。上限到達後に技師を使ってもカードは消費するが4つ目は建てない
       //（城壁数は7の捨て札しきい値 8+2×城壁 に直結するため上限超過は不正）。
       if (wallCount(removed, pid) >= CK_MAX_WALLS) break;
-      const id = Object.keys(vertices).find(v => vertices[v]!.building?.playerId === pid && vertices[v]!.building?.type === 'city' && !vertices[v]!.building?.metropolis && !(vertices[v]!.building as { wall?: boolean }).wall);
+      // 手動: 城壁を建てる自分の都市を選べる（choice.engineerVertexId）。候補内なら採用。なければ自動（最初の対象）。
+      const chosenCity = choice?.engineerVertexId;
+      const id = (chosenCity && engineerWallCities(state, pid).includes(chosenCity)) ? chosenCity
+        : Object.keys(vertices).find(v => vertices[v]!.building?.playerId === pid && vertices[v]!.building?.type === 'city' && !vertices[v]!.building?.metropolis && !(vertices[v]!.building as { wall?: boolean }).wall);
       if (id) vertices = { ...vertices, [id]: { ...vertices[id]!, building: { ...vertices[id]!.building!, wall: true } } };
       break;
     }

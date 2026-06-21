@@ -753,7 +753,10 @@ export function applyAction(
       if (!okPhase) throw new Error('PLAY_PROGRESS: wrong phase for this card');
       // 人間は効果が空でも使える（消費される）。受理は緩い判定で。CPUは canPlayProgress で効果成立時のみ選ぶ。
       if (!canPlayProgressLoose(state, pid, action.cardId)) throw new Error('PLAY_PROGRESS: invalid');
-      return checkVictory(playProgress(state, pid, action.cardId, rng, action.choice), pid);
+      const played = playProgress(state, pid, action.cardId, rng, action.choice);
+      // 使った札種を公開情報として記録（LANでも全員が「何を使ったか」を盤面演出できるように）。
+      const marked = card ? { ...played, lastProgressPlay: { playerId: pid, cardType: card.type } } : played;
+      return checkVictory(marked, pid);
     }
     case 'MOVE_KNIGHT': {
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('MOVE_KNIGHT: must be in TRADE_BUILD');

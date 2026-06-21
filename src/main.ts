@@ -24,7 +24,7 @@ import { attachNameField, savePlayerName } from './net/nameField';
 import { saveResume, loadResume, clearResume } from './net/resume';
 import type { ResumeInfo } from './net/resume';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, canMoveShip, isShipMovable } from './engine/actions';
-import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements, metropolisCityChoices, improvementTakesMetropolis } from './engine/citiesKnights';
+import { isKnightMovable, canMoveKnight, robberAdjacentChasableVertexIds, isCk, computeCkProduction, canBuildKnight, canActivateKnight, canUpgradeKnight, plainCityVertexIds, merchantTileIds, inventorTiles, bishopTileIds, diplomatRemovableRoads, deserterTargets, medicineSettlements, metropolisCityChoices, improvementTakesMetropolis, smithKnightTargets, engineerWallCities, intrigueKnightTargets } from './engine/citiesKnights';
 import type { CkTrack, CommodityType } from './types';
 import type { RollSpec, DiceGLController } from './renderer/diceGL';
 import { renderBoard } from './renderer/board';
@@ -689,6 +689,17 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'selectMetropolis') {
         // 騎士と商人・メトロポリス: 化ける自分の都市を光らせて盤面で選ばせる。
         opts.validVertexIds = new Set(metropolisCityChoices(state, pid));
+      } else if (mode === 'selectSmithKnight') {
+        // 騎士と商人・鍛冶屋: 昇格できる自分の騎士を光らせる。1体目選択後はそれ以外を2体目候補に。
+        const all = smithKnightTargets(state, pid);
+        opts.validVertexIds = new Set(smithFirstKnight == null ? all : all.filter(v => v !== smithFirstKnight));
+        if (smithFirstKnight) opts.selectedVertexId = smithFirstKnight; // 1体目を確定強調
+      } else if (mode === 'selectEngineerCity') {
+        // 騎士と商人・技師: 城壁を建てられる自分の都市を光らせる。
+        opts.validVertexIds = new Set(engineerWallCities(state, pid));
+      } else if (mode === 'selectIntrigueKnight') {
+        // 騎士と商人・陰謀: 退去させられる敵騎士（自分の道/船に隣接）を光らせる。
+        opts.validVertexIds = new Set(intrigueKnightTargets(state, pid));
       }
     }
   }
@@ -725,6 +736,9 @@ function setMoveKnightFrom(vid: string | null): void { moveKnightFrom = vid; red
 // 騎士と商人・発明家(inventorSwap)で1枚目に選んだタイルID（未選択は null）。2枚目をタップで入替。
 let inventorFirstTile: string | null = null;
 function setInventorFirst(tid: string | null): void { inventorFirstTile = tid; redraw(); }
+// 騎士と商人・鍛冶屋(selectSmithKnight)で1体目に選んだ騎士頂点ID（未選択は null）。2体目をタップで昇格。
+let smithFirstKnight: string | null = null;
+function setSmithFirst(vid: string | null): void { smithFirstKnight = vid; redraw(); }
 // メトロポリス手動選択中に「今+1する都市改善ツリー」を控える（候補2つ以上で盤面タップさせる時）。
 let pendingMetropolisTrack: CkTrack | null = null;
 let uiPhase: UIPhase = { type: 'idle' };
@@ -994,6 +1008,9 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の騎士をタップ', alert: true };
       if (buildMode === 'selectMedicineSettlement') return { text: '💊 都市にする開拓地をタップ', alert: true };
       if (buildMode === 'selectMetropolis') return { text: '🏛 メトロポリスにする都市をタップ', alert: true };
+      if (buildMode === 'selectSmithKnight') return { text: smithFirstKnight ? '⚒ 昇格する2体目の騎士をタップ' : '⚒ 昇格する騎士をタップ（最大2体）', alert: true };
+      if (buildMode === 'selectEngineerCity') return { text: '🧱 城壁を建てる都市をタップ', alert: true };
+      if (buildMode === 'selectIntrigueKnight') return { text: '🗡 退去させる敵騎士をタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
@@ -1580,6 +1597,7 @@ function spawnResFlyer(
   delay: number,
   landEl?: HTMLElement | null,        // 着地時にポップさせるパネル（C-2）
   imgClass = 'res-fly-img',           // 飛ばす画像のクラス（進歩カードは札形の 'pc-fly-img'）
+  hidden = false,                     // 種類を伏せて飛ばす（LANの他プレイヤーの非ダイス獲得・公開枚数のみ）
 ): void {
   // 遅延スポーンは世代ガード必須: delay は最大数秒あり、ホーム復帰/新ゲーム開始後に
   // 旧ゲームのアイコンが画面上を飛び続けるのを防ぐ（clearTransientFx は未発火タイマーを消せない）。
@@ -1588,13 +1606,20 @@ function spawnResFlyer(
     if (gen !== gameGeneration) return;
     const span = document.createElement('span');
     span.className = 'res-fly';
-    // 手札カードと同じ画像で飛ばす（資源・商品とも。絵文字→画像で見た目を統一）。
-    const img = document.createElement('img');
-    img.className = imgClass;
-    img.src = imgSrc;
-    img.alt = '';
-    img.draggable = false;
-    span.appendChild(img);
+    if (hidden) {
+      // 種類非公開: 札裏のトークンを飛ばす（誰が何枚得たかだけ伝え、種類は秘匿）。
+      const back = document.createElement('div');
+      back.className = 'res-fly-hidden';
+      span.appendChild(back);
+    } else {
+      // 手札カードと同じ画像で飛ばす（資源・商品とも。絵文字→画像で見た目を統一）。
+      const img = document.createElement('img');
+      img.className = imgClass;
+      img.src = imgSrc;
+      img.alt = '';
+      img.draggable = false;
+      span.appendChild(img);
+    }
     // 起点位置をセット
     span.style.left = `${origin.x}px`;
     span.style.top  = `${origin.y}px`;
@@ -2239,17 +2264,27 @@ function triggerResourceAnimation(
   let delay = pendingOverlayDelay();
   let spawned = false;
   for (const pid of newState.playerOrder) {
-    // 飛ばすアイコン群（資源・商品を統一して扱う）。
-    const flyables: Array<{ img: string; origin: { x: number; y: number }; n: number }> = [];
+    // 飛ばすアイコン群（資源・商品を統一して扱う）。hidden=種類非公開（札裏トークン）。
+    const flyables: Array<{ img: string; origin: { x: number; y: number }; n: number; hidden?: boolean }> = [];
     if (ckProd) {
       for (const r of RESOURCE_TYPES) { const n = ckProd.resources[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(prodTotal!, pid, r), n }); }
       for (const c of COMMODITY_TYPES) { const n = ckProd.commodities[pid]?.[c] ?? 0; if (n > 0) flyables.push({ img: COM_FLY_IMG[c], origin: originForCommodity(prodTotal!, pid, c), n }); }
     } else if (baseProd) {
       for (const r of RESOURCE_TYPES) { const n = baseProd[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(prodTotal!, pid, r), n }); }
     } else if (!rollDeferred) {
+      // 非ダイス獲得（交易・年の豊穣・進歩カード効果など）。自分や同一端末の相手は手札差分で
+      // 種類まで出せる。LANの他プレイヤーは手札がマスクされ差分0になるため、公開の合計枚数の
+      // 増分だけ札裏トークンで飛ばす（種類は秘匿のまま「何枚得たか」を全員に見せる）。
       const c0 = getBoardCenter();
-      for (const { r, n } of handDiffGains(oldState, newState, pid)) flyables.push({ img: RES_FLY_IMG[r], origin: c0, n });
-      for (const { c, n } of commodityDiffGains(oldState, newState, pid)) flyables.push({ img: COM_FLY_IMG[c], origin: c0, n });
+      const exact: Array<{ img: string; n: number }> = [];
+      for (const { r, n } of handDiffGains(oldState, newState, pid)) exact.push({ img: RES_FLY_IMG[r], n });
+      for (const { c, n } of commodityDiffGains(oldState, newState, pid)) exact.push({ img: COM_FLY_IMG[c], n });
+      if (exact.length > 0) {
+        for (const e of exact) flyables.push({ img: e.img, origin: c0, n: e.n });
+      } else {
+        const gain = totalCardsOf(newState, pid) - totalCardsOf(oldState, pid);
+        if (gain > 0) flyables.push({ img: '', origin: c0, n: gain, hidden: true });
+      }
     }
     if (flyables.length === 0) continue;
     const targetEl = flyTargetFor(pid);
@@ -2260,10 +2295,10 @@ function triggerResourceAnimation(
     const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
 
     let count = 0;
-    for (const { img, origin, n } of flyables) {
+    for (const { img, origin, n, hidden } of flyables) {
       for (let i = 0; i < n && count < MAX_PER_PLAYER; i++) {
         const jitter = { x: origin.x + (Math.random() - 0.5) * 30, y: origin.y + (Math.random() - 0.5) * 20 };
-        spawnResFlyer(img, target, jitter, delay, targetEl);
+        spawnResFlyer(img, target, jitter, delay, targetEl, 'res-fly-img', !!hidden);
         delay += RES_FLY_STAGGER; // 1個ずつ間隔を空けて飛ばす（全プレイヤー通しで順番に）
         count++; spawned = true;
       }
@@ -2311,15 +2346,17 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
 }
 
 // 進歩カードを使用した瞬間、盤面中央へそのカードを大きく短時間表示する（何を使ったか分かりやすく）。
-// 札種は prevState の使用者の手札から特定（公開：使うと相手にも種類が分かる）。LAN で相手の札種が
-// 秘匿されている場合は特定できないので表示しない。
-function showPlayedProgressCard(prevState: GameState, action: Action | undefined): void {
+// 札種は公開情報 newState.lastProgressPlay から特定する（使うと全員に種類が分かる）。LAN では
+// 使用者の手札が秘匿され prevState から札種を引けないため、この公開フィールドが他プレイヤー表示に必須。
+function showPlayedProgressCard(prevState: GameState, newState: GameState, action: Action | undefined): void {
   if (!action || action.type !== 'PLAY_PROGRESS') return;
   if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
   const actor = prevState.playerOrder[prevState.currentPlayerIndex];
   if (!actor) return;
-  const card = prevState.players[actor]?.progressCards?.find(c => c.id === action.cardId);
-  if (!card) return;
+  // 公開フィールドを最優先。無い場合のみ自分の手番の手札から（自分の札は prevState で公開）フォールバック。
+  const cardType = (newState.lastProgressPlay?.playerId === actor ? newState.lastProgressPlay.cardType : undefined)
+    ?? prevState.players[actor]?.progressCards?.find(c => c.id === action.cardId)?.type;
+  if (!cardType) return;
   const host = document.getElementById('board-area');
   if (!host) return;
   document.getElementById('played-progress')?.remove();
@@ -2327,12 +2364,12 @@ function showPlayedProgressCard(prevState: GameState, action: Action | undefined
   wrap.id = 'played-progress';
   const img = document.createElement('img');
   img.className = 'played-progress-img';
-  img.src = ASSETS.progressCard[card.type] ?? ASSETS.cardBack[card.deck];
-  img.alt = PROGRESS_CARD_NAME[card.type];
+  img.src = ASSETS.progressCard[cardType] ?? ASSETS.cardBack.politics;
+  img.alt = PROGRESS_CARD_NAME[cardType];
   img.draggable = false;
   const cap = document.createElement('div');
   cap.className = 'played-progress-cap';
-  cap.textContent = `📜 ${PROGRESS_CARD_NAME[card.type]}`;
+  cap.textContent = `📜 ${PROGRESS_CARD_NAME[cardType]}`;
   wrap.append(img, cap);
   host.appendChild(wrap);
   setTimeout(() => { wrap.classList.add('out'); }, 1250);
@@ -2881,7 +2918,7 @@ function runTransitionFx(
   }
   triggerResourceAnimation(prevState, state, action, diceTotal);
   triggerProgressCardAnimation(prevState, state);
-  showPlayedProgressCard(prevState, action);
+  showPlayedProgressCard(prevState, state, action);
   animateBuildPlacement(action);
   triggerVpGainEffects(prevState, state);
   maybeYourTurnCue(prevState, state);
@@ -3027,6 +3064,31 @@ function dispatch(action: Action): void {
         showBoardNotice('💊 都市にする自分の開拓地をタップ（麦1＋鉱石2）');
         return;
       }
+    }
+    // 鍛冶屋: 昇格する自分の騎士を盤面で選ぶ（最大2体）。候補2体以上の時のみ手動（0/1体は自動）。
+    if (pcard?.type === 'smith' && pHuman && !action.choice?.smithVertexIds
+        && state.turnPhase === 'TRADE_BUILD' && smithKnightTargets(state, ppid).length > 1) {
+      document.querySelector('.help-overlay')?.remove();
+      smithFirstKnight = null;
+      setBuildMode('selectSmithKnight');
+      showBoardNotice('⚒ 昇格する1体目の騎士をタップ（最大2体）');
+      return;
+    }
+    // 技師: 城壁を建てる自分の都市を盤面で選ぶ（候補2つ以上の時のみ手動）。
+    if (pcard?.type === 'engineer' && pHuman && !action.choice?.engineerVertexId
+        && state.turnPhase === 'TRADE_BUILD' && engineerWallCities(state, ppid).length > 1) {
+      document.querySelector('.help-overlay')?.remove();
+      setBuildMode('selectEngineerCity');
+      showBoardNotice('🧱 城壁を建てる自分の都市をタップ');
+      return;
+    }
+    // 陰謀: 退去させる敵騎士を盤面で選ぶ（候補2つ以上の時のみ手動）。
+    if (pcard?.type === 'intrigue' && pHuman && !action.choice?.intrigueVertexId
+        && state.turnPhase === 'TRADE_BUILD' && intrigueKnightTargets(state, ppid).length > 1) {
+      document.querySelector('.help-overlay')?.remove();
+      setBuildMode('selectIntrigueKnight');
+      showBoardNotice('🗡 退去させる敵騎士をタップ（自分の道に隣接）');
+      return;
     }
   }
   // 騎士と商人: 都市改善でメトロポリスを新規獲得し、化ける都市の候補が2つ以上ある時は
@@ -3199,6 +3261,7 @@ function setBuildMode(mode: BuildMode): void {
   if (mode !== 'moveShip') moveShipFrom = null;
   if (mode !== 'moveKnight') moveKnightFrom = null;
   if (mode !== 'inventorSwap') inventorFirstTile = null;
+  if (mode !== 'selectSmithKnight') smithFirstKnight = null;
   redraw();
 }
 
@@ -3320,6 +3383,7 @@ function attachBoardEventsOnce(): void {
     () => moveKnightFrom, setMoveKnightFrom,
     () => inventorFirstTile, setInventorFirst,
     () => pendingMetropolisTrack,
+    () => smithFirstKnight, setSmithFirst,
   );
   attachBoardGestures(svgBoard, () => boardViewport, setBoardViewport);
   boardEventsAttached = true;
@@ -3761,6 +3825,8 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
       || action.type === 'PLAY_PROGRESS' || action.type === 'BUILD_IMPROVEMENT')) {
     buildMode = 'idle';
     pendingMetropolisTrack = null;
+    inventorFirstTile = null;
+    smithFirstKnight = null;
   }
   // ターン終了で建設モード/船移動選択を解除（次ターンにモードが残るのを防ぐ・LAN）。
   if (action?.type === 'END_TURN' || action?.type === 'MOVE_SHIP') {
