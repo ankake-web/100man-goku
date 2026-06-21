@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { GameState, Action, PlayerId, ResourceType, AiDifficulty, ResourceHand, DevCardType, CkTrack } from '../types';
-import { RESOURCE_TYPES, COMMODITY_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP } from '../constants';
+import { RESOURCE_TYPES, COMMODITY_TYPES, BUILD_COSTS, VP_TABLE, TILE_RESOURCE_MAP, LONGEST_ROAD_MIN } from '../constants';
 import { discardCount, robbableCardCount } from './robber';
 import { canBuildRoad, canBuildShip, canBuildSettlement, canBuildCity, hasEnoughResources } from './actions';
 import {
@@ -13,7 +13,8 @@ import {
 import { isSeaEdge, isLandVertex, isDistanceRuleOk } from './board';
 import { isUnclaimedNewIslandVertex } from './islands';
 import { canBankTrade, getEffectiveTradeRate } from './trade';
-import { calcVP, victoryTarget } from './scoring';
+import { calcVP, victoryTarget, calcLongestRoad } from './scoring';
+import { applyAction } from './game';
 
 // ============================================================
 // 確率テーブル（数字トークンの出目確率 /36）
@@ -1189,10 +1190,35 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   return { type: 'END_TURN' };
 }
 
-// ---- elite（新・最上位／UIの「強い」） ----
-// 建設の優先順位は strong と同じ（実測で最良）。差は「初期配置をより生産重視で取る」点。
-// 初期配置は全局面に効く最大レバーなので、ここを強くするのが最も確実に勝率を押し上げる。
+// ---- elite（最上位／UIの「強い」） ----
+// strong を土台に、strong が明示的に狙わない「ボーナス点(+2VP)」を確実に取りに行く。
+// 初期配置も生産重視（evaluateVertexForSetupElite, 基本ゲーム）。
+
+// 最長交易路(+2VP)を「道1本」で奪取/獲得できるなら、その道を返す。無ければ null。
+function eliteLongestRoadGrab(state: GameState, pid: PlayerId): Action | null {
+  if (state.longestRoadHolder === pid) return null;           // 既に保持
+  const p = state.players[pid]!;
+  if (p.remainingRoads <= 0 || !hasEnoughResources(p.hand, BUILD_COSTS.road)) return null;
+  // 1本で届かない（現在長+1が必要長未満）なら無駄打ちしない。
+  const holderLen = state.longestRoadHolder ? state.players[state.longestRoadHolder]!.longestRoadLength : 0;
+  const need = Math.max(LONGEST_ROAD_MIN, holderLen + 1);
+  if (calcLongestRoad(state, pid) + 1 < need) return null;
+  const DRNG = (): number => 0.5;
+  for (const eid of Object.keys(state.edges)) {
+    if (!canBuildRoad(state, pid, eid)) continue;
+    let next: GameState;
+    try { next = applyAction(state, { type: 'BUILD_ROAD', edgeId: eid }, DRNG); } catch { continue; }
+    if (next.longestRoadHolder === pid) return { type: 'BUILD_ROAD', edgeId: eid }; // この1本でボーナス獲得
+  }
+  return null;
+}
+
 function chooseTradeBuildElite(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
+  const win = victoryPush(state, pid, rng);
+  if (win) return win;
+  // 最長交易路(+2VP)を1本で取れるなら最優先で取りに行く（strong は明示的に狙わない）。
+  const grab = eliteLongestRoadGrab(state, pid);
+  if (grab) return grab;
   return chooseTradeBuildStrong(state, pid, skipPlayerTrade, rng);
 }
 
