@@ -455,7 +455,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
           let code: string;
           try { code = genCode(c => rooms.has(c)); }
           catch { send(ws, { t: 'error', message: 'ルームを作成できませんでした。時間をおいて再度お試しください' }); return; }
-          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'normal', orderMode: 'random', scenario: 'classic', memberLogs: {}, graceMs, cpuStepMs, cpuAfterRollMs };
+          room = { code, members: [], started: false, state: null, cpuCount: 0, cpuTimer: null, cpuNames: [], cpuDifficulty: 'strong', orderMode: 'random', scenario: 'classic', memberLogs: {}, graceMs, cpuStepMs, cpuAfterRollMs };
           rooms.set(code, room);
           me = { ws, id: 'player1', name: assignName(msg.name, room), isHost: true, connected: true, token: genToken(), graceTimer: null };
           room.members.push(me);
@@ -531,7 +531,7 @@ export function attachLanServer(httpServer: Server, fallbackPort = 5173, opts: L
         case 'setConfig': {
           // CPU強さ・手番順の設定はホストのみ・ロビー中のみ。参加者からは変更不可。
           if (!room || !me || !me.isHost || room.started) return;
-          if (msg.cpuDifficulty === 'weak' || msg.cpuDifficulty === 'normal' || msg.cpuDifficulty === 'strong') {
+          if (msg.cpuDifficulty === 'weak' || msg.cpuDifficulty === 'normal' || msg.cpuDifficulty === 'strong' || msg.cpuDifficulty === 'elite') {
             room.cpuDifficulty = msg.cpuDifficulty;
           }
           if (msg.orderMode === 'random' || msg.orderMode === 'joined') {

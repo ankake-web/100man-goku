@@ -46,7 +46,7 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
   let client: LanClient | null = null;
   const view: LobbyView = {
     code: '', you: null, isHost: false, players: [], hostUrls: [], canStart: false,
-    cpuCount: 0, maxCpu: 3, cpuDifficulty: 'normal', orderMode: 'random', scenario: 'classic', error: '',
+    cpuCount: 0, maxCpu: 3, cpuDifficulty: 'strong', orderMode: 'random', scenario: 'classic', error: '',
   };
   let stage: 'idle' | 'connecting' | 'lobby' | 'resuming' = 'idle';
   let connectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -332,8 +332,9 @@ export function renderLanLobby(container: HTMLElement, cb: LanLobbyCallbacks, re
     }
 
     // CPU強さ・手番順（ホストが設定。参加者はハイライト表示のみ＝変更不可）。
+    // 強さを1段引き上げ: 弱い=旧普通(normal) / 普通=旧強い(strong) / 強い=新最上位(elite)。
     const DIFF_OPTS: { value: AiDifficulty; text: string }[] = [
-      { value: 'weak', text: '弱い' }, { value: 'normal', text: '普通' }, { value: 'strong', text: '強い' },
+      { value: 'normal', text: '弱い' }, { value: 'strong', text: '普通' }, { value: 'elite', text: '強い' },
     ];
     const ORDER_OPTS: { value: LanOrderMode; text: string }[] = [
       { value: 'random', text: 'ランダム' }, { value: 'joined', text: '入室順' },

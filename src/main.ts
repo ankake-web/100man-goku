@@ -163,8 +163,9 @@ function renderHome(
   diffLabel.textContent = 'CPU の強さ';
   const diffGroup = document.createElement('div');
   diffGroup.className = 'home-radio-group';
-  const diffLabelMap: Record<AiDifficulty, string> = { weak: '弱', normal: '普通', strong: '強' };
-  const defaultDiff = diffLabelMap[lastConfig?.cpuDifficulty ?? 'normal'];
+  // UIの3択「弱/普通/強」を内部の normal/strong/elite に割り当てる（強さを1段引き上げた）。
+  const diffLabelMap: Record<AiDifficulty, string> = { weak: '弱', normal: '弱', strong: '普通', elite: '強' };
+  const defaultDiff = diffLabelMap[lastConfig?.cpuDifficulty ?? 'strong'];
   diffGroup.appendChild(createRadioGroup('cpuDiff', ['弱', '普通', '強'], defaultDiff));
   diffField.appendChild(diffLabel);
   diffField.appendChild(diffGroup);
@@ -348,8 +349,8 @@ function renderHome(
     const cpuCount = (parseInt(countVal, 10) as 1 | 2 | 3) || 1;
 
     const diffVal = (diffGroup.querySelector('input[name="cpuDiff"]:checked') as HTMLInputElement | null)?.value ?? '普通';
-    const diffMap: Record<string, AiDifficulty> = { '弱': 'weak', '普通': 'normal', '強': 'strong' };
-    const cpuDifficulty: AiDifficulty = diffMap[diffVal] ?? 'normal';
+    const diffMap: Record<string, AiDifficulty> = { '弱': 'normal', '普通': 'strong', '強': 'elite' };
+    const cpuDifficulty: AiDifficulty = diffMap[diffVal] ?? 'strong';
 
     const speedVal = (speedGroup.querySelector('input[name="cpuSpeed"]:checked') as HTMLInputElement | null)?.value ?? '普通';
     const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast' };

@@ -514,7 +514,11 @@ function chooseSetupAction(state: GameState, pid: PlayerId, rng: () => number): 
           return b?.type === 'settlement' && b.playerId === pid;
         })
       : undefined;
-    const chosen = pickByScore(valid, vid => evaluateVertexForSetup(state, vid, firstSettlement), rng);
+    // elite は基本ゲームで生産重視の配置を使う（CKは商品地形も要るため標準評価）。
+    const evalFn = (difficulty === 'elite' && !isCk(state))
+      ? (vid: string): number => evaluateVertexForSetupElite(state, vid, firstSettlement)
+      : (vid: string): number => evaluateVertexForSetup(state, vid, firstSettlement);
+    const chosen = pickByScore(valid, evalFn, rng);
     return { type: 'BUILD_SETTLEMENT', vertexId: chosen };
   }
 
@@ -801,6 +805,7 @@ function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade
 
   const difficulty = getDifficulty(state, pid);
   if (difficulty === 'weak') return chooseTradeBuildWeak(state, pid, rng);
+  if (difficulty === 'elite') return chooseTradeBuildElite(state, pid, skipPlayerTrade, rng);
   if (difficulty === 'strong') return chooseTradeBuildStrong(state, pid, skipPlayerTrade, rng);
   return chooseTradeBuildNormal(state, pid, skipPlayerTrade, rng);
 }
@@ -849,7 +854,8 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
     // 通常: 安い低レベル側から均等に伸ばす。'strong': 高レベル側を一点集中で伸ばし
     //   メトロポリス(+2VP)へ一直線に到達する（13点ゲームで非常に効く）。
     const difficulty = getDifficulty(state, pid);
-    const pick = metro ?? (difficulty === 'strong'
+    const rushMetro = difficulty === 'strong' || difficulty === 'elite';
+    const pick = metro ?? (rushMetro
       ? [...buyable].sort((a, b) => imp[b] - imp[a])[0]!
       : [...buyable].sort((a, b) => imp[a] - imp[b])[0]!);
     return { type: 'BUILD_IMPROVEMENT', track: pick };
@@ -1181,6 +1187,24 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   if (useSurplus) return useSurplus;
 
   return { type: 'END_TURN' };
+}
+
+// ---- elite（新・最上位／UIの「強い」） ----
+// 建設の優先順位は strong と同じ（実測で最良）。差は「初期配置をより生産重視で取る」点。
+// 初期配置は全局面に効く最大レバーなので、ここを強くするのが最も確実に勝率を押し上げる。
+function chooseTradeBuildElite(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
+  return chooseTradeBuildStrong(state, pid, skipPlayerTrade, rng);
+}
+
+// elite の初期配置スコア（基本ゲーム用）: 生産(pip)を重く、都市エンジン(ore+grain)を厚く取る。
+// 序盤の資源量を底上げして拡張テンポを上げる。CKでは商品地形の比重が変わるため適用しない。
+function evaluateVertexForSetupElite(state: GameState, vertexId: string, ownFirstSettlement?: string): number {
+  const base = evaluateVertexForSetup(state, vertexId, ownFirstSettlement);
+  const prod = vertexProductionScore(state, vertexId);
+  const res = new Set(adjacentResources(state, vertexId));
+  let bonus = prod * 0.8;
+  if (res.has('ore') && res.has('grain')) bonus += 1.5;
+  return base + bonus;
 }
 
 // ============================================================

@@ -154,7 +154,9 @@ export interface Harbor {
 export type PlayerId = 'player1' | 'player2' | 'player3' | 'player4';
 export type PlayerColor = 'red' | 'blue' | 'purple' | 'orange';
 export type PlayerType = 'human' | 'ai';
-export type AiDifficulty = 'weak' | 'normal' | 'strong';
+// AIの強さ。内部4段階だが、UIは「弱い/普通/強い」の3択を normal/strong/elite に割り当てる
+//（'weak'=旧ランダム級は現在UI非公開。テスト互換のため型としては残す）。'elite' が最上位。
+export type AiDifficulty = 'weak' | 'normal' | 'strong' | 'elite';
 
 export type DevCardType =
   | 'knight'
