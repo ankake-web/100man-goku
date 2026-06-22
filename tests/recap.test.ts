@@ -68,8 +68,8 @@ describe('buildPlayerRecap', () => {
     expect(r.comment.length).toBeGreaterThan(0);
   });
 
-  it('都市が多いと「都市」を含む開発型の講評になる', () => {
-    expect(buildPlayerRecap(withBuildings({ cities: 3 }), 'player1').comment).toContain('都市');
+  it('城が多いと「城」を含む開発型の講評になる', () => {
+    expect(buildPlayerRecap(withBuildings({ cities: 3 }), 'player1').comment).toContain('城');
   });
 
   it('最長交易路保持で「道」を含む講評になる', () => {
@@ -78,8 +78,8 @@ describe('buildPlayerRecap', () => {
     expect(r.comment).toContain('道');
   });
 
-  it('最大騎士力保持で「騎士」を含む講評になる', () => {
-    expect(buildPlayerRecap(withBuildings({ hasLargestArmy: true, knights: 3 }), 'player1').comment).toContain('騎士');
+  it('武威(最大騎士力)保持で「武将」を含む講評になる', () => {
+    expect(buildPlayerRecap(withBuildings({ hasLargestArmy: true, knights: 3 }), 'player1').comment).toContain('武将');
   });
 
   it('都市1+開拓地3はバランス安定型になる', () => {
@@ -133,8 +133,8 @@ describe('buildPlayerRecap（騎士と商人）', () => {
     expect(r.defenderVP).toBe(2);
   });
 
-  it('メトロポリス保持者の講評に「メトロポリス」を含む', () => {
-    expect(buildPlayerRecap(ckState({ metropolis: true, winner: true }), 'player1').comment).toContain('メトロポリス');
+  it('天守(メトロポリス)保持者の講評に「天守」を含む', () => {
+    expect(buildPlayerRecap(ckState({ metropolis: true, winner: true }), 'player1').comment).toContain('天守');
   });
 
   it('守護VPが高いと「守護」を含む講評になる（メトロポリス無し）', () => {
