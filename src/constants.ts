@@ -121,12 +121,12 @@ export const PROGRESS_DECK_COUNTS: Record<ProgressCardType, number> = {
   saboteur: 2, spy: 3, warlord: 2, wedding: 2,
 };
 export const PROGRESS_CARD_NAME: Record<ProgressCardType, string> = {
-  smith: '鍛冶屋', engineer: '技師', irrigation: '灌漑', mining: '採掘',
-  alchemist: '錬金術師', crane: 'クレーン', inventor: '発明家', medicine: '医術', printer: '印刷機', road_building_progress: '普請',
-  resource_monopoly: '資源独占', trade_monopoly: '交易独占', master_merchant: '大商人',
-  commercial_harbor: '商業湊', merchant: '御用商人', merchant_fleet: '商船隊',
-  warlord: '将軍', saboteur: '破壊工作員', wedding: '婚礼',
-  bishop: '僧正', constitution: '憲法', deserter: '脱走兵', diplomat: '外交官', intrigue: '陰謀', spy: 'スパイ',
+  smith: '鍛冶', engineer: '石工', irrigation: '用水', mining: '採掘',
+  alchemist: '陰陽師', crane: '棟梁', inventor: '縄張', medicine: '医術', printer: '感状', road_building_progress: '普請',
+  resource_monopoly: '徴収', trade_monopoly: '津留', master_merchant: '豪商',
+  commercial_harbor: '楽市', merchant: '御用商人', merchant_fleet: '廻船',
+  warlord: '陣触', saboteur: '焼討', wedding: '婚礼',
+  bishop: '勧進僧', constitution: '分国法', deserter: '寝返', diplomat: '和睦', intrigue: '調略', spy: '間者',
 };
 export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   smith: '武将を最大2体まで無料で1段加増',
