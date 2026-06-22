@@ -28,8 +28,9 @@
 ## 1. 全体アートディレクション（共通スタイル）
 
 - **テーマ**：日本の戦国時代（16世紀）。城・武将・一揆・交易。
-- **画風**：浮世絵／墨絵（sumi-e）＋金屏風の質感。和紙テクスチャ、墨の輪郭、金の差し色。
-  けばけばしくせず、フラット寄りの色面＋淡い陰影で**アイコンとしての視認性**を最優先。
+- **画風**：フィギュア／ミニチュア模型のような「立体感のあるかわいいデフォルメ」（自作カタンと同テイスト）。
+  やわらかな陰影・つるんとした質感・丸みのある形・親しみやすいポップさ。**※浮世絵・墨絵などの平面的な和風画はNG。**
+  けばけばしくせず、**アイコンとしての視認性**を最優先。
 - **統一感**：全アイコンで線の太さ・陰影・余白・彩度を揃える。**同一シード／同一スタイル**で量産推奨。
 - **視点**：資源/物産/カードの図像は正面の単体オブジェクト。盤上の駒（砦/城/天守/船/武将）は
   **同じ俯瞰アングル・同じ光源**で揃える（盤に並べたとき違和感が出ないように）。
@@ -64,12 +65,14 @@
 英語の方が画像生成エンジンの解釈が安定するため、**接頭辞＋主題**で組み立てる。
 
 ```
-flat game icon, Japanese Sengoku-era (16th century) theme,
-ukiyo-e woodblock print and sumi-e ink aesthetic, warm washi paper texture,
-muted earthy palette with gold-leaf accents, bold ink outline, soft cel shading,
+cute 3D figurine-style game icon, miniature collectible model look,
+soft rounded forms, smooth glossy clay-like material, gentle soft shadows,
+playful and charming, Japanese Sengoku-era (16th century) theme,
+muted earthy palette with gold accents,
 single centered object, slight margin, transparent background, subtle drop shadow,
 no text, no letters, high readability as a small icon
 ```
+※ 浮世絵・墨絵・木版（ukiyo-e / woodblock / sumi-e）は使わない。立体感のあるかわいいフィギュア調に統一。
 - 出力は **512×512 で生成 → 指定寸法へ縮小**すると線が締まる。背景は必ず透過（PNG）。
 - **同一スタイル・同一シード**を固定し、被写体（主題）だけ差し替えて量産する。
 - 盤上の駒（3.3）は **isometric / slight top-down view, consistent light from upper-left** を追加。
@@ -182,44 +185,44 @@ no text, no letters, high readability as a small icon
 ## 7. 進歩カード 25（256×256・透過PNG）
 
 各カードの“図像”。表示名・効果は [GLOSSARY.md](./GLOSSARY.md)／図鑑参照（**絵に文字は不要**）。
-スラッグ（ファイル名の語）は内部キーなので不変。一部は西洋寄りの名（§8に和風置換案）。
+スラッグ（ファイル名の語）は内部キーなので不変。表示名は全25種を戦国和名へ更新済み（下表は最新名）。
 
 ### 7.1 政策デッキ（card-pol-*・9種）
 | ファイル名 | 表示名 | 効果の要旨 | 生成プロンプト主題（英） |
 |---|---|---|---|
-| `card-pol-bishop.png` | 僧正 | 野盗移動＋隣接全員から1枚 | a high Buddhist monk (sōjō) in robes, prayer beads |
-| `card-pol-diplomat.png` | 外交官 | 端の街道1本を撤去 | an envoy/messenger with a diplomatic letter scroll |
-| `card-pol-intrigue.png` | 陰謀 | 隣接敵武将を1体退去 | a shadowy schemer plotting, dark backroom |
-| `card-pol-deserter.png` | 脱走兵 | 敵武将を1体奪う | a deserting soldier fleeing camp at night |
-| `card-pol-warlord.png` | 将軍 | 自分の武将を全て無料出陣 | a supreme commander (taishō) rallying troops |
-| `card-pol-spy.png` | スパイ | 相手の進歩カードを1枚奪う | a ninja shinobi spy, stealth, dark |
-| `card-pol-saboteur.png` | 破壊工作員 | 上位VP全員が資源半減 | a saboteur setting fire to enemy stores |
+| `card-pol-bishop.png` | 勧進僧 | 野盗移動＋隣接全員から1枚 | an alms-soliciting Buddhist monk (kanjin) with bowl and beads |
+| `card-pol-diplomat.png` | 和睦 | 端の街道1本を撤去 | two warlords making a truce/peace, handing over a letter |
+| `card-pol-intrigue.png` | 調略 | 隣接敵武将を1体退去 | a strategist winning the enemy over, secret scheme |
+| `card-pol-deserter.png` | 寝返 | 敵武将を1体奪う | an enemy soldier defecting / turning coat to your side |
+| `card-pol-warlord.png` | 陣触 | 自分の武将を全て無料出陣 | a war drum muster, calling all troops to sortie |
+| `card-pol-spy.png` | 間者 | 相手の進歩カードを1枚奪う | a covert spy / ninja (kanja), stealth in the dark |
+| `card-pol-saboteur.png` | 焼討 | 上位VP全員が資源半減 | a night fire-raid burning enemy storehouses |
 | `card-pol-wedding.png` | 婚礼 | 上位VPの各相手から2枚 | a political marriage ceremony, formal kimono |
-| `card-pol-constitution.png` | 憲法 | 即+1勝利点 | a proclaimed domain law (bunkokuhō) document |
+| `card-pol-constitution.png` | 分国法 | 即+1勝利点 | a proclaimed domain law (bunkokuhō) document |
 
 ### 7.2 兵学デッキ（card-sci-*・10種）
 | ファイル名 | 表示名 | 効果の要旨 | 生成プロンプト主題（英） |
 |---|---|---|---|
-| `card-sci-alchemist.png` | 錬金術師 | 次のダイス目を自分で決める | an onmyōji/alchemist with mystic dice and talismans |
-| `card-sci-crane.png` | クレーン | 改善を物産1個安く1段 | a large wooden lifting crane (shura) at a build site |
-| `card-sci-engineer.png` | 技師 | 石垣1つを無料建設 | a master builder engineer with castle-wall blueprint |
-| `card-sci-inventor.png` | 発明家 | 数字トークン2枚を入替 | an inventor swapping numbered tiles, gadgets |
-| `card-sci-irrigation.png` | 灌漑 | 隣接の田1つにつき米2 | irrigated rice paddies with water channels |
+| `card-sci-alchemist.png` | 陰陽師 | 次のダイス目を自分で決める | an onmyōji diviner with mystic dice and talismans |
+| `card-sci-crane.png` | 棟梁 | 改善を物産1個安く1段 | a master carpenter foreman (tōryō) at a build site |
+| `card-sci-engineer.png` | 石工 | 石垣1つを無料建設 | a stonemason building a castle stone wall (ishigaki) |
+| `card-sci-inventor.png` | 縄張 | 数字トークン2枚を入替 | a castle-layout planner (nawabari) with plan, stakes and ropes |
+| `card-sci-irrigation.png` | 用水 | 隣接の田1つにつき米2 | irrigated rice paddies with water channels |
 | `card-sci-medicine.png` | 医術 | 砦を安く城に格上げ | a Sengoku physician with herbal medicine box |
 | `card-sci-mining.png` | 採掘 | 隣接の鉱山1つにつき鉄2 | a mining shaft with ore and miners, lanterns |
 | `card-sci-road-building.png` | 普請 | 街道2本を無料建設 | corvée laborers building a road/embankment (fushin) |
-| `card-sci-smith.png` | 鍛冶屋 | 武将を最大2体無料で加増 | a swordsmith forging a katana at the anvil, sparks |
-| `card-sci-printer.png` | 印刷機 | 即+1勝利点 | a woodblock printing workshop (hanga), carved blocks |
+| `card-sci-smith.png` | 鍛冶 | 武将を最大2体無料で加増 | a swordsmith forging a katana at the anvil, sparks |
+| `card-sci-printer.png` | 感状 | 即+1勝利点 | a letter of commendation for valor (kanjō) with seal |
 
 ### 7.3 商策デッキ（card-com-*・6種）
 | ファイル名 | 表示名 | 効果の要旨 | 生成プロンプト主題（英） |
 |---|---|---|---|
 | `card-com-merchant.png` | 御用商人 | 資源地形に置く（+1VP・2:1） | a licensed purveyor merchant placing his market |
-| `card-com-merchant-fleet.png` | 商船隊 | 指定1種を2:1で交易 | a fleet of trading sea vessels with cargo |
-| `card-com-master-merchant.png` | 大商人 | VP最多の相手から2枚 | a wealthy great merchant (gōshō) with ledgers and gold |
-| `card-com-commercial-harbor.png` | 商業湊 | 資源1⇄相手の物産1 | a bustling trade harbor (minato) with docks and crates |
-| `card-com-resource-monopoly.png` | 資源独占 | 各相手から資源2枚ずつ | a merchant cornering a market, stacks of one resource |
-| `card-com-trade-monopoly.png` | 交易独占 | 各相手から物産1枚ずつ | a monopoly seal over commodities (silk/paper/gold) |
+| `card-com-merchant-fleet.png` | 廻船 | 指定1種を2:1で交易 | a fleet of cargo trading ships (kaisen) |
+| `card-com-master-merchant.png` | 豪商 | VP最多の相手から2枚 | a wealthy great merchant (gōshō) with ledgers and gold |
+| `card-com-commercial-harbor.png` | 楽市 | 資源1⇄相手の物産1 | a lively free market (rakuichi) with stalls and crates |
+| `card-com-resource-monopoly.png` | 徴収 | 各相手から資源2枚ずつ | officials levying / collecting rice tax from peasants |
+| `card-com-trade-monopoly.png` | 津留 | 各相手から物産1枚ずつ | a port checkpoint barrier (sekisho) levying goods |
 
 ---
 
@@ -242,7 +245,7 @@ no text, no letters, high readability as a small icon
 
 | ファイル名 | 場面 | 生成プロンプト主題（英） |
 |---|---|---|
-| `bg-title.jpg` | タイトル（城下町と山河） | wide Sengoku landscape, a castle town below mountains, dawn, ukiyo-e |
+| `bg-title.jpg` | タイトル（城下町と山河） | wide Sengoku landscape, a castle town below mountains at dawn, cute 3D diorama style |
 | `bg-victory.jpg` | 勝利（凱旋・天守に旗） | victorious castle keep with banners flying, golden sunset, triumphant |
 | `bg-barbarian.jpg` | 一揆勢襲来（夜襲・松明） | night raid of a peasant ikki mob with torches approaching a castle, ominous |
 
@@ -264,23 +267,20 @@ no text, no letters, high readability as a small icon
 
 ---
 
-## 11.（任意・将来）より戦国らしい“名称”への置換案
+## 11. 改良建築の“名称”和風化案（任意・別作業）
 
-下記は**絵ではなくテキスト（表示名）**の候補。今回の範囲外（やるなら別途テキスト改修）。
-西洋寄りで浮く語を、語感重視で和風に寄せる案。採否はお任せ。
+**進歩カード25種の表示名は本作業で戦国和名へ更新済み**（§7 が最新）。残るのは **城下の改良建築6**（§5）
+のうち西洋寄り／近代寄りの名。これらの **ゲーム内表示名の変更は今回未実施**（やるなら別途テキスト改修）。
+絵は下の和風案で先に作ってOK（採否はお任せ）。
 
-| 現・表示名 | 和風寄せ案 | 備考 |
-|---|---|---|
-| 大聖堂 | 本堂／伽藍 | 寺社建築に |
-| 水道橋 | 用水／治水 | 土木に |
-| 劇場 | 芝居小屋／能舞台 | 興行に |
-| 錬金術師 | 陰陽師 | 占術に |
-| クレーン | 修羅（しゅら） | 巨石運搬具 |
-| 外交官 | 使者／取次 | |
-| 憲法 | 分国法 | 戦国大名の家法 |
-| 印刷機 | 版木／開版 | 木版印刷 |
-| スパイ | 忍び／間者 | |
-| 銀行 | 両替商 | |
+| 現・表示名 | トラック/Lv | 和風寄せ案 | 備考 |
+|---|---|---|---|
+| 銀行 | 商Lv4 | 両替商 | 「銀行」は近代語 |
+| 大聖堂 | 政Lv4 | 本堂／伽藍 | 寺社建築に |
+| 水道橋 | 学Lv3 | 用水／治水 | 土木に |
+| 劇場 | 学Lv4 | 芝居小屋／能舞台 | 興行に |
+| 要塞 | 政Lv3 | 出城 | やや近代語（任意） |
+| 交易所 | 商Lv3 | （据え置き可） | 「交易」は許容 |
 
 ---
 
