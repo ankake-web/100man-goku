@@ -5,7 +5,7 @@
 import './style.css';
 import type { GameState, Action, PlayerId, AiDifficulty, ResourceType, TradeOffer, ResourceHand } from './types';
 import type { PlayerOrderMode } from './engine/setup';
-import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, CK_BARBARIAN_MAX, CK_TRACK_NAME, PROGRESS_CARD_NAME } from './constants';
+import { makeHand, RESOURCE_TYPES, COMMODITY_TYPES, VP_TABLE, TILE_RESOURCE_MAP, TILE_COMMODITY_MAP, CK_BARBARIAN_MAX, CK_PROGRESS_CATEGORY_NAME, PROGRESS_CARD_NAME } from './constants';
 import { createInitialGameState } from './engine/createState';
 import type { ScenarioId } from './engine/scenarios';
 import type { PlayerSpec } from './engine/createState';
@@ -46,7 +46,7 @@ import { ASSETS } from './assets/manifest'; // 画像参照は中央マニフェ
 const RES_FLY_IMG: Record<ResourceType, string> = {
   wood: ASSETS.resource.lumber, brick: ASSETS.resource.brick, wool: ASSETS.resource.wool, grain: ASSETS.resource.grain, ore: ASSETS.resource.ore,
 };
-// 商品(紙/布/金貨)取得アニメ用の画像。資源と同じく取得時に飛ばす。
+// 物産(紙/絹/金)取得アニメ用の画像。資源と同じく取得時に飛ばす。
 const COM_FLY_IMG: Record<CommodityType, string> = {
   paper: ASSETS.commodity.paper, cloth: ASSETS.commodity.cloth, coin: ASSETS.commodity.coin,
 };
@@ -315,7 +315,7 @@ function renderHome(
   // ---- ルール説明（折りたたみ。開始ボタンの下に置き、邪魔しない） ----
   screen.appendChild(buildRulePanel());
 
-  // ---- コマ・カード図鑑（騎士と商人の全画像を名前・説明つきで一覧） ----
+  // ---- コマ・カード図鑑（武将と商いの全画像を名前・説明つきで一覧） ----
   const galleryBtn = document.createElement('button');
   galleryBtn.className = 'gallery-open-btn';
   galleryBtn.textContent = '🖼 コマ・カード図鑑を見る';
@@ -391,7 +391,7 @@ function ruleSection(heading: string, bullets: string[]): HTMLDivElement {
   return sec;
 }
 
-// タイルの色見本（小さな六角形）。盤面の色と一致させ、麦と金などを見分けやすくする。
+// タイルの色見本（小さな六角形）。盤面の色と一致させ、米と金などを見分けやすくする。
 function legendHex(type: string): SVGSVGElement {
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
@@ -403,7 +403,7 @@ function legendHex(type: string): SVGSVGElement {
   poly.setAttribute('points', pts.join(' '));
   poly.setAttribute('class', `hex-tile ${type}`);
   // 金は盤面のグラデーション(url)が凡例SVGでは解決しないので、近い光沢ゴールドの単色＋濃縁＋発光を直接指定。
-  // 麦(黄土色 #c8a830)よりはっきり明るい黄金色にして見分けやすくする。絵文字は環境差で崩れるため入れない。
+  // 米(黄土色 #c8a830)よりはっきり明るい黄金色にして見分けやすくする。絵文字は環境差で崩れるため入れない。
   if (type === 'gold') poly.setAttribute('style', 'fill:#ffcf1f;stroke:#7a5200;stroke-width:2.5;filter:drop-shadow(0 0 3px rgba(255,210,40,0.9))');
   svg.appendChild(poly);
   return svg;
@@ -419,10 +419,10 @@ function buildTileLegend(): HTMLDivElement {
   sec.appendChild(h);
   const grid = document.createElement('div');
   grid.className = 'rule-legend';
-  // 資源タイルは盤面と同じアイコン画像を表示。金/砂漠/海は資源ではないので画像も絵文字も付けない（六角の色見本で示す）。
+  // 資源タイルは盤面と同じアイコン画像を表示。金/荒野/海は資源ではないので画像も絵文字も付けない（六角の色見本で示す）。
   const entries: [string, ResourceType | null, string][] = [
-    ['forest', 'wood', '木材'], ['hill', 'brick', 'レンガ'], ['pasture', 'wool', '羊毛'],
-    ['field', 'grain', '麦'], ['mountain', 'ore', '鉱石'], ['desert', null, '砂漠（資源なし）'],
+    ['forest', 'wood', '木材'], ['hill', 'brick', '石材'], ['pasture', 'wool', '馬'],
+    ['field', 'grain', '米'], ['mountain', 'ore', '鉄'], ['desert', null, '荒野（資源なし）'],
     ['gold', null, '金＝好きな資源'], ['sea', null, '海（航海者）'],
   ];
   for (const [type, res, label] of entries) {
@@ -460,7 +460,7 @@ function buildRulePanel(): HTMLDetailsElement {
   body.className = 'rule-body';
   body.appendChild(ruleSection('🎯 目的', [
     `先に ${VP_TABLE.target} 点（航海者の盤面は 13 点）を取ったプレイヤーが勝ち。`,
-    '開拓地・都市・最長交易路・最大騎士力・勝利点カードで点を集める。',
+    '砦・城・最長街道・武威・由緒カードで点を集める。',
   ]));
   body.appendChild(buildTileLegend());
   body.appendChild(ruleSection('🔁 ターンの流れ', [
@@ -470,60 +470,60 @@ function buildRulePanel(): HTMLDetailsElement {
     '④ ターン終了',
   ]));
   body.appendChild(ruleSection('🌲 資源', [
-    '木・レンガ・羊・麦・鉱石を集める。',
-    'タイルの数字が出ると、隣に開拓地/都市を持つ人が資源を得る。',
-    '開拓地は1個、都市は2個もらえる。',
+    '木材・石材・馬・米・鉄を集める。',
+    'タイルの数字が出ると、隣に砦/城を持つ人が資源を得る。',
+    '砦は1個、城は2個もらえる。',
   ]));
   body.appendChild(ruleSection('🏠 建設コスト', [
-    '道：木＋レンガ',
-    '開拓地：木＋レンガ＋羊＋麦',
-    '都市：麦2＋鉱石3',
-    '発展カード：羊＋麦＋鉱石',
+    '街道：木材＋石材',
+    '砦：木材＋石材＋馬＋米',
+    '城：米2＋鉄3',
+    '軍略カード：馬＋米＋鉄',
   ]));
-  body.appendChild(ruleSection('🦹 7と盗賊', [
+  body.appendChild(ruleSection('🦹 7と野盗', [
     '7が出ると資源は出ない。',
     '手札8枚以上の人は半分捨てる。',
-    '盗賊を動かして、隣接する相手から1枚奪える。',
-    '盗賊がいるタイルからは資源が出ない。',
+    '野盗を動かして、隣接する相手から1枚奪える。',
+    '野盗がいるタイルからは資源が出ない。',
   ]));
   body.appendChild(ruleSection('🤝 交易', [
     '他プレイヤーと資源を交換できる。',
-    '銀行（4:1）や港（3:1 / 2:1）とも交換できる。',
+    '銀行（4:1）や湊（3:1 / 2:1）とも交換できる。',
     '同じ資源同士の交換はできない。',
   ]));
-  body.appendChild(ruleSection('🃏 発展カード', [
-    '騎士・街道建設・年の豊穣（発見）・独占・勝利点カードがある。',
-    'サイコロ前に使えるのは騎士だけ。他はサイコロ後に使う。',
-    '勝利点カードは隠し点（自分だけ見える）。',
+  body.appendChild(ruleSection('🃏 軍略カード', [
+    '武将・普請・豊作（発見）・専売・由緒カードがある。',
+    'サイコロ前に使えるのは武将だけ。他はサイコロ後に使う。',
+    '由緒カードは隠し点（自分だけ見える）。',
   ]));
   body.appendChild(ruleSection('🏆 点数', [
-    '開拓地：1点 / 都市：2点',
-    '最長交易路：2点（道5本以上で最長の人）',
-    '最大騎士力：2点（騎士3回以上で最多の人）',
-    '勝利点カード：1点',
+    '砦：1点 / 城：2点',
+    '最長街道：2点（街道5本以上で最長の人）',
+    '武威：2点（武将3回以上で最多の人）',
+    '由緒カード：1点',
   ]));
   body.appendChild(ruleSection('⛵ 航海者（航海者・群島の盤面）', [
     '盤面が海で島に分かれている。新しい島へは「船」で渡る。',
-    '船：木＋羊。海に面した辺に置く。道と船は自分の建物でつながる。「⛵船を移動」で行き止まりの船を1ターン1回動かせる。',
-    '金タイル：数字が出ると、木・レンガ・羊・麦・鉱石から好きな資源を選べる（開拓地1・都市2）。麦（黄土色）と違い、明るい金色が目印。',
-    '新しい島に最初に開拓地を建てると +2点（島ボーナス）。',
-    '7のとき、陸タイルをタップ＝盗賊、海タイルをタップ＝海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
-    '海岸の港（3:1 / 2:1）も使える。航海者の盤面は 13点で勝ち。',
+    '船：木材＋馬。海に面した辺に置く。街道と船は自分の建物でつながる。「⛵船を移動」で行き止まりの船を1ターン1回動かせる。',
+    '金タイル：数字が出ると、木材・石材・馬・米・鉄から好きな資源を選べる（砦1・城2）。米（黄土色）と違い、明るい金色が目印。',
+    '新しい島に最初に砦を建てると +2点（島ボーナス）。',
+    '7のとき、陸タイルをタップ＝野盗、海タイルをタップ＝海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
+    '海岸の湊（3:1 / 2:1）も使える。航海者の盤面は 13点で勝ち。',
   ]));
-  body.appendChild(ruleSection('⚔ 都市と騎士（上級者向け・13点で勝ち）', [
-    '基本ルールに「商品・都市の発展・騎士・蛮族の襲来」が加わる拡張。',
-    '商品：都市が建つ地形のうち 森＝紙・牧草＝布・山＝金貨 を1個ずつ追加で産む（資源とは別の手札）。',
-    '都市の発展（交易・政治・科学の3系統）：商品を払ってレベルアップ。Lv3で特典、Lv4で都市が「メトロポリス」になり +4点。',
-    '騎士：兵士のコマ。建てて麦で起動し、移動・敵騎士の押し出し・強盗の追い払いに使える。',
-    '蛮族の襲来：船のイベントで蛮族が近づき、満タンで攻めてくる。起動した騎士の合計が盤上の都市数以上なら防衛成功。足りないと都市が1つ開拓地に格下げ。',
-    '進歩カード：交易・政治・科学のイベントで引く特殊カード（手札は最大4枚）。発展レベルが高い色ほど引きやすい。',
-    'この盤面では盗賊は資源だけでなく商品も奪い、手札の上限判定（7の捨て札）も資源＋商品の合計で数える。',
+  body.appendChild(ruleSection('⚔ 城下と武将（上級者向け・13点で勝ち）', [
+    '基本ルールに「物産・城下の発展・武将・一揆勢の襲来」が加わる拡張。',
+    '物産：城が建つ地形のうち 森林＝紙・牧＝絹・鉱山＝金 を1個ずつ追加で産む（資源とは別の手札）。',
+    '城下の発展（商・政・学の3系統）：物産を払ってレベルアップ。Lv3で特典、Lv4で城が「天守」になり +4点。',
+    '武将：兵士のコマ。召し抱えて米で出陣し、移動・敵武将の押し出し・野盗の追い払いに使える。',
+    '一揆勢の襲来：船のイベントで一揆勢が近づき、満タンで攻めてくる。出陣した武将の合計が盤上の城数以上なら防衛成功。足りないと城が1つ砦に格下げ。',
+    '進歩カード：商・政・学のイベントで引く特殊カード（手札は最大4枚）。発展レベルが高い色ほど引きやすい。',
+    'この盤面では野盗は資源だけでなく物産も奪い、手札の上限判定（7の捨て札）も資源＋物産の合計で数える。',
   ]));
   body.appendChild(ruleSection('💡 操作のコツ', [
-    '最初は資源が多く出そうな数字の近くに開拓地を置く。',
+    '最初は資源が多く出そうな数字の近くに砦を置く。',
     '6・8は出やすい数字。',
-    '港を使うと資源を交換しやすい。',
-    '道を伸ばして開拓地を増やし、都市にすると資源が増える。',
+    '湊を使うと資源を交換しやすい。',
+    '街道を伸ばして砦を増やし、城にすると資源が増える。',
   ]));
 
   details.appendChild(body);
@@ -610,7 +610,7 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
 
   if (state.phase === 'MAIN') {
     if (state.turnPhase === 'ROBBER') {
-      // 盗賊(陸)＋海賊(海)の移動先。現在地（盗賊タイル/海賊タイル）は除外。
+      // 野盗(陸)＋海賊(海)の移動先。現在地（野盗タイル/海賊タイル）は除外。
       const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
       opts.validTileIds = new Set(
         Object.keys(state.tiles).filter(tid => tid !== robberTile && tid !== state.piratePosition),
@@ -618,7 +618,7 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       return opts;
     }
 
-    // 騎士と商人: 都市格下げは、対象（LAN=viewer/ローカル=人間）の平の都市を赤く光らせて盤面でタップ選択。
+    // 武将と商い: 城の格下げは、対象（LAN=viewer/ローカル=人間）の平の城を赤く光らせて盤面でタップ選択。
     if (state.turnPhase === 'CITY_DOWNGRADE') {
       const pending = state.pendingCityDowngrade ?? [];
       const me = selfPlayerId();
@@ -651,55 +651,55 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
           Object.keys(state.vertices).filter(vid => canBuildCity(state, pid, vid)),
         );
       } else if (mode === 'moveKnight') {
-        // 騎士と商人・騎士移動: 未選択なら動かせる自分の起動騎士、選択済なら移動先頂点を光らせる。
+        // 武将と商い・武将移動: 未選択なら動かせる自分の出陣武将、選択済なら移動先頂点を光らせる。
         opts.validVertexIds = moveKnightFrom == null
           ? new Set(Object.keys(state.vertices).filter(vid => isKnightMovable(state, pid, vid)))
           : new Set(Object.keys(state.vertices).filter(vid => canMoveKnight(state, pid, moveKnightFrom!, vid)));
       } else if (mode === 'chaseRobber') {
-        // 騎士と商人・強盗追い払い: 強盗に隣接した自分のアクティブ騎士頂点を光らせる。
+        // 武将と商い・野盗追い払い: 野盗に隣接した自分のアクティブ武将頂点を光らせる。
         opts.validVertexIds = new Set(robberAdjacentChasableVertexIds(state, pid));
       } else if (mode === 'buildKnight') {
-        // 騎士と商人・騎士の手動配置: 建てられる合法頂点を光らせる。
+        // 武将と商い・武将の手動配置: 建てられる合法頂点を光らせる。
         opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canBuildKnight(state, pid, vid)));
       } else if (mode === 'activateKnight') {
-        // 騎士と商人・騎士の手動起動: 起動できる自分の騎士頂点を光らせる。
+        // 武将と商い・武将の手動出陣: 出陣できる自分の武将頂点を光らせる。
         opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canActivateKnight(state, pid, vid)));
       } else if (mode === 'upgradeKnight') {
-        // 騎士と商人・騎士の手動昇格: 昇格できる自分の騎士頂点を光らせる。
+        // 武将と商い・武将の手動加増: 加増できる自分の武将頂点を光らせる。
         opts.validVertexIds = new Set(Object.keys(state.vertices).filter(vid => canUpgradeKnight(state, pid, vid)));
       } else if (mode === 'placeMerchant') {
-        // 騎士と商人・商人カード: 自分の建物に隣接する資源タイルを光らせて盤面で選ばせる。
+        // 武将と商い・御用商人カード: 自分の建物に隣接する資源タイルを光らせて盤面で選ばせる。
         opts.validTileIds = new Set(merchantTileIds(state, pid));
       } else if (mode === 'inventorSwap') {
-        // 騎士と商人・発明家: 入替可能タイルを光らせる。1枚目選択後はそれ以外を入替先候補に。
+        // 武将と商い・発明家: 入替可能タイルを光らせる。1枚目選択後はそれ以外を入替先候補に。
         const all = inventorTiles(state);
         opts.validTileIds = new Set(inventorFirstTile == null ? all : all.filter(t => t !== inventorFirstTile));
         if (inventorFirstTile) opts.selectedTileId = inventorFirstTile; // 1枚目を青で確定強調
       } else if (mode === 'placeBishop') {
-        // 騎士と商人・僧正: 盗賊を置ける陸タイルを光らせる。
+        // 武将と商い・僧正: 野盗を置ける陸タイルを光らせる。
         opts.validTileIds = new Set(bishopTileIds(state));
       } else if (mode === 'selectDiplomatRoad') {
-        // 騎士と商人・外交官: 撤去できる相手の端の道を光らせる。
+        // 武将と商い・外交官: 撤去できる相手の端の街道を光らせる。
         opts.validEdgeIds = new Set(diplomatRemovableRoads(state, pid));
       } else if (mode === 'selectDeserterKnight') {
-        // 騎士と商人・脱走兵: 消せる相手の騎士頂点を光らせる。
+        // 武将と商い・脱走兵: 消せる相手の武将頂点を光らせる。
         opts.validVertexIds = new Set(deserterTargets(state, pid));
       } else if (mode === 'selectMedicineSettlement') {
-        // 騎士と商人・医術: 都市化できる自分の開拓地を光らせる。
+        // 武将と商い・医術: 築城できる自分の砦を光らせる。
         opts.validVertexIds = new Set(medicineSettlements(state, pid));
       } else if (mode === 'selectMetropolis') {
-        // 騎士と商人・メトロポリス: 化ける自分の都市を光らせて盤面で選ばせる。
+        // 武将と商い・天守: 化ける自分の城を光らせて盤面で選ばせる。
         opts.validVertexIds = new Set(metropolisCityChoices(state, pid));
       } else if (mode === 'selectSmithKnight') {
-        // 騎士と商人・鍛冶屋: 昇格できる自分の騎士を光らせる。1体目選択後はそれ以外を2体目候補に。
+        // 武将と商い・鍛冶屋: 加増できる自分の武将を光らせる。1体目選択後はそれ以外を2体目候補に。
         const all = smithKnightTargets(state, pid);
         opts.validVertexIds = new Set(smithFirstKnight == null ? all : all.filter(v => v !== smithFirstKnight));
         if (smithFirstKnight) opts.selectedVertexId = smithFirstKnight; // 1体目を確定強調
       } else if (mode === 'selectEngineerCity') {
-        // 騎士と商人・技師: 城壁を建てられる自分の都市を光らせる。
+        // 武将と商い・技師: 石垣を建てられる自分の城を光らせる。
         opts.validVertexIds = new Set(engineerWallCities(state, pid));
       } else if (mode === 'selectIntrigueKnight') {
-        // 騎士と商人・陰謀: 退去させられる敵騎士（自分の道/船に隣接）を光らせる。
+        // 武将と商い・陰謀: 退去させられる敵武将（自分の街道/船に隣接）を光らせる。
         opts.validVertexIds = new Set(intrigueKnightTargets(state, pid));
       }
     }
@@ -731,19 +731,19 @@ let state!: GameState;
 let buildMode: BuildMode = 'idle';
 // 航海者・船移動モードで選択中の移動元の辺ID（未選択は null）。
 let moveShipFrom: string | null = null;
-// 騎士と商人・騎士移動モードで選択中の移動元頂点ID（未選択は null）。
+// 武将と商い・武将移動モードで選択中の移動元頂点ID（未選択は null）。
 let moveKnightFrom: string | null = null;
 function setMoveKnightFrom(vid: string | null): void { moveKnightFrom = vid; redraw(); }
-// 騎士と商人・発明家(inventorSwap)で1枚目に選んだタイルID（未選択は null）。2枚目をタップで入替。
+// 武将と商い・発明家(inventorSwap)で1枚目に選んだタイルID（未選択は null）。2枚目をタップで入替。
 let inventorFirstTile: string | null = null;
 function setInventorFirst(tid: string | null): void { inventorFirstTile = tid; redraw(); }
-// 騎士と商人・鍛冶屋(selectSmithKnight)で1体目に選んだ騎士頂点ID（未選択は null）。2体目をタップで昇格。
+// 武将と商い・鍛冶屋(selectSmithKnight)で1体目に選んだ武将頂点ID（未選択は null）。2体目をタップで加増。
 let smithFirstKnight: string | null = null;
 function setSmithFirst(vid: string | null): void { smithFirstKnight = vid; redraw(); }
-// メトロポリス手動選択中に「今+1する都市改善ツリー」を控える（候補2つ以上で盤面タップさせる時）。
+// 天守手動選択中に「今+1する城下の改善ツリー」を控える（候補2つ以上で盤面タップさせる時）。
 let pendingMetropolisTrack: CkTrack | null = null;
 let uiPhase: UIPhase = { type: 'idle' };
-// 強盗/海賊を「先に移動」してから相手選択させる時、移動先をプレビュー描画したタイル。
+// 野盗/海賊を「先に移動」してから相手選択させる時、移動先をプレビュー描画したタイル。
 // 相手確定(MOVE_ROBBER/MOVE_PIRATE)時の二重スライドを抑止するためにも使う。
 let robberPreviewedTile: string | null = null;
 let lastConfig: HomeConfig | null = null;
@@ -785,7 +785,7 @@ let cpuPlayerTradeOfferedThisTurn = false;
 
 // ダイスのロール演出中フラグ。演出中は新たなアクションを無視（多重ロール等を防止）。
 let diceAnimating = false;
-// 蛮族襲来の全画面演出が盤面を覆っている間は、資源/進歩カードの配布アニメを流さない
+// 一揆勢襲来の全画面演出が盤面を覆っている間は、資源/進歩カードの配布アニメを流さない
 // （演出が消えて盤面が見えてから飛ばす＝被りを防ぐ）。clearAt は演出の終了予定時刻(performance.now基準)。
 const BARB_OVERLAY_MS = 4200;
 let barbarianOverlayClearAt = 0;
@@ -793,7 +793,7 @@ function pendingOverlayDelay(): number {
   const now = typeof performance !== 'undefined' ? performance.now() : 0;
   return Math.max(0, barbarianOverlayClearAt - now);
 }
-// 資源/商品の分配アニメ中フラグ。CPUの次手（特に次のダイス）を待たせ、サイコロと飛行アニメの被りを防ぐ。
+// 資源/物産の分配アニメ中フラグ。CPUの次手（特に次のダイス）を待たせ、サイコロと飛行アニメの被りを防ぐ。
 let resourceAnimating = false;
 let _resAnimTimer: number | null = null;
 let _resAnimEndAt = 0;
@@ -894,11 +894,11 @@ function redraw(skipBoard = false): void {
       if (uiPhase.kind === 'road') opts.previewEdgeId = uiPhase.targetId;
       else if (uiPhase.kind === 'ship') opts.previewShipEdgeId = uiPhase.targetId;
       else if (uiPhase.kind === 'settlement' || uiPhase.kind === 'city') opts.previewVertexId = uiPhase.targetId;
-      // 商人は選んだタイル、騎士の起動/昇格は選んだ騎士頂点を青で「これを確定」と明示。
+      // 御用商人は選んだタイル、武将の出陣/加増は選んだ武将頂点を青で「これを確定」と明示。
       else if (uiPhase.kind === 'placeMerchant') opts.selectedTileId = uiPhase.targetId;
       else if (uiPhase.kind === 'activateKnight' || uiPhase.kind === 'upgradeKnight') opts.selectedVertexId = uiPhase.targetId;
     }
-    // 強盗/海賊の相手選択中は、コマを移動先タイルに先行表示（駒移動→相手選択の順序）。
+    // 野盗/海賊の相手選択中は、コマを移動先タイルに先行表示（駒移動→相手選択の順序）。
     if (uiPhase.type === 'robberTarget') {
       if (uiPhase.kind === 'pirate') opts.previewPirateTileId = uiPhase.tileId;
       else opts.previewRobberTileId = uiPhase.tileId;
@@ -910,7 +910,7 @@ function redraw(skipBoard = false): void {
   // 自分の手番のときだけ出す。CPUスケジュール/ウォッチドッグは動かさない。
   if (netMode) {
     if (!skipBoard) {
-      // 手番のハイライトに加え、多人数解決（都市格下げ等）で viewer が対象の時も出す（boardCanAct）。
+      // 手番のハイライトに加え、多人数解決（城の格下げ等）で viewer が対象の時も出す（boardCanAct）。
       const myTurn = viewerPlayerId != null && viewerPlayerId === currentPid(state);
       const opts: BoardRenderOptions = (myTurn || boardCanAct()) ? withPreview(computeHighlights(state, buildMode)) : {};
       opts.viewport = boardViewport;
@@ -929,10 +929,10 @@ function redraw(skipBoard = false): void {
   }
 
   if (!skipBoard) {
-    // ローカル: 配置/盗賊ハイライトは人間の手番のみ（CPUの手番に緑ハイライトを出すと
+    // ローカル: 配置/野盗ハイライトは人間の手番のみ（CPUの手番に緑ハイライトを出すと
     // 「人間が代わりに操作できる」ように見え、実際にクリックを誘発していた）。
-    // 例外: 都市格下げ(CITY_DOWNGRADE)など多人数解決は手番に関係なく対象の人間が操作する。
-    // この時もハイライト（赤い格下げ対象）を出さないと「光る都市が無く選べない」状態になる。
+    // 例外: 城の格下げ(CITY_DOWNGRADE)など多人数解決は手番に関係なく対象の人間が操作する。
+    // この時もハイライト（赤い格下げ対象）を出さないと「光る城が無く選べない」状態になる。
     // boardCanAct() が true を返すのは「今ローカル人間が操作してよい場面」なので、それで判定する。
     const humanTurn = state.players[currentPid(state)]?.type === 'human';
     const opts: BoardRenderOptions = (humanTurn || boardCanAct()) ? withPreview(computeHighlights(state, buildMode)) : {};
@@ -987,33 +987,33 @@ function computeSheetStatus(): { text: string; alert: boolean } {
   }
   if (viewer && cur === viewer) {
     if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
-      return { text: state.setupSubPhase === 'PLACE_ROAD' ? '🛤 道を配置' : '🏠 開拓地を配置', alert: false };
+      return { text: state.setupSubPhase === 'PLACE_ROAD' ? '🛤 街道を配置' : '🏠 砦を配置', alert: false };
     }
     if (state.turnPhase === 'PRE_ROLL') return { text: '🎲 ダイス', alert: false };
-    if (state.turnPhase === 'ROBBER')   return { text: '🦹 盗賊を移動するタイルをタップ', alert: true };
-    if (state.turnPhase === 'CITY_DOWNGRADE') return { text: '⚔ 格下げする自分の都市をタップ', alert: true };
+    if (state.turnPhase === 'ROBBER')   return { text: '🦹 野盗を移動するタイルをタップ', alert: true };
+    if (state.turnPhase === 'CITY_DOWNGRADE') return { text: '⚔ 格下げする自分の城をタップ', alert: true };
     if (state.turnPhase === 'PROGRESS_DISCARD') return { text: '📜 進歩カードが5枚 — 捨てる1枚を選択', alert: true };
     if (state.turnPhase === 'TRADE_BUILD') {
-      if (buildMode === 'road')       return { text: '🛤 道を配置', alert: false };
+      if (buildMode === 'road')       return { text: '🛤 街道を配置', alert: false };
       if (buildMode === 'ship')       return { text: '🚢 船を配置', alert: false };
       if (buildMode === 'moveShip')   return { text: moveShipFrom ? '⛵ 移動先をタップ' : '⛵ 動かす船を選択', alert: false };
-      if (buildMode === 'moveKnight') return { text: moveKnightFrom ? '🛡 移動先をタップ' : '🛡 動かす騎士を選択', alert: false };
-      if (buildMode === 'chaseRobber') return { text: '🦹 追い払う騎士を選択', alert: false };
-      if (buildMode === 'buildKnight') return { text: '🛡 騎士を置く頂点をタップ', alert: false };
-      if (buildMode === 'activateKnight') return { text: '⚡ 起動する騎士をタップ', alert: false };
-      if (buildMode === 'upgradeKnight') return { text: '⬆ 昇格する騎士をタップ', alert: false };
-      if (buildMode === 'placeMerchant') return { text: '🏪 商人を置く資源タイルをタップ', alert: true };
+      if (buildMode === 'moveKnight') return { text: moveKnightFrom ? '🛡 移動先をタップ' : '🛡 動かす武将を選択', alert: false };
+      if (buildMode === 'chaseRobber') return { text: '🦹 追い払う武将を選択', alert: false };
+      if (buildMode === 'buildKnight') return { text: '🛡 武将を置く頂点をタップ', alert: false };
+      if (buildMode === 'activateKnight') return { text: '⚡ 出陣する武将をタップ', alert: false };
+      if (buildMode === 'upgradeKnight') return { text: '⬆ 加増する武将をタップ', alert: false };
+      if (buildMode === 'placeMerchant') return { text: '🏪 御用商人を置く資源タイルをタップ', alert: true };
       if (buildMode === 'inventorSwap') return { text: inventorFirstTile ? '🔄 入れ替え先のタイルをタップ' : '🔄 入れ替える1つ目のタイルをタップ', alert: true };
-      if (buildMode === 'placeBishop') return { text: '⛪ 盗賊を置くタイルをタップ', alert: true };
-      if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する道をタップ（自分の道は建て直し可）', alert: true };
-      if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の騎士をタップ', alert: true };
-      if (buildMode === 'selectMedicineSettlement') return { text: '💊 都市にする開拓地をタップ', alert: true };
-      if (buildMode === 'selectMetropolis') return { text: '🏛 メトロポリスにする都市をタップ', alert: true };
-      if (buildMode === 'selectSmithKnight') return { text: smithFirstKnight ? '⚒ 昇格する2体目の騎士をタップ' : '⚒ 昇格する騎士をタップ（最大2体）', alert: true };
-      if (buildMode === 'selectEngineerCity') return { text: '🧱 城壁を建てる都市をタップ', alert: true };
-      if (buildMode === 'selectIntrigueKnight') return { text: '🗡 退去させる敵騎士をタップ', alert: true };
-      if (buildMode === 'settlement') return { text: '🏠 開拓地を配置', alert: false };
-      if (buildMode === 'city')       return { text: '🏙 都市を配置', alert: false };
+      if (buildMode === 'placeBishop') return { text: '⛪ 野盗を置くタイルをタップ', alert: true };
+      if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する街道をタップ（自分の街道は建て直し可）', alert: true };
+      if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の武将をタップ', alert: true };
+      if (buildMode === 'selectMedicineSettlement') return { text: '💊 城にする砦をタップ', alert: true };
+      if (buildMode === 'selectMetropolis') return { text: '🏛 天守にする城をタップ', alert: true };
+      if (buildMode === 'selectSmithKnight') return { text: smithFirstKnight ? '⚒ 加増する2体目の武将をタップ' : '⚒ 加増する武将をタップ（最大2体）', alert: true };
+      if (buildMode === 'selectEngineerCity') return { text: '🧱 石垣を建てる城をタップ', alert: true };
+      if (buildMode === 'selectIntrigueKnight') return { text: '🗡 退去させる敵武将をタップ', alert: true };
+      if (buildMode === 'settlement') return { text: '🏠 砦を配置', alert: false };
+      if (buildMode === 'city')       return { text: '🏙 城を配置', alert: false };
       return { text: '🛠 建設・交易', alert: false };
     }
   }
@@ -1262,7 +1262,7 @@ const RESET_UIPHASE_ACTIONS = new Set([
 
 // CPU行動の待ち時間(ms)。初見でもCPUの動きを追える速度を基準に再調整。
 //  ゆっくり: 現行ゆっくり(1200)よりさらに遅く（じっくり観戦向け）
-//  普通(既定): 現行「ゆっくり」相当＝CPUの建設/交易/盗賊/捨て札を目で追える
+//  普通(既定): 現行「ゆっくり」相当＝CPUの建設/交易/野盗/捨て札を目で追える
 //  速い: 現行「普通〜速い」相当でテンポ重視
 //  最速: 動作確認用の最速
 const CPU_SPEED_MS: Record<CpuSpeed, number> = { slow: 2200, normal: 1200, fast: 350, instant: 30 };
@@ -1367,7 +1367,7 @@ function scheduleAiTurn(): void {
   const gen = gameGeneration;
 
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
-    // 捨て札済み(discardedThisRound)の AI は除外。判定は discardCount（騎士と商人は資源＋商品）で。
+    // 捨て札済み(discardedThisRound)の AI は除外。判定は discardCount（武将と商いは資源＋物産）で。
     // 16枚以上から半分捨てても8枚以上残るため、これが無いと同じ AI を再選択して違法な
     // 二重捨てを dispatch し、watchdog(8秒) まで進行が止まる。
     const discardPid = state.playerOrder.find(pid =>
@@ -1383,7 +1383,7 @@ function scheduleAiTurn(): void {
     return;
   }
 
-  // 騎士と商人: 蛮族敗北での都市格下げ待ち。対象 CPU を1人ずつ自動解決（DISCARD と同様）。
+  // 武将と商い: 一揆勢敗北での城格下げ待ち。対象 CPU を1人ずつ自動解決（DISCARD と同様）。
   if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
     const dpid = (state.pendingCityDowngrade ?? []).find(p => state.players[p]?.type === 'ai');
     if (dpid) {
@@ -1395,7 +1395,7 @@ function scheduleAiTurn(): void {
     return;
   }
 
-  // 騎士と商人: 進歩カード上限超過（5枚目）の捨て札待ち。対象 CPU を1人ずつ自動解決。
+  // 武将と商い: 進歩カード上限超過（5枚目）の捨て札待ち。対象 CPU を1人ずつ自動解決。
   if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
     const dpid = (state.pendingProgressDiscard ?? []).find(p => state.players[p]?.type === 'ai');
     if (dpid) {
@@ -1535,7 +1535,7 @@ function safeFallbackAction(): Action | null {
     return null;
   }
   // 捨て札（CPUが対象のとき）。判定・生成は chooseAction(chooseDiscard) に集約。
-  // 騎士と商人では資源＋商品で数える（資源のみだと商品込みのCPUが選ばれず捨て札が終わらない）。
+  // 武将と商いでは資源＋物産で数える（資源のみだと物産込みのCPUが選ばれず捨て札が終わらない）。
   if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
     const dpid = state.playerOrder.find(p => state.players[p]?.type === 'ai'
       && !(state.discardedThisRound ?? []).includes(p)
@@ -1550,13 +1550,13 @@ function safeFallbackAction(): Action | null {
     if (gpid) return chooseAction(state, gpid);
     return null;
   }
-  // 騎士と商人: 蛮族敗北での都市格下げ待ち（対象 CPU の選択を chooseAction で生成）。
+  // 武将と商い: 一揆勢敗北での城格下げ待ち（対象 CPU の選択を chooseAction で生成）。
   if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
     const cpid = (state.pendingCityDowngrade ?? []).find(p => state.players[p]?.type === 'ai');
     if (cpid) return chooseAction(state, cpid);
     return null;
   }
-  // 騎士と商人: 進歩カード上限超過の捨て札待ち（対象 CPU の選択を chooseAction で生成）。
+  // 武将と商い: 進歩カード上限超過の捨て札待ち（対象 CPU の選択を chooseAction で生成）。
   if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
     const cpid = (state.pendingProgressDiscard ?? []).find(p => state.players[p]?.type === 'ai');
     if (cpid) return chooseAction(state, cpid);
@@ -1566,7 +1566,7 @@ function safeFallbackAction(): Action | null {
   if (!cur || state.players[cur]?.type !== 'ai') return null; // 人間の番は強制しない
   if (state.turnPhase === 'ROBBER') {
     const robberTile = Object.values(state.tiles).find(t => t.hasRobber)?.id;
-    // 強盗は陸タイルのみ（海を除外しないと MOVE_ROBBER が弾かれ進行が止まりうる）。
+    // 野盗は陸タイルのみ（海を除外しないと MOVE_ROBBER が弾かれ進行が止まりうる）。
     const tileId = Object.keys(state.tiles).find(t => t !== robberTile && state.tiles[t]?.type !== 'sea');
     // 強奪は必須: 手札持ちの相手がいれば選ぶ（chooseStealTarget が 0枚除外・不在なら null）。
     if (tileId) return { type: 'MOVE_ROBBER', tileId, stealFromPlayerId: chooseStealTarget(state, tileId, cur) };
@@ -1592,7 +1592,7 @@ function appendSystemLog(message: string): void {
 const RES_FLY_MS = 1300;       // 飛行時間（ゆっくり）
 const RES_FLY_STAGGER = 300;   // アイコン1個ずつの間隔（0.3秒）
 function spawnResFlyer(
-  imgSrc: string,                     // 飛ばすアイコン画像（資源 or 商品）
+  imgSrc: string,                     // 飛ばすアイコン画像（資源 or 物産）
   target: { x: number; y: number },   // 着地先（ビューポート座標。.res-fly は position:fixed）
   origin: { x: number; y: number },
   delay: number,
@@ -1613,7 +1613,7 @@ function spawnResFlyer(
       back.className = 'res-fly-hidden';
       span.appendChild(back);
     } else {
-      // 手札カードと同じ画像で飛ばす（資源・商品とも。絵文字→画像で見た目を統一）。
+      // 手札カードと同じ画像で飛ばす（資源・物産とも。絵文字→画像で見た目を統一）。
       const img = document.createElement('img');
       img.className = imgClass;
       img.src = imgSrc;
@@ -1661,8 +1661,8 @@ function tileScreenCenter(tileId: string): { x: number; y: number } | null {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
 
-// 盤上の現行盗賊コマ(SVG)を複製し、盤面と同じ表示スケールで fly に載せる。
-// 盗賊のデザインは board.ts の単一実装のみ。ここは複製するだけで描画パスは持たない
+// 盤上の現行野盗コマ(SVG)を複製し、盤面と同じ表示スケールで fly に載せる。
+// 野盗のデザインは board.ts の単一実装のみ。ここは複製するだけで描画パスは持たない
 // （旧表現＝🦹絵文字は複製失敗時のフォールバックとしてのみ残す）。
 function appendRobberFlyVisual(fly: HTMLElement): void {
   const boardEl = document.getElementById('board') as SVGSVGElement | null;
@@ -1683,7 +1683,7 @@ function appendRobberFlyVisual(fly: HTMLElement): void {
 }
 
 // プレイヤーの手札総数（公開情報ベース。他者はマスクで handCount、自分は実手札）。
-// 騎士と商人では商品も奪取され得るので合算する（強奪アニメ判定用）。
+// 武将と商いでは物産も奪取され得るので合算する（強奪アニメ判定用）。
 function totalCardsOf(s: GameState, pid: string): number {
   const p = s.players[pid];
   if (!p) return 0;
@@ -1692,7 +1692,7 @@ function totalCardsOf(s: GameState, pid: string): number {
   const com = p.commodityCount ?? (p.commodities ? COMMODITY_TYPES.reduce((a, c) => a + p.commodities![c], 0) : 0);
   return res + com;
 }
-// 公開情報の資源/商品の合計枚数（他者はマスクで handCount/commodityCount、自分は実手札）。
+// 公開情報の資源/物産の合計枚数（他者はマスクで handCount/commodityCount、自分は実手札）。
 function resCountOf(s: GameState, pid: string): number {
   const p = s.players[pid]; if (!p) return 0;
   return p.handCount ?? RESOURCE_TYPES.reduce((a, r) => a + p.hand[r], 0);
@@ -1724,7 +1724,7 @@ function animateStealCard(fromPid: string, toPid: string): void {
   setTimeout(() => card.remove(), 720);
 }
 
-/** 盗賊が移動元→移動先へスライドする演出。移動先で着地ハイライト。 */
+/** 野盗が移動元→移動先へスライドする演出。移動先で着地ハイライト。 */
 function animateRobberMove(fromTileId: string, toTileId: string): void {
   if (fxSpeed() === 'instant' || prefersReducedMotion() || fromTileId === toTileId) return;
   const from = tileScreenCenter(fromTileId);
@@ -1766,11 +1766,11 @@ const PLAYER_HEX: Record<string, string> = {
 const CONFETTI_COLORS = ['#ffd700', '#ff5b5b', '#5ba8f5', '#a855f7', '#f0a020', '#7aee40', '#ffffff'];
 // 勝利を確定させたアクションから勝因を推定（不明なら「10点到達」）
 const VICTORY_REASON: Record<string, string> = {
-  BUILD_CITY:       '都市建設で勝利！',
-  BUILD_SETTLEMENT: '開拓地建設で勝利！',
-  PLAY_KNIGHT:      '最大騎士力で勝利！',
-  BUILD_ROAD:       '最長交易路で勝利！',
-  BUY_DEV_CARD:     '勝利点カードで勝利！',
+  BUILD_CITY:       '築城で勝利！',
+  BUILD_SETTLEMENT: '砦建設で勝利！',
+  PLAY_KNIGHT:      '武威で勝利！',
+  BUILD_ROAD:       '最長街道で勝利！',
+  BUY_DEV_CARD:     '由緒カードで勝利！',
 };
 
 // 終了画面の順位ラベル。
@@ -1836,20 +1836,20 @@ function buildVictoryScoreboard(): HTMLDivElement {
     const r = row.recap;
     const bd = document.createElement('div');
     bd.className = 'score-bd';
-    const plainCities = Math.max(0, r.cities - r.metropolises); // メトロポリスは別チップで出すので二重計上しない
-    if (r.settlements > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.settlement, `×${r.settlements}`, false, '開拓地（各1点）'));
-    if (plainCities > 0)   bd.appendChild(scoreChipIcon(ASSETS.piece.city, `×${plainCities}`, false, '都市（各2点）'));
-    // 騎士と商人: メトロポリス（各4点：都市の基本2点＋発展ボーナス2点）。基本ゲームには存在しない。
-    // 都市チップから除外している（plainCities）ため、ここで都市基本2点も含めた合計4点を表示し、★VPと内訳を一致させる。
-    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.metropolisGate, `×${r.metropolises}（+${r.metropolises * 4}）`, true, 'メトロポリス（各4点）'));
-    if (r.hasLongestRoad)  bd.appendChild(scoreChipIcon(ASSETS.action.road, '最長+2', true, '最長交易路'));
-    // 最大騎士力は基本ゲームのみ（騎士と商人は騎士コマ制のため非表示）。
-    if (!r.isCk && r.hasLargestArmy) bd.appendChild(scoreChipIcon(ASSETS.knight.basic, '最大+2', true, '最大騎士力'));
-    // 騎士と商人: 蛮族撃退の守護者VP。
-    if (r.isCk && r.defenderVP > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.defenderBadge, `守護+${r.defenderVP}`, true, '蛮族を退けた守護者（各+1点）'));
-    // 騎士と商人: 商人コマ保持（+1点・公開）。
-    if (r.isCk && r.hasMerchant) bd.appendChild(scoreChipIcon(ASSETS.piece.merchant, '商人+1', true, '商人コマ保持中（+1点）'));
-    // 騎士と商人: 進歩カードの永久勝利点（印刷/立憲、各+1点・公開）。
+    const plainCities = Math.max(0, r.cities - r.metropolises); // 天守は別チップで出すので二重計上しない
+    if (r.settlements > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.settlement, `×${r.settlements}`, false, '砦（各1点）'));
+    if (plainCities > 0)   bd.appendChild(scoreChipIcon(ASSETS.piece.city, `×${plainCities}`, false, '城（各2点）'));
+    // 武将と商い: 天守（各4点：城の基本2点＋発展ボーナス2点）。基本ゲームには存在しない。
+    // 城チップから除外している（plainCities）ため、ここで城基本2点も含めた合計4点を表示し、★VPと内訳を一致させる。
+    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.metropolisGate, `×${r.metropolises}（+${r.metropolises * 4}）`, true, '天守（各4点）'));
+    if (r.hasLongestRoad)  bd.appendChild(scoreChipIcon(ASSETS.action.road, '最長+2', true, '最長街道'));
+    // 武威は基本ゲームのみ（武将と商いは武将コマ制のため非表示）。
+    if (!r.isCk && r.hasLargestArmy) bd.appendChild(scoreChipIcon(ASSETS.knight.basic, '最大+2', true, '武威'));
+    // 武将と商い: 一揆勢撃退の守護者VP。
+    if (r.isCk && r.defenderVP > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.defenderBadge, `守護+${r.defenderVP}`, true, '一揆勢を退けた守護者（各+1点）'));
+    // 武将と商い: 御用商人コマ保持（+1点・公開）。
+    if (r.isCk && r.hasMerchant) bd.appendChild(scoreChipIcon(ASSETS.piece.merchant, '御用商人+1', true, '御用商人コマ保持中（+1点）'));
+    // 武将と商い: 進歩カードの永久勝利点（印刷/立憲、各+1点・公開）。
     if (r.isCk && r.progressVP > 0) bd.appendChild(scoreChipIcon(null, `★永久+${r.progressVP}`, true, '進歩カードの永久勝利点（印刷/立憲など・各+1点）'));
     // 航海者: 新しい島への入植（各+2点）。専用素材が無いため記号で表示。
     if (r.islandBonus > 0) bd.appendChild(scoreChipIcon(null, `🏝+${r.islandBonus * 2}`, true, '新しい島への入植（各+2点）'));
@@ -1958,7 +1958,7 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   modal.appendChild(btnRow);
   overlay.appendChild(modal);
 
-  // 優勝スプラッシュ: 蛮族襲来のように全画面の祝祭画像（島の花火）を数秒だけ見せてから
+  // 優勝スプラッシュ: 一揆勢襲来のように全画面の祝祭画像（島の花火）を数秒だけ見せてから
   // 結果モーダルを出す。アニメ抑制時／画像が無い時はスプラッシュを省略してすぐ結果へ。
   const splashMs = (prefersReducedMotion() || !ASSETS.bg.victory) ? 0 : 2600;
   let splash: HTMLDivElement | null = null;
@@ -2101,7 +2101,7 @@ function highlightProducingTiles(diceTotal: number): void {
   }
 }
 
-// ダイス以外（年の豊穣等）での手札増加。LANでは自分のみ非0（相手はマスクで0）。
+// ダイス以外（豊作等）での手札増加。LANでは自分のみ非0（相手はマスクで0）。
 function handDiffGains(oldState: GameState, newState: GameState, pid: string): Array<{ r: ResourceType; n: number }> {
   const oldH = oldState.players[pid]?.hand;
   const newH = newState.players[pid]?.hand;
@@ -2114,7 +2114,7 @@ function handDiffGains(oldState: GameState, newState: GameState, pid: string): A
   return gains;
 }
 
-// 商品(紙/布/金貨)の手札差分（増分のみ）。非ダイスの取得（交易等）で自分の増分を飛ばす用。
+// 物産(紙/絹/金)の手札差分（増分のみ）。非ダイスの取得（交易等）で自分の増分を飛ばす用。
 function commodityDiffGains(oldState: GameState, newState: GameState, pid: string): Array<{ c: CommodityType; n: number }> {
   const oldC = oldState.players[pid]?.commodities;
   const newC = newState.players[pid]?.commodities;
@@ -2129,7 +2129,7 @@ function commodityDiffGains(oldState: GameState, newState: GameState, pid: strin
 
 // 資源 r を「このダイス目で産出し、かつ pid の建物に隣接する」タイルの画面中心を返す。
 // 見つからなければ その資源の産出タイル先頭 → 産出タイル → 盤面中央 へフォールバック。
-// 参照は公開情報（タイル/数字/強盗/盤面の建物）のみ。
+// 参照は公開情報（タイル/数字/野盗/盤面の建物）のみ。
 function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: number; y: number } {
   const boardEl = document.getElementById('board');
   const screenOf = (tileId: string): { x: number; y: number } | null => {
@@ -2153,8 +2153,8 @@ function originForGain(diceTotal: number, pid: string, r: ResourceType): { x: nu
   return getProducingTileOrigin(diceTotal) ?? getBoardCenter();
 }
 
-// 商品 c を「このダイス目で産出し、かつ pid の都市に隣接する」タイルの画面中心を返す。
-// 商品は都市からのみ産出（森=紙/牧草=布/山=金貨）。見つからなければ該当地形タイル→盤面中央へ。
+// 物産 c を「このダイス目で産出し、かつ pid の城に隣接する」タイルの画面中心を返す。
+// 物産は城からのみ産出（森林=紙/牧=絹/鉱山=金）。見つからなければ該当地形タイル→盤面中央へ。
 function originForCommodity(diceTotal: number, pid: string, c: CommodityType): { x: number; y: number } {
   const boardEl = document.getElementById('board');
   const screenOf = (tileId: string): { x: number; y: number } | null => {
@@ -2241,14 +2241,14 @@ function triggerResourceAnimation(
     return;
   }
 
-  // ダイス産出は公開情報。盤面（タイル/数字/強盗/建物）とバンクから各プレイヤーの
+  // ダイス産出は公開情報。盤面（タイル/数字/野盗/建物）とバンクから各プレイヤーの
   // 実獲得を導出し、全員分のアイコンを該当ヘックスからパネルへ飛ばす。
-  // 騎士と商人では「資源＋商品(紙/布/金貨)」を都市産出に合わせて飛ばす（資源と同じ演出）。
+  // 武将と商いでは「資源＋物産(紙/絹/金)」を城産出に合わせて飛ばす（資源と同じ演出）。
   // LANでは相手の手札がマスクされ手札差分が0になるため、この公開導出が必須。
-  // ダイス以外（交易・年の豊穣等）は手札差分（自分のみ公開）で資源・商品とも飛ばす。
+  // ダイス以外（交易・豊作等）は手札差分（自分のみ公開）で資源・物産とも飛ばす。
   const isDice = action?.type === 'ROLL_DICE' && diceTotal !== undefined;
   const ck = isCk(newState);
-  // 騎士と商人: 蛮族敗北(CITY_DOWNGRADE)・進歩カード上限(PROGRESS_DISCARD)では生産が「保留」される。
+  // 武将と商い: 一揆勢敗北(CITY_DOWNGRADE)・進歩カード上限(PROGRESS_DISCARD)では生産が「保留」される。
   // ロールでこれらの保留フェーズに入った時はまだ資源が配られていないので生産アニメを出さない
   // （出すと「幻の資源」が飛び、さらに分配アニメ用ゲートで進行が約2秒固まる＝手前の処理が
   //   終わっていないように見える原因になっていた）。生産は保留が解けた時に出す。
@@ -2260,7 +2260,7 @@ function triggerResourceAnimation(
     && (oldState.turnPhase === 'CITY_DOWNGRADE' || oldState.turnPhase === 'PROGRESS_DISCARD')
     && newState.turnPhase !== 'CITY_DOWNGRADE' && newState.turnPhase !== 'PROGRESS_DISCARD';
   // ダイス生産アニメを出す総数。通常ロール（保留なし）か、保留解決時。盤面は確定後の newState 基準
-  //（保留中に格下げされた都市を反映＝実際に配られた量と一致）。
+  //（保留中に格下げされた城を反映＝実際に配られた量と一致）。
   const prodTotal = isDice ? diceTotal
     : deferredResolved ? ((newState.lastDiceRoll?.[0] ?? 0) + (newState.lastDiceRoll?.[1] ?? 0))
     : undefined;
@@ -2268,13 +2268,13 @@ function triggerResourceAnimation(
   const ckProd = (animateDiceProd && ck) ? computeCkProduction(newState, prodTotal!) : null;
   const baseProd = (animateDiceProd && !ck) ? computeDiceProduction(newState, prodTotal!) : null;
 
-  const MAX_PER_PLAYER = 8; // スマホで重くならないよう1人あたりの上限（商品分を見込み少し増やす）
-  // 蛮族襲来の全画面演出が出ている間は、それが消えて盤面が見えてから飛ばす（被り防止）。
+  const MAX_PER_PLAYER = 8; // スマホで重くならないよう1人あたりの上限（物産分を見込み少し増やす）
+  // 一揆勢襲来の全画面演出が出ている間は、それが消えて盤面が見えてから飛ばす（被り防止）。
   // delay は演出の残り時間から始めるため「飛ばしたか」は spawned で別に判定する。
   let delay = pendingOverlayDelay();
   let spawned = false;
   for (const pid of newState.playerOrder) {
-    // 飛ばすアイコン群（資源・商品を統一して扱う）。hidden=種類非公開（札裏トークン）。
+    // 飛ばすアイコン群（資源・物産を統一して扱う）。hidden=種類非公開（札裏トークン）。
     const flyables: Array<{ img: string; origin: { x: number; y: number }; n: number; hidden?: boolean }> = [];
     if (ckProd) {
       for (const r of RESOURCE_TYPES) { const n = ckProd.resources[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(prodTotal!, pid, r), n }); }
@@ -2282,7 +2282,7 @@ function triggerResourceAnimation(
     } else if (baseProd) {
       for (const r of RESOURCE_TYPES) { const n = baseProd[pid]?.[r] ?? 0; if (n > 0) flyables.push({ img: RES_FLY_IMG[r], origin: originForGain(prodTotal!, pid, r), n }); }
     } else if (!rollDeferred) {
-      // 非ダイス獲得（交易・年の豊穣・進歩カード効果など）。自分や同一端末の相手は手札差分で
+      // 非ダイス獲得（交易・豊作・進歩カード効果など）。自分や同一端末の相手は手札差分で
       // 種類まで出せる。LANの他プレイヤーは手札がマスクされ差分0になるため、公開の合計枚数の
       // 増分だけ札裏トークンで飛ばす（種類は秘匿のまま「何枚得たか」を全員に見せる）。
       const c0 = getBoardCenter();
@@ -2292,8 +2292,8 @@ function triggerResourceAnimation(
       if (exact.length > 0) {
         for (const e of exact) flyables.push({ img: e.img, origin: c0, n: e.n });
       } else {
-        // 資源・商品それぞれの増分を別々に見る。片方が減りもう片方が増える札
-        // （例: 商業港=資源を渡し商品を得る）でも、増えた側を伏せ札で見せる。
+        // 資源・物産それぞれの増分を別々に見る。片方が減りもう片方が増える札
+        // （例: 商業湊=資源を渡し物産を得る）でも、増えた側を伏せ札で見せる。
         const gain = Math.max(0, resCountOf(newState, pid) - resCountOf(oldState, pid))
                    + Math.max(0, comCountOf(newState, pid) - comCountOf(oldState, pid));
         if (gain > 0) flyables.push({ img: '', origin: c0, n: gain, hidden: true });
@@ -2321,7 +2321,7 @@ function triggerResourceAnimation(
   if (spawned) holdResourceAnimating(delay + RES_FLY_MS + 120);
 }
 
-// 騎士と商人: 進歩カードを得たプレイヤーへ、デッキ色の札がパネルへ飛ぶ演出（資源と同じ仕組み）。
+// 武将と商い: 進歩カードを得たプレイヤーへ、デッキ色の札がパネルへ飛ぶ演出（資源と同じ仕組み）。
 // 公開情報の progressCardCount 差分で全員分（自分・相手）を出す。種類は秘匿なので札裏で飛ばす。
 function triggerProgressCardAnimation(oldState: GameState, newState: GameState): void {
   if (fxSpeed() === 'instant' || prefersReducedMotion()) return;
@@ -2330,7 +2330,7 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
   const eventDeck = (ev === 'trade' || ev === 'politics' || ev === 'science') ? ev : null;
   const me = selfPlayerId();
   const origin = getBoardCenter();
-  // 蛮族襲来の全画面演出が出ている間（撃退同点でカードが出る等）は、消えてから飛ばす。
+  // 一揆勢襲来の全画面演出が出ている間（撃退同点でカードが出る等）は、消えてから飛ばす。
   let delay = pendingOverlayDelay();
   let any = false;
   for (const pid of newState.playerOrder) {
@@ -2343,7 +2343,7 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
     const tr = targetEl.getBoundingClientRect();
     if (tr.width === 0 && tr.height === 0) continue;
     const target = { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 };
-    // デッキ色: 色イベントはその色、それ以外は自分は実カードのデッキ、相手は中立(政治)。
+    // デッキ色: 色イベントはその色、それ以外は自分は実カードのデッキ、相手は中立(政)。
     const selfNewDecks = pid === me ? (newState.players[pid]?.progressCards ?? []).slice(-gained).map(c => c.deck) : null;
     for (let i = 0; i < gained && i < 4; i++) {
       const deck = eventDeck ?? selfNewDecks?.[i] ?? 'politics';
@@ -2352,7 +2352,7 @@ function triggerProgressCardAnimation(oldState: GameState, newState: GameState):
       any = true;
     }
   }
-  // 保留フェーズ（都市格下げ/進歩カード捨て）へ入る時はゲートしない。次は「ロール」ではなく
+  // 保留フェーズ（城格下げ/進歩カード捨て）へ入る時はゲートしない。次は「ロール」ではなく
   // 「解決操作」なので待たせる必要がなく、待たせると解決が固まって見える原因になる。
   const pendingPhase = newState.turnPhase === 'CITY_DOWNGRADE' || newState.turnPhase === 'PROGRESS_DISCARD';
   if (any && !pendingPhase) holdResourceAnimating(delay + RES_FLY_MS + 120);
@@ -2414,11 +2414,11 @@ function triggerVpGainEffects(prevState: GameState, newState: GameState): void {
   // 旧保持者がいた場合は、バッジが旧→新保持者へ飛ぶ（C-7・移動の見落とし防止）。
   if (prevState.longestRoadHolder !== newState.longestRoadHolder && newState.longestRoadHolder) {
     if (prevState.longestRoadHolder) flyBadge(prevState.longestRoadHolder, newState.longestRoadHolder, '🛤');
-    flashBonus(newState.longestRoadHolder, '🛤 最長交易路！');
+    flashBonus(newState.longestRoadHolder, '🛤 最長街道！');
   }
   if (prevState.largestArmyHolder !== newState.largestArmyHolder && newState.largestArmyHolder) {
     if (prevState.largestArmyHolder) flyBadge(prevState.largestArmyHolder, newState.largestArmyHolder, '⚔');
-    flashBonus(newState.largestArmyHolder, '⚔ 最大騎士力！');
+    flashBonus(newState.largestArmyHolder, '⚔ 武威！');
   }
 }
 
@@ -2540,8 +2540,8 @@ function maybeYourTurnCue(prevState: GameState, newState: GameState): void {
   if (newState.phase === 'MAIN' && newCur && newCur !== prevCur) {
     showTurnToast(newCur, newCur === me);
   }
-  // 初期配置（SETUP）: 自分の番で開拓地/道を盤面に置く必要があるので盤面へ自動スクロール。
-  // 手番開始（開拓地）と開拓地→道のサブフェーズ移行の両方で発火させる。CPU/相手の番では動かさない。
+  // 初期配置（SETUP）: 自分の番で砦/街道を盤面に置く必要があるので盤面へ自動スクロール。
+  // 手番開始（砦）と砦→街道のサブフェーズ移行の両方で発火させる。CPU/相手の番では動かさない。
   const isSetup = newState.phase === 'SETUP_FORWARD' || newState.phase === 'SETUP_BACKWARD';
   if (isSetup && newState.setupSubPhase != null && newCur === me && currentPid(newState) === me
       && (prevCur !== newCur || prevState.setupSubPhase !== newState.setupSubPhase)) {
@@ -2571,13 +2571,13 @@ function showTurnToast(pid: string, isMe: boolean): void {
   setTimeout(() => toast.remove(), 1700);
 }
 
-// 騎士と商人: ロール時に見せるイベントダイス情報（生産2ダイス＝赤+黄／イベントダイス／抽選・蛮族）。
+// 武将と商い: ロール時に見せるイベントダイス情報（生産2ダイス＝赤+黄／イベントダイス／抽選・一揆勢）。
 interface DiceEventInfo {
   eventDie: 'ship' | CkTrack;
   redDie: number;       // 赤ダイス(=生産d1) は抽選のしきい値にも使う
   barbPos: number;
   attacked: boolean;    // この前進で襲来したか
-  advanced: boolean;    // 蛮族船が前進したか
+  advanced: boolean;    // 一揆勢の船が前進したか
   // 襲来したときの防衛結果（撃退単独勝利/同点/敗北＝格下げ）。attacked=false のときは null。
   attackResult: { kind: 'win' | 'tie' | 'defeat'; names: string[] } | null;
   // 色ゲートのとき、現手番から時計回り順の各プレイヤーの抽選照合。船のときは null。
@@ -2598,7 +2598,7 @@ function buildDiceEventInfo(prev: GameState, next: GameState): DiceEventInfo | n
     attackResult: null,
     draws: null,
   };
-  // 襲来した場合の防衛結果を導出（撃退で守護VP獲得 / 同点 / 敗北＝都市格下げ予定）。
+  // 襲来した場合の防衛結果を導出（撃退で守護VP獲得 / 同点 / 敗北＝城格下げ予定）。
   if (info.attacked) {
     const defenders = next.playerOrder
       .filter(p => (next.players[p]?.defenderVP ?? 0) > (prev.players[p]?.defenderVP ?? 0))
@@ -2626,7 +2626,7 @@ function buildDiceEventInfo(prev: GameState, next: GameState): DiceEventInfo | n
   return info;
 }
 
-/** イベント結果パネル（船＝蛮族トラック前進 / 色ゲート＝赤としきい値の照合・抽選）。 */
+/** イベント結果パネル（船＝一揆勢トラック前進 / 色ゲート＝赤としきい値の照合・抽選）。 */
 function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'dice-event-panel';
@@ -2635,21 +2635,21 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
       // 襲来: 画像は出さず見出しだけ（全画面演出と重複するため絵は不要）。
       const bt = document.createElement('div');
       bt.className = 'dep-attack-title';
-      bt.textContent = '⚔ 蛮族 襲来！';
+      bt.textContent = '⚔ 一揆勢 襲来！';
       panel.appendChild(bt);
     } else {
-      // 前進: 蛮族船コマの画像と見出しを「横並び」にする（縦に積むと画面が見切れるため）。
+      // 前進: 一揆勢の船コマの画像と見出しを「横並び」にする（縦に積むと画面が見切れるため）。
       // 見出しの船絵文字(🛶)はアイコンと重複するので外す。
       const head = document.createElement('div');
       head.className = 'dep-advance-head';
       if (ASSETS.piece.barbarianShip) {
         const ship = document.createElement('img');
-        ship.className = 'dep-ship'; ship.src = ASSETS.piece.barbarianShip; ship.alt = '蛮族船'; ship.draggable = false;
+        ship.className = 'dep-ship'; ship.src = ASSETS.piece.barbarianShip; ship.alt = '一揆勢の船'; ship.draggable = false;
         head.appendChild(ship);
       }
       const title = document.createElement('div');
       title.className = 'dep-title';
-      title.textContent = '蛮族船が前進';
+      title.textContent = '一揆勢の船が前進';
       head.appendChild(title);
       panel.appendChild(head);
     }
@@ -2668,24 +2668,24 @@ function buildEventResolutionPanel(info: DiceEventInfo): HTMLElement {
       const r = info.attackResult;
       sub.className = `dep-sub dep-result ${r.kind}`;
       sub.textContent =
-        r.kind === 'win'    ? `🛡 撃退成功！ ${r.names.join('・')} が +1 勝利点（カタンの守護者）` :
+        r.kind === 'win'    ? `🛡 撃退成功！ ${r.names.join('・')} が +1 勝利点（国の守護者）` :
         r.kind === 'tie'    ? '🛡 撃退成功！（最大貢献が同点 — 各自が進歩カードを獲得）' :
-                              `⚔ 防衛失敗！ ${r.names.join('・')} が都市を1つ開拓地に格下げ`;
+                              `⚔ 防衛失敗！ ${r.names.join('・')} が城を1つ砦に格下げ`;
     } else {
       sub.className = 'dep-sub';
-      sub.textContent = `蛮族 ${info.barbPos} / ${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来）' : ''}`;
+      sub.textContent = `一揆勢 ${info.barbPos} / ${CK_BARBARIAN_MAX}${danger ? '（まもなく襲来）' : ''}`;
     }
     panel.appendChild(sub);
   } else {
-    // 色ゲート（交易/政治/科学）の進歩カード抽選。スマホで見切れないよう、全員の
+    // 色ゲート（商/政/学）の進歩カード抽選。スマホで見切れないよう、全員の
     // しきい値詳細は出さず「誰が貰えたか」だけを簡潔に出す（誰も貰えなければ1行）。
-    const color = info.eventDie; // この分岐では 'ship' ではなく CkTrack（交易/政治/科学）
+    const color = info.eventDie; // この分岐では 'ship' ではなく CkTrack（商/政/学）
     const title = document.createElement('div');
     title.className = `dep-title ev-${color}`;
-    // 先頭の「科」等の漢字ラベルはカッコ悪いので、そのトラックのアイコン画像にする。
+    // 先頭の「学」等の漢字ラベルはカッコ悪いので、そのトラックのアイコン画像にする。
     const icon = document.createElement('img');
     icon.className = 'dep-ev-icon'; icon.src = ASSETS.trackIcon[color]; icon.alt = ''; icon.draggable = false;
-    title.append(icon, document.createTextNode(` ${CK_TRACK_NAME[color]}の進歩カード`));
+    title.append(icon, document.createTextNode(` ${CK_PROGRESS_CATEGORY_NAME[color]}の進歩カード`));
     panel.appendChild(title);
     const winners = (info.draws ?? []).filter(r => r.drew);
     if (winners.length === 0) {
@@ -2723,7 +2723,7 @@ function showDiceSum(sum: HTMLElement, d1: number, d2: number): void {
   sum.classList.add('show');
 }
 
-// 蛮族襲来: 画面全体を覆う襲来演出＋SE（重要イベントなので reduced-motion でも出す）。
+// 一揆勢の襲来: 画面全体を覆う襲来演出＋SE（重要イベントなので reduced-motion でも出す）。
 function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): void {
   playSE('barbarianAttack');
   document.getElementById('barbarian-attack')?.remove();
@@ -2733,7 +2733,7 @@ function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): voi
   if (prefersReducedMotion()) ov.classList.add('reduced');
   const title = document.createElement('div');
   title.className = 'barbarian-attack-title';
-  title.textContent = '⚔ 蛮族 襲来！';
+  title.textContent = '⚔ 一揆勢 襲来！';
   ov.appendChild(title);
   // 防衛の結果（撃退/同点/敗北）を襲来見出しの下に大きく表示する。
   if (result) {
@@ -2742,7 +2742,7 @@ function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): voi
     res.textContent =
       result.kind === 'win'    ? `🛡 撃退成功！ ${result.names.join('・')} が +1勝利点` :
       result.kind === 'tie'    ? '🛡 撃退成功！（同点 — 各自が進歩カード）' :
-                                 `防衛失敗… ${result.names.join('・')} が都市を格下げ`;
+                                 `防衛失敗… ${result.names.join('・')} が城を格下げ`;
     ov.appendChild(res);
   }
   document.body.appendChild(ov);
@@ -2752,11 +2752,11 @@ function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): voi
   setTimeout(() => { ov.remove(); barbarianOverlayClearAt = 0; }, BARB_OVERLAY_MS);
 }
 
-/** イベント結果を演出へ接続: 船=蛮族前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。
+/** イベント結果を演出へ接続: 船=一揆勢前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。
  * 盤面(#board-area)を transform で動かすと結果表示時にガタつくため、盤は動かさず
  * オーバーレイのフラッシュ（非レイアウト・GPU合成のみ）で表現する。 */
 function applyEventFlourish(info: DiceEventInfo): void {
-  // 蛮族襲来は重要イベントなので、演出OFF/reduced-motion でも全画面演出＋SEを出す。
+  // 一揆勢襲来は重要イベントなので、演出OFF/reduced-motion でも全画面演出＋SEを出す。
   if (info.eventDie === 'ship' && info.attacked) showBarbarianAttackOverlay(info.attackResult);
   if (prefersReducedMotion() || fxSpeed() === 'instant') return;
   const board = document.getElementById('board-area') ?? document.body;
@@ -2809,7 +2809,7 @@ function hideBoardDim(dim: HTMLElement | null): void {
 
 // 3Dダイス演出（Three.js/WebGL）: 赤=生産d1／黄=生産d2／イベント(CK)を実写級の立方体として
 // 転がし、diceGLMapping の目標姿勢へ着地させる（出目は外部値・物理で決めない）。着地は時間差
-// （赤→黄→イベント）。既存の演出（盤dim・生産合計ポップ・抽選照合・蛮族前進/wash・board hit）へ繋ぐ。
+// （赤→黄→イベント）。既存の演出（盤dim・生産合計ポップ・抽選照合・一揆勢前進/wash・board hit）へ繋ぐ。
 function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, onDone: () => void): void {
   if (d1 < 1 || d2 < 1) { onDone(); return; }
   const reduced = prefersReducedMotion();
@@ -2895,7 +2895,7 @@ function playDiceRoll(d1: number, d2: number, eventInfo: DiceEventInfo | null, o
 // ============================================================
 
 // 状態更新後の「見せる」処理本体（CPU/交易のスケジューリングは含まない）。
-// redraw → 盗賊スライド → 7のSE → 産出ハイライト → 資源/VP/手番演出、を再現する。
+// redraw → 野盗スライド → 7のSE → 産出ハイライト → 資源/VP/手番演出、を再現する。
 // dispatch（ローカル）と applyNetState（LAN）の両方から呼び、演出のドリフトを防ぐ。
 // ROLL_DICE ではこの関数自体が runWithDiceAnim 経由でダイス停止後に呼ばれる。つまり
 // 手札カウントの再描画(redraw)と資源アニメは「出目が止まってから」まとめて起こる
@@ -2915,14 +2915,14 @@ function runTransitionFx(
   if (action?.type === 'MOVE_ROBBER' && robberFromTile) {
     if (!previewedMove) animateRobberMove(robberFromTile, action.tileId);
     // 略奪が成立（被害者の手札が1枚減った）なら、伏せカードが被害者→略奪者へ飛ぶ。
-    // 資源の種類は出さない（秘匿）。盗賊の着地後に少し遅らせて見せる。
+    // 資源の種類は出さない（秘匿）。野盗の着地後に少し遅らせて見せる。
     const victim = action.stealFromPlayerId;
     const actor = prevState.playerOrder[prevState.currentPlayerIndex];
     if (victim && actor && totalCardsOf(prevState, victim) > totalCardsOf(state, victim)) {
       setTimeout(() => animateStealCard(victim, actor), 580);
     }
   }
-  // 7（盗賊）が出た瞬間: 専用の不穏SE。捨て札フェーズなら警告SEも（少し遅らせて重複回避）。
+  // 7（野盗）が出た瞬間: 専用の不穏SE。捨て札フェーズなら警告SEも（少し遅らせて重複回避）。
   if (action?.type === 'ROLL_DICE' && diceTotal === 7) {
     playSE('sevenRoll');
     if (state.phase === 'MAIN' && state.turnPhase === 'DISCARD') {
@@ -2948,8 +2948,8 @@ function runTransitionFx(
   }
 }
 
-// 騎士と商人: 蛮族敗北で自分（LAN=viewer/ローカル=人間）が都市格下げ対象になったら、
-// 全画面の襲来演出が消えた頃に盤面へスクロール＋通知して「都市をタップ」と気づかせる。
+// 武将と商い: 一揆勢敗北で自分（LAN=viewer/ローカル=人間）が城格下げ対象になったら、
+// 全画面の襲来演出が消えた頃に盤面へスクロール＋通知して「城をタップ」と気づかせる。
 function maybeNoticeCityDowngrade(prevState: GameState, newState: GameState): void {
   const me = selfPlayerId();
   if (!me) return;
@@ -2960,24 +2960,24 @@ function maybeNoticeCityDowngrade(prevState: GameState, newState: GameState): vo
   // 襲来オーバーレイ(約2.6s)が消えてから案内（重ならないように）。
   setTimeout(() => {
     if (gen !== gameGeneration || !state || !amPending(state)) return;
-    showBoardNotice('⚔ 盤面で光っている自分の都市をタップして格下げ', '#ff8a5a');
+    showBoardNotice('⚔ 盤面で光っている自分の城をタップして格下げ', '#ff8a5a');
     scrollToBoard();
   }, 2700);
 }
 
-// 7のロール／騎士カード／強盗追い払いの後、ROBBER フェーズに入ったら、移動するのが自分（LAN=viewer/
-// ローカル=人間）のときに盤面へ自動スクロールして「盗賊の移動を行ってください」と案内する。
-// 盗賊を動かすのは常に手番プレイヤーなので currentPid===自分 で判定。phase の立ち上がり（prev≠ROBBER）
+// 7のロール／武将カード／野盗追い払いの後、ROBBER フェーズに入ったら、移動するのが自分（LAN=viewer/
+// ローカル=人間）のときに盤面へ自動スクロールして「野盗の移動を行ってください」と案内する。
+// 野盗を動かすのは常に手番プレイヤーなので currentPid===自分 で判定。phase の立ち上がり（prev≠ROBBER）
 // のみで発火させ、既に ROBBER 中の再描画では鳴らさない。CPU/相手の7では発火しない。
 function maybeNoticeRobberMove(prevState: GameState, newState: GameState): void {
   const me = selfPlayerId();
   if (!me) return;
   if (!(newState.turnPhase === 'ROBBER' && prevState.turnPhase !== 'ROBBER' && currentPid(newState) === me)) return;
-  showBoardNotice('🦹 盤面のタイルをタップして盗賊の移動を行ってください', '#ff8a5a');
+  showBoardNotice('🦹 盤面のタイルをタップして野盗の移動を行ってください', '#ff8a5a');
   scrollToBoard();
 }
 
-// 建設フィードバック(C-4): 開拓地/都市はスケールインのポップ、道は辺をなぞる描画。
+// 建設フィードバック(C-4): 砦/城はスケールインのポップ、街道は辺をなぞる描画。
 // redraw 後に該当要素へ一時クラスを付けて CSS アニメで見せる（reduced-motion/instantは省略）。
 function animateBuildPlacement(action: Action | undefined): void {
   if (!action || fxSpeed() === 'instant' || prefersReducedMotion()) return;
@@ -2994,7 +2994,7 @@ function animateBuildPlacement(action: Action | undefined): void {
   }
 }
 
-// ROLL_DICE ならダイス演出（赤・黄・イベントの3個＋CKの抽選/蛮族パネル）を見せてから finish。
+// ROLL_DICE ならダイス演出（赤・黄・イベントの3個＋CKの抽選/一揆勢パネル）を見せてから finish。
 function runWithDiceAnim(action: Action | undefined, prevState: GameState, finish: () => void): void {
   if (action?.type === 'ROLL_DICE' && state.lastDiceRoll) {
     diceAnimating = true;
@@ -3024,17 +3024,17 @@ function scrollToBoard(): void {
 }
 
 function dispatch(action: Action): void {
-  // 騎士と商人: 人間が「商人/発明家」を使う時は自動でなく盤面でタイルを選ばせる。
+  // 武将と商い: 人間が「御用商人/発明家」を使う時は自動でなく盤面でタイルを選ばせる。
   if (action.type === 'PLAY_PROGRESS' && !diceAnimating) {
     const ppid = currentPid(state);
     const pcard = state.players[ppid]?.progressCards?.find(c => c.id === action.cardId);
     const pHuman = state.players[ppid]?.type === 'human' || ppid === selfPlayerId();
-    // 商人: 候補が2つ以上ある時のみ盤面選択（0/1個なら従来どおりエンジンが自動配置）。
+    // 御用商人: 候補が2つ以上ある時のみ盤面選択（0/1個なら従来どおりエンジンが自動配置）。
     if (pcard?.type === 'merchant' && pHuman && !action.choice?.merchantTileId
         && state.turnPhase === 'TRADE_BUILD' && merchantTileIds(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove(); // カード詳細モーダルを閉じる
       setBuildMode('placeMerchant'); // setBuildMode が盤面へ自動スクロールする
-      showBoardNotice('🏪 商人を置く資源タイルをタップしてください');
+      showBoardNotice('🏪 御用商人を置く資源タイルをタップしてください');
       return;
     }
     // 発明家: 入替候補が2つ以上ある時、盤面で2タイルを順にタップして数字を入れ替える。
@@ -3046,31 +3046,31 @@ function dispatch(action: Action): void {
       showBoardNotice('🔄 数字を入れ替える1つ目のタイルをタップ');
       return;
     }
-    // 僧正: 盗賊を置くタイルを盤面で選ぶ（隣接する全相手から1枚ずつ奪う）。
+    // 僧正: 野盗を置くタイルを盤面で選ぶ（隣接する全相手から1枚ずつ奪う）。
     if (pcard?.type === 'bishop' && pHuman && !action.choice?.bishopTileId
         && state.turnPhase === 'TRADE_BUILD' && bishopTileIds(state).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('placeBishop');
-      showBoardNotice('⛪ 盗賊を置くタイルをタップ（隣接の全相手から1枚ずつ奪う）');
+      showBoardNotice('⛪ 野盗を置くタイルをタップ（隣接の全相手から1枚ずつ奪う）');
       return;
     }
-    // 外交官: 撤去する相手の端の道を盤面で選ぶ。
+    // 外交官: 撤去する相手の端の街道を盤面で選ぶ。
     if (pcard?.type === 'diplomat' && pHuman && !action.choice?.diplomatEdgeId
         && state.turnPhase === 'TRADE_BUILD' && diplomatRemovableRoads(state, ppid).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectDiplomatRoad');
-      showBoardNotice('📜 撤去する端の道をタップ（自分の道なら別の場所に建て直せる）');
+      showBoardNotice('📜 撤去する端の街道をタップ（自分の街道なら別の場所に建て直せる）');
       return;
     }
-    // 脱走兵: 消す相手の騎士を盤面で選ぶ（同強度の騎士を自分が得る）。
+    // 脱走兵: 消す相手の武将を盤面で選ぶ（同強度の武将を自分が得る）。
     if (pcard?.type === 'deserter' && pHuman && !action.choice?.deserterVertexId
         && state.turnPhase === 'TRADE_BUILD' && deserterTargets(state, ppid).length > 0) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectDeserterKnight');
-      showBoardNotice('🏃 消す相手の騎士をタップ（同じ強さの騎士を得る）');
+      showBoardNotice('🏃 消す相手の武将をタップ（同じ強さの武将を得る）');
       return;
     }
-    // 医術: 都市化する自分の開拓地を盤面で選ぶ（麦1＋鉱石2を払える＆開拓地があるとき）。
+    // 医術: 築城する自分の砦を盤面で選ぶ（米1＋鉄2を払える＆砦があるとき）。
     if (pcard?.type === 'medicine' && pHuman && !action.choice?.medicineVertexId
         && state.turnPhase === 'TRADE_BUILD' && medicineSettlements(state, ppid).length > 0) {
       const me = state.players[ppid];
@@ -3078,38 +3078,38 @@ function dispatch(action: Action): void {
       if (affordable) {
         document.querySelector('.help-overlay')?.remove();
         setBuildMode('selectMedicineSettlement');
-        showBoardNotice('💊 都市にする自分の開拓地をタップ（麦1＋鉱石2）');
+        showBoardNotice('💊 城にする自分の砦をタップ（米1＋鉄2）');
         return;
       }
     }
-    // 鍛冶屋: 昇格する自分の騎士を盤面で選ぶ（最大2体）。候補2体以上の時のみ手動（0/1体は自動）。
+    // 鍛冶屋: 加増する自分の武将を盤面で選ぶ（最大2体）。候補2体以上の時のみ手動（0/1体は自動）。
     if (pcard?.type === 'smith' && pHuman && !action.choice?.smithVertexIds
         && state.turnPhase === 'TRADE_BUILD' && smithKnightTargets(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove();
       smithFirstKnight = null;
       setBuildMode('selectSmithKnight');
-      showBoardNotice('⚒ 昇格する1体目の騎士をタップ（最大2体）');
+      showBoardNotice('⚒ 加増する1体目の武将をタップ（最大2体）');
       return;
     }
-    // 技師: 城壁を建てる自分の都市を盤面で選ぶ（候補2つ以上の時のみ手動）。
+    // 技師: 石垣を建てる自分の城を盤面で選ぶ（候補2つ以上の時のみ手動）。
     if (pcard?.type === 'engineer' && pHuman && !action.choice?.engineerVertexId
         && state.turnPhase === 'TRADE_BUILD' && engineerWallCities(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectEngineerCity');
-      showBoardNotice('🧱 城壁を建てる自分の都市をタップ');
+      showBoardNotice('🧱 石垣を建てる自分の城をタップ');
       return;
     }
-    // 陰謀: 退去させる敵騎士を盤面で選ぶ（候補2つ以上の時のみ手動）。
+    // 陰謀: 退去させる敵武将を盤面で選ぶ（候補2つ以上の時のみ手動）。
     if (pcard?.type === 'intrigue' && pHuman && !action.choice?.intrigueVertexId
         && state.turnPhase === 'TRADE_BUILD' && intrigueKnightTargets(state, ppid).length > 1) {
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectIntrigueKnight');
-      showBoardNotice('🗡 退去させる敵騎士をタップ（自分の道に隣接）');
+      showBoardNotice('🗡 退去させる敵武将をタップ（自分の街道に隣接）');
       return;
     }
   }
-  // 騎士と商人: 都市改善でメトロポリスを新規獲得し、化ける都市の候補が2つ以上ある時は
-  // 自動でなく盤面で都市を選ばせる（候補1つ以下ならエンジンが自動配置）。
+  // 武将と商い: 城下の改善で天守を新規獲得し、化ける城の候補が2つ以上ある時は
+  // 自動でなく盤面で城を選ばせる（候補1つ以下ならエンジンが自動配置）。
   if (action.type === 'BUILD_IMPROVEMENT' && !diceAnimating && action.metropolisVertexId == null) {
     const ipid = currentPid(state);
     const iHuman = state.players[ipid]?.type === 'human' || ipid === selfPlayerId();
@@ -3119,7 +3119,7 @@ function dispatch(action: Action): void {
       pendingMetropolisTrack = action.track;
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectMetropolis');
-      showBoardNotice('🏛 メトロポリスにする自分の都市をタップ（+2点）');
+      showBoardNotice('🏛 天守にする自分の城をタップ（+2点）');
       return;
     }
   }
@@ -3164,7 +3164,7 @@ function dispatch(action: Action): void {
       diceStats[diceTotal] = (diceStats[diceTotal] ?? 0) + 1;
     }
 
-    // 盗賊スライド演出用に、移動前の盗賊タイルを控える
+    // 野盗スライド演出用に、移動前の野盗タイルを控える
     const robberFromTile = action.type === 'MOVE_ROBBER'
       ? Object.values(prevState.tiles).find(t => t.hasRobber)?.id
       : undefined;
@@ -3173,14 +3173,14 @@ function dispatch(action: Action): void {
       action.type === 'BUILD_ROAD' ||
       action.type === 'BUILD_SETTLEMENT' ||
       action.type === 'BUILD_CITY' ||
-      // 騎士と商人: 配置/起動/昇格/城壁の後もモードが残り「ボタンが光りっぱなし」になる不具合の修正。
+      // 武将と商い: 配置/起動/昇格/石垣の後もモードが残り「ボタンが光りっぱなし」になる不具合の修正。
       action.type === 'BUILD_KNIGHT' ||
       action.type === 'ACTIVATE_KNIGHT' ||
       action.type === 'UPGRADE_KNIGHT' ||
       action.type === 'BUILD_CITY_WALL' ||
-      // 商人カードのタイル配置（placeMerchant）完了後もモードを残さない。
+      // 御用商人カードのタイル配置（placeMerchant）完了後もモードを残さない。
       action.type === 'PLAY_PROGRESS' ||
-      // メトロポリス手動選択（selectMetropolis）完了後もモードを残さない。
+      // 天守手動選択（selectMetropolis）完了後もモードを残さない。
       action.type === 'BUILD_IMPROVEMENT'
     ) {
       buildMode = 'idle';
@@ -3189,11 +3189,11 @@ function dispatch(action: Action): void {
 
     if (action.type === 'PLAY_ROAD_BUILDING') {
       buildMode = 'road';
-      // 道を置くのは盤面なので自動スクロール（自分の手番のときだけ。CPUは自動配置）。
+      // 街道を置くのは盤面なので自動スクロール（自分の手番のときだけ。CPUは自動配置）。
       if (currentPid(state) === selfPlayerId()) scrollToBoard();
     }
 
-    // 街道建設カード使用中は引き続き道建設モードを維持（2本目以降は同じ盤面なので再スクロールしない）
+    // 普請カード使用中は引き続き街道建設モードを維持（2本目以降は同じ盤面なので再スクロールしない）
     if (state.roadBuildingRoadsRemaining > 0) {
       buildMode = 'road';
     }
@@ -3210,7 +3210,7 @@ function dispatch(action: Action): void {
     if (action.type === 'END_TURN') {
       cpuPlayerTradeOfferedThisTurn = false;
     }
-    // ターン終了で建設モードを必ず解除。次ターンに『都市』等のモードが残って盤面に誤った
+    // ターン終了で建設モードを必ず解除。次ターンに『城』等のモードが残って盤面に誤った
     // 配置ハイライトが出る／誤タップを誘発するのを防ぐ。船移動後も移動モードを抜ける。
     if (action.type === 'END_TURN') {
       buildMode = 'idle';
@@ -3270,7 +3270,7 @@ function setBuildMode(mode: BuildMode): void {
   buildMode = mode;
   // 建設モードに入ったら横持ちシートは畳み、盤面へ自動スクロール（操作対象を必ず見せる）。
   // 解除('idle')やトグルOFFでは動かさない。setBuildMode の呼び出し元は人間のUIボタンと
-  // dispatch の進歩カード/メトロポリス割込みのみ（CPUは通らない）なので人間操作時だけ働く。
+  // dispatch の進歩カード/天守割込みのみ（CPUは通らない）なので人間操作時だけ働く。
   if (mode !== 'idle') { landscapeSheetUserOpen = false; scrollToBoard(); }
   // モード変更で仮置きプレビューは破棄（別の建設物を選び直したとみなす）。
   if (uiPhase.type === 'placePreview') uiPhase = { type: 'idle' };
@@ -3298,11 +3298,11 @@ function isPlaceablePhase(s: GameState): boolean {
 function updatePlaceConfirmBar(): void {
   document.getElementById('place-confirm')?.remove();
   if (!state || uiPhase.type !== 'placePreview') return;
-  // 騎士と商人の即時系（起動/昇格/商人）は「建てる？」でなく動作に合わせた文言にする。
+  // 武将と商いの即時系（出陣/加増/御用商人）は「建てる？」でなく動作に合わせた文言にする。
   const actionKind = uiPhase.kind === 'activateKnight' || uiPhase.kind === 'upgradeKnight' || uiPhase.kind === 'placeMerchant';
-  const label = uiPhase.kind === 'road' ? '道' : uiPhase.kind === 'ship' ? '船' : uiPhase.kind === 'city' ? '都市'
-    : uiPhase.kind === 'activateKnight' ? '騎士を起動' : uiPhase.kind === 'upgradeKnight' ? '騎士を昇格'
-    : uiPhase.kind === 'placeMerchant' ? 'ここに商人を配置' : '開拓地';
+  const label = uiPhase.kind === 'road' ? '街道' : uiPhase.kind === 'ship' ? '船' : uiPhase.kind === 'city' ? '城'
+    : uiPhase.kind === 'activateKnight' ? '武将を出陣' : uiPhase.kind === 'upgradeKnight' ? '武将を加増'
+    : uiPhase.kind === 'placeMerchant' ? 'ここに御用商人を配置' : '砦';
 
   const bar = document.createElement('div');
   bar.id = 'place-confirm';
@@ -3333,7 +3333,7 @@ function updatePlaceConfirmBar(): void {
   bar.append(text, actions);
   document.body.appendChild(bar);
 
-  // 盤面の直下（中央）に出して、選択した道/頂点の近くで確認できるようにする。
+  // 盤面の直下（中央）に出して、選択した街道/頂点の近くで確認できるようにする。
   // 画面下に固定すると、スマホ縦持ちでは盤面から遠く離れて見にくいため。
   // 盤面を実測し、はみ出す場合（横持ちで盤面が画面いっぱい等）は画面下端へクランプ。
   const boardEl = document.getElementById('board');
@@ -3350,7 +3350,7 @@ function updatePlaceConfirmBar(): void {
 function setUIPhase(phase: UIPhase): void {
   // 盤面SVGの入力は state / buildMode / placePreview のみ（computeHighlights は uiPhase 非参照）。
   // 仮置きプレビューの出し入れ以外の uiPhase 変更（モーダルの +/− 等）では盤面再構築を省く。
-  // 例外: robberTarget は盗賊/海賊コマを移動先へプレビュー描画するため盤面を再構築する。
+  // 例外: robberTarget は野盗/海賊コマを移動先へプレビュー描画するため盤面を再構築する。
   const robberPhaseChange = phase.type === 'robberTarget' || uiPhase.type === 'robberTarget';
   const skipBoard = !robberPhaseChange && uiPhase.type !== 'placePreview' && phase.type !== 'placePreview';
   // 複数相手の選択に入る瞬間（または開いたまま別タイルへ選び直した時）、まずコマを移動先タイルへ
@@ -3556,7 +3556,7 @@ function updateZoomControls(): void {
   (box.querySelector('.z-reset') as HTMLButtonElement | null)?.classList.toggle('active', Math.abs(s - 1) > 0.01);
 }
 
-// 飛行中の一時演出ノード（ダイス/資源/盗賊/略奪/得点ポップ/手番トースト）を掃除する。
+// 飛行中の一時演出ノード（ダイス/資源/野盗/略奪/得点ポップ/手番トースト）を掃除する。
 // ゲーム開始・ホーム復帰時に呼び、前ゲームの残骸が次画面に残らないようにする。
 function clearTransientFx(): void {
   document
@@ -3573,11 +3573,11 @@ function currentPid(s: GameState): PlayerId {
   return s.playerOrder[s.currentPlayerIndex]!;
 }
 
-// 盤面クリック（配置・盗賊）を受け付けてよいか。LAN=自分の手番のみ、ローカル=人間の手番のみ。
+// 盤面クリック（配置・野盗）を受け付けてよいか。LAN=自分の手番のみ、ローカル=人間の手番のみ。
 // startGame / startLanGame のどちらで登録されても同一の述語で両モードを判定する。
 function boardCanAct(): boolean {
   if (!state) return false;
-  // 騎士と商人: 都市格下げは多人数解決。対象（LAN=viewer/ローカル=人間）は手番外でも盤面操作可。
+  // 武将と商い: 城格下げは多人数解決。対象（LAN=viewer/ローカル=人間）は手番外でも盤面操作可。
   if (state.turnPhase === 'CITY_DOWNGRADE') {
     const pending = state.pendingCityDowngrade ?? [];
     if (netMode) return viewerPlayerId != null && pending.includes(viewerPlayerId);
@@ -3589,7 +3589,7 @@ function boardCanAct(): boolean {
 
 // LAN で送信を許可する Action（クライアント側ガード。サーバでも二重に検証）。
 // クライアント送信フィルタ。サーバ受理リストと同一の単一の真実(LAN_SYNCED_ACTIONS)から生成する
-// （二重管理のズレで騎士と商人の操作が送られず「ボタン無反応」になっていた回帰の根治）。
+// （二重管理のズレで武将と商いの操作が送られず「ボタン無反応」になっていた回帰の根治）。
 const LAN_CLIENT_ALLOWED = new Set<Action['type']>(LAN_SYNCED_ACTIONS);
 
 // ロビーから started を受け取った時に呼ばれる。以降のメッセージは main が受ける。
@@ -3616,7 +3616,7 @@ function startLanGame(initial: GameState, viewerId: PlayerId, client: LanClient)
   // 予期しない切断時は再接続を試みる（致命扱いにしない）。
   client.setOnClose(attemptReconnect);
 
-  // ボードクリック（配置・盗賊）を有効化。dispatch は netMode で送信に分岐する。
+  // ボードクリック（配置・野盗）を有効化。dispatch は netMode で送信に分岐する。
   attachBoardEventsOnce();
 
   boardViewport = { scale: 1, tx: 0, ty: 0 }; // 新規対戦はズームをリセット
@@ -3857,9 +3857,9 @@ function applyNetState(action: Action | undefined, newState: GameState): void {
   }
   if (state.roadBuildingRoadsRemaining > 0) buildMode = 'road';
 
-  // 交易/発展カード/盗賊/ターン終了などの後はモーダルUIを閉じる（CPU path と同様）。
+  // 交易/軍略カード/野盗/ターン終了などの後はモーダルUIを閉じる（CPU path と同様）。
   // ただし DISCARD_RESOURCES は除外（複数人捨て札で他人の捨て札時に自分の選択中UIを
-  // 消さないため）。捨て札・盗賊ターゲットは直後の redraw 自動同期が再導出する。
+  // 消さないため）。捨て札・野盗ターゲットは直後の redraw 自動同期が再導出する。
   if (action && action.type !== 'DISCARD_RESOURCES' && RESET_UIPHASE_ACTIONS.has(action.type)) {
     uiPhase = { type: 'idle' };
   }
@@ -3882,9 +3882,9 @@ function netDispatch(action: Action): void {
   if (diceAnimating) return;
   if (!lanClient || !viewerPlayerId) return;
   if (!LAN_CLIENT_ALLOWED.has(action.type)) return; // 未対応操作は送らない
-  // actor（操作者）が自分か。多人数解決（捨て札/金/都市格下げ/進歩カード捨て）は手番に関係なく
+  // actor（操作者）が自分か。多人数解決（捨て札/金/城格下げ/進歩カード捨て）は手番に関係なく
   // action.playerId が操作者。交易応答は応答者。それ以外は手番プレイヤー。
-  // ※ DOWNGRADE_CITY/DISCARD_PROGRESS を入れ忘れると、蛮族襲来が他人の手番で起きた時に viewer の
+  // ※ DOWNGRADE_CITY/DISCARD_PROGRESS を入れ忘れると、一揆勢襲来が他人の手番で起きた時に viewer の
   //   格下げ操作が currentPid 判定で弾かれ「オンラインだと格下げできない」原因になる（サーバの
   //   requiredActor と一致させる）。
   const actor =

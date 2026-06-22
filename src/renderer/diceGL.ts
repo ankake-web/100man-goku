@@ -79,7 +79,7 @@ function shieldPath(c: CanvasRenderingContext2D, cx: number, cy: number, w: numb
   c.closePath();
 }
 
-/** 交易品グリフ（ベクター・漢字不使用）。coin/paper/cloth。 */
+/** 物産グリフ（ベクター・漢字不使用）。coin/paper/cloth。 */
 function drawGood(c: CanvasRenderingContext2D, good: 'coin' | 'paper' | 'cloth', cx: number, cy: number, s: number): void {
   c.save(); c.translate(cx, cy);
   c.lineJoin = 'round'; c.lineCap = 'round';
@@ -103,7 +103,7 @@ function drawGood(c: CanvasRenderingContext2D, good: 'coin' | 'paper' | 'cloth',
     c.strokeStyle = 'rgba(120,90,40,0.55)'; c.lineWidth = s * 0.05;
     for (let i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(-s * 0.35, i * s * 0.22); c.lineTo(s * 0.35, i * s * 0.22); c.stroke(); }
   } else {
-    // 布（畳んだ織物）
+    // 絹（畳んだ織物）
     const g = c.createLinearGradient(-s, -s, s, s);
     g.addColorStop(0, '#7fb0ff'); g.addColorStop(1, '#2f63c8');
     c.fillStyle = g;
@@ -119,7 +119,7 @@ function drawGood(c: CanvasRenderingContext2D, good: 'coin' | 'paper' | 'cloth',
   c.restore();
 }
 
-/** イベント・ゲート面（透過。色付き盾＋交易品。漢字なし・エンボス風）。 */
+/** イベント・ゲート面（透過。色付き盾＋物産。漢字なし・エンボス風）。 */
 function gateTexture(track: Exclude<EventResult, 'ship'>): THREE.CanvasTexture {
   const good = track === 'politics' ? 'coin' : track === 'science' ? 'paper' : 'cloth';
   return canvasTexture((c) => {
@@ -140,7 +140,7 @@ function gateTexture(track: Exclude<EventResult, 'ship'>): THREE.CanvasTexture {
   });
 }
 
-/** 船面（透過。蛮族船アートを石面に“彫り込み”として）。画像ロード後に差し替え。 */
+/** 船面（透過。一揆勢の船アートを石面に“彫り込み”として）。画像ロード後に差し替え。 */
 function shipTexture(): { tex: THREE.CanvasTexture; setImg: (img: HTMLImageElement) => void } {
   const cv = document.createElement('canvas'); cv.width = cv.height = TEX;
   const ctx = cv.getContext('2d')!;
@@ -232,7 +232,7 @@ class DiceGLController {
       event: this.makeEventDie(1.3),
     };
 
-    // 蛮族船アートを非同期ロード→船面に反映
+    // 一揆勢の船アートを非同期ロード→船面に反映
     if (ASSETS.piece.barbarianShip) {
       const img = new Image();
       img.onload = () => { this.shipSetters.forEach(s => s(img)); this.requestRender(); };
@@ -305,7 +305,7 @@ class DiceGLController {
     die.restQuat.copy(q);
   }
 
-  // ダイスの横位置: 基本ゲーム(2個)は中央寄せ、騎士と商人(3個)は赤/黄/イベントを横並び。
+  // ダイスの横位置: 基本ゲーム(2個)は中央寄せ、武将と商い(3個)は赤/黄/イベントを横並び。
   private layoutDice(hasEvent: boolean): void {
     if (hasEvent) {
       this.dice.red.group.position.x = -1.3;

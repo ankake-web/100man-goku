@@ -8,33 +8,33 @@ import type {
 import { RESOURCE_TYPES, COMMODITY_TYPES, makeCommodities, TILE_RESOURCE_MAP } from '../constants';
 
 // ============================================================
-// 商品/資源の共通ヘルパ（騎士と商人のバンク交易は資源∪商品を扱う）
+// 物産/資源の共通ヘルパ（武将と商いのバンク交易は資源∪物産を扱う）
 // ============================================================
 
 const COMMODITY_SET = new Set<TradeKind>(COMMODITY_TYPES);
-/** k が商品(coin/cloth/paper)か。 */
+/** k が物産(coin/cloth/paper)か。 */
 export function isCommodity(k: TradeKind): k is CommodityType {
   return COMMODITY_SET.has(k);
 }
-/** プレイヤーの手持ち枚数（資源は hand、商品は commodities）。 */
+/** プレイヤーの手持ち枚数（資源は hand、物産は commodities）。 */
 function handOf(player: Player, k: TradeKind): number {
   return isCommodity(k) ? (player.commodities ?? makeCommodities())[k] : player.hand[k as ResourceType];
 }
-/** バンク在庫枚数（資源は bank、商品は commodityBank）。 */
+/** バンク在庫枚数（資源は bank、物産は commodityBank）。 */
 function bankOf(state: GameState, k: TradeKind): number {
   return isCommodity(k) ? (state.commodityBank ?? makeCommodities())[k] : state.bank[k as ResourceType];
 }
 
 // ============================================================
-// 港交易レート計算
+// 湊交易レート計算
 // ============================================================
 
 /**
- * 指定プレイヤーの give（資源 or 商品）に対する最良交易レートを返す。
+ * 指定プレイヤーの give（資源 or 物産）に対する最良交易レートを返す。
  *
- * 資源: デフォルト4:1 / 汎用港3:1 / 特殊港2:1。複数港は最良を採用。
- * 商品: 港は効かない。トレーディングハウス(交易Lv3)で2:1、無ければ4:1。
- * 騎士と商人: 交易ツリーLv3以上は資源も全種2:1。
+ * 資源: デフォルト4:1 / 楽市3:1 / 特殊湊2:1。複数湊は最良を採用。
+ * 物産: 湊は効かない。トレーディングハウス(商Lv3)で2:1、無ければ4:1。
+ * 武将と商い: 商ツリーLv3以上は資源も全種2:1。
  */
 export function getEffectiveTradeRate(
   state: GameState,
@@ -47,11 +47,11 @@ export function getEffectiveTradeRate(
   const fleet2to1 = ck && state.players[playerId]?.merchantFleetType === give;
 
   if (isCommodity(give)) {
-    // 商品は港レートを持たない。交易所(商業Lv3)=同種商品2:1、商船隊=指定商品2:1、無ければ4:1。
+    // 物産は湊レートを持たない。交易所(商Lv3)=同種物産2:1、商船隊=指定物産2:1、無ければ4:1。
     return (tradeLv3 || fleet2to1) ? 2 : 4;
   }
 
-  // 資源: 交易所(商業Lv3)は資源レートに影響しない（公式: 交易所は商品のみ2:1）。
+  // 資源: 交易所(商Lv3)は資源レートに影響しない（公式: 交易所は物産のみ2:1）。
   let rate = 4;
   for (const vertex of Object.values(state.vertices)) {
     if (vertex.building?.playerId !== playerId) continue;
@@ -61,7 +61,7 @@ export function getEffectiveTradeRate(
     if (harbor === give) rate = Math.min(rate, 2);
   }
   if (fleet2to1) rate = Math.min(rate, 2); // 商船隊で指定した資源は2:1
-  // 商人(merchant)コマを置いた地形の資源は、保持者は2:1で交易できる。
+  // 御用商人(merchant)コマを置いた地形の資源は、保持者は2:1で交易できる。
   if (ck && state.merchant?.playerId === playerId) {
     const mtile = state.tiles[state.merchant.tileId];
     if (mtile && TILE_RESOURCE_MAP[mtile.type] === give) rate = Math.min(rate, 2);
@@ -70,14 +70,14 @@ export function getEffectiveTradeRate(
 }
 
 // ============================================================
-// バンク交易・港交易
+// バンク交易・湊交易
 // ============================================================
 
 /**
- * バンク/港交易が可能かバリデーションする。
+ * バンク/湊交易が可能かバリデーションする。
  *
  * - 同じ種類同士の交換は不可。
- * - 非CKでは商品の give/receive は不可（後方互換・チート防止）。
+ * - 非CKでは物産の give/receive は不可（後方互換・チート防止）。
  * - give を rate 枚以上保有していること。
  * - バンクに receive が 1 枚以上あること。
  */
@@ -90,7 +90,7 @@ export function canBankTrade(
   if (give === receive) return false;
   const player = state.players[playerId];
   if (!player) return false;
-  // 非CKモードでは商品交易を一切禁止。
+  // 非CKモードでは物産交易を一切禁止。
   if (state.expansion !== 'cities_knights' && (isCommodity(give) || isCommodity(receive))) return false;
   if (bankOf(state, receive) < 1) return false;
 
@@ -99,8 +99,8 @@ export function canBankTrade(
 }
 
 /**
- * バンク/港交易を実行して新しい GameState を返す（バリデーション済み前提）。
- * give を rate 枚それぞれのバンクへ戻し、receive を 1 枚受け取る（資源/商品の4方向に対応）。
+ * バンク/湊交易を実行して新しい GameState を返す（バリデーション済み前提）。
+ * give を rate 枚それぞれのバンクへ戻し、receive を 1 枚受け取る（資源/物産の4方向に対応）。
  */
 export function executeBankTrade(
   state: GameState,

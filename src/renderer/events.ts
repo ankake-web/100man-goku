@@ -8,7 +8,7 @@ import { canMoveKnight, isKnightMovable, robberAdjacentChasableVertexIds, canBui
 import { getPirateRobbablePlayerIds, robbableCardCount } from '../engine/robber';
 
 // 公開情報での奪取可能枚数（LANではマスクされ handCount/commodityCount に枚数が入る。
-// 騎士と商人では商品も奪取対象なので合算する）。エンジンの判定と一致させる。
+// 武将と商いでは物産も奪取対象なので合算する）。エンジンの判定と一致させる。
 function publicCardCount(state: GameState, p: PlayerId): number {
   return robbableCardCount(state, p);
 }
@@ -54,7 +54,7 @@ function wantsShip(state: GameState, mode: BuildMode): boolean {
 // 最近傍の合法ターゲット探索（純粋・盤面ピクセル座標で判定）
 // ============================================================
 
-/** 点(x,y)に最も近い合法な開拓地/都市の頂点IDを maxDist 内で返す。なければ null。 */
+/** 点(x,y)に最も近い合法な砦/城の頂点IDを maxDist 内で返す。なければ null。 */
 export function nearestValidVertexId(
   state: GameState, pid: PlayerId, mode: BuildMode, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
 ): string | null {
@@ -125,9 +125,9 @@ export function nearestMoveShipEdgeId(
 }
 
 /**
- * 騎士移動モードで、点(x,y)に最も近い「操作対象の頂点」を返す（騎士と商人）。
- *   from 未選択: 自分の動かせる起動騎士の頂点。
- *   from 選択済: その騎士の合法な移動先頂点（canMoveKnight）。from 自身も返す（再タップで解除）。
+ * 武将移動モードで、点(x,y)に最も近い「操作対象の頂点」を返す（武将と商い）。
+ *   from 未選択: 自分の動かせる出陣中の武将の頂点。
+ *   from 選択済: その武将の合法な移動先頂点（canMoveKnight）。from 自身も返す（再タップで解除）。
  */
 export function nearestMoveKnightVertexId(
   state: GameState, pid: PlayerId, from: string | null, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
@@ -144,7 +144,7 @@ export function nearestMoveKnightVertexId(
   return best;
 }
 
-/** 点(x,y)に最も近い「述語を満たす頂点」を返す。なければ null（騎士の配置/起動/昇格で共用）。 */
+/** 点(x,y)に最も近い「述語を満たす頂点」を返す。なければ null（武将の召し抱え/出陣/加増で共用）。 */
 function nearestVertexMatching(
   state: GameState, pred: (vid: string) => boolean, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
 ): string | null {
@@ -158,19 +158,19 @@ function nearestVertexMatching(
   }
   return best;
 }
-/** 点(x,y)に最も近い「騎士を建てられる合法頂点」を返す（騎士と商人・手動配置）。 */
+/** 点(x,y)に最も近い「武将を召し抱えられる合法頂点」を返す（武将と商い・手動配置）。 */
 export function nearestBuildKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   return nearestVertexMatching(state, vid => canBuildKnight(state, pid, vid), x, y, maxDist);
 }
-/** 点(x,y)に最も近い「起動できる自分の騎士頂点」を返す（騎士と商人・手動起動）。 */
+/** 点(x,y)に最も近い「出陣できる自分の武将頂点」を返す（武将と商い・手動出陣）。 */
 export function nearestActivateKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   return nearestVertexMatching(state, vid => canActivateKnight(state, pid, vid), x, y, maxDist);
 }
-/** 点(x,y)に最も近い「昇格できる自分の騎士頂点」を返す（騎士と商人・手動昇格）。 */
+/** 点(x,y)に最も近い「加増できる自分の武将頂点」を返す（武将と商い・手動加増）。 */
 export function nearestUpgradeKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   return nearestVertexMatching(state, vid => canUpgradeKnight(state, pid, vid), x, y, maxDist);
 }
-/** 点(x,y)に最も近い「格下げ対象の平の都市」頂点を返す（蛮族敗北・対象プレイヤーの都市のみ）。 */
+/** 点(x,y)に最も近い「格下げ対象の平の城」頂点を返す（一揆勢敗北・対象プレイヤーの城のみ）。 */
 export function nearestDowngradableCityId(state: GameState, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const pending = new Set(state.pendingCityDowngrade ?? []);
   return nearestVertexMatching(state, vid => {
@@ -179,7 +179,7 @@ export function nearestDowngradableCityId(state: GameState, x: number, y: number
   }, x, y, maxDist);
 }
 
-/** 点(x,y)に最も近いタイル（中心=頂点平均）のIDを maxDist 内で返す。盗賊のタイル選択スナップ用。 */
+/** 点(x,y)に最も近いタイル（中心=頂点平均）のIDを maxDist 内で返す。野盗のタイル選択スナップ用。 */
 export function nearestTileId(
   state: GameState, x: number, y: number, maxDist = 70,
 ): string | null {
@@ -197,7 +197,7 @@ export function nearestTileId(
   return best;
 }
 
-/** 点(x,y)に最も近い「商人を置ける自分の隣接資源タイル」を返す（騎士と商人・進歩カード商人）。なければ null。 */
+/** 点(x,y)に最も近い「御用商人を置ける自分の隣接資源タイル」を返す（武将と商い・進歩カード御用商人）。なければ null。 */
 export function nearestMerchantTileId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = 70,
 ): string | null {
@@ -235,7 +235,7 @@ export function nearestInventorTileId(
   return best;
 }
 
-/** 僧正(bishop): 点(x,y)に最も近い「盗賊を置ける陸タイル」を返す。なければ null。 */
+/** 僧正(bishop): 点(x,y)に最も近い「野盗を置ける陸タイル」を返す。なければ null。 */
 export function nearestBishopTileId(state: GameState, x: number, y: number, maxDist = 70): string | null {
   const valid = new Set(bishopTileIds(state));
   let best: string | null = null; let bestD = maxDist * maxDist;
@@ -251,7 +251,7 @@ export function nearestBishopTileId(state: GameState, x: number, y: number, maxD
   return best;
 }
 
-/** 外交官(diplomat): 点(x,y)に最も近い「撤去できる相手の端の道」辺IDを返す。なければ null。 */
+/** 外交官(diplomat): 点(x,y)に最も近い「撤去できる相手の端の街道」辺IDを返す。なければ null。 */
 export function nearestDiplomatEdgeId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = EDGE_TAP_RADIUS): string | null {
   const valid = new Set(diplomatRemovableRoads(state, pid));
   let best: string | null = null; let bestD = maxDist * maxDist;
@@ -265,43 +265,43 @@ export function nearestDiplomatEdgeId(state: GameState, pid: PlayerId, x: number
   return best;
 }
 
-/** 脱走兵(deserter): 点(x,y)に最も近い「消せる相手の騎士頂点」を返す。なければ null。 */
+/** 脱走兵(deserter): 点(x,y)に最も近い「消せる相手の武将頂点」を返す。なければ null。 */
 export function nearestDeserterVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const valid = new Set(deserterTargets(state, pid));
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
-/** 医術(medicine): 点(x,y)に最も近い「都市化できる自分の開拓地頂点」を返す。なければ null。 */
+/** 医術(medicine): 点(x,y)に最も近い「築城できる自分の砦頂点」を返す。なければ null。 */
 export function nearestMedicineVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const valid = new Set(medicineSettlements(state, pid));
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
-/** メトロポリス: 点(x,y)に最も近い「メトロポリス化できる自分の都市頂点」を返す。なければ null。 */
+/** 天守: 点(x,y)に最も近い「天守化できる自分の城頂点」を返す。なければ null。 */
 export function nearestMetropolisVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const valid = new Set(metropolisCityChoices(state, pid));
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
-/** 鍛冶屋(smith): 点(x,y)に最も近い「1段昇格できる自分の騎士頂点」を返す。なければ null。 */
+/** 鍛冶屋(smith): 点(x,y)に最も近い「1段加増できる自分の武将頂点」を返す。なければ null。 */
 export function nearestSmithKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const valid = new Set(smithKnightTargets(state, pid));
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
-/** 技師(engineer): 点(x,y)に最も近い「城壁を建てられる自分の都市頂点」を返す。なければ null。 */
+/** 技師(engineer): 点(x,y)に最も近い「石垣を建てられる自分の城頂点」を返す。なければ null。 */
 export function nearestEngineerCityVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const valid = new Set(engineerWallCities(state, pid));
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
-/** 陰謀(intrigue): 点(x,y)に最も近い「自分の道/船に隣接する敵騎士頂点」を返す。なければ null。 */
+/** 陰謀(intrigue): 点(x,y)に最も近い「自分の街道/船に隣接する敵武将頂点」を返す。なければ null。 */
 export function nearestIntrigueKnightVertexId(state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS): string | null {
   const valid = new Set(intrigueKnightTargets(state, pid));
   return nearestVertexMatching(state, vid => valid.has(vid), x, y, maxDist);
 }
 
-/** 点(x,y)に最も近い「強盗を追い払える自分のアクティブ騎士頂点」を返す（騎士と商人）。なければ null。 */
+/** 点(x,y)に最も近い「野盗を追い払える自分の出陣中の武将頂点」を返す（武将と商い）。なければ null。 */
 export function nearestChaseRobberVertexId(
   state: GameState, pid: PlayerId, x: number, y: number, maxDist = VERTEX_TAP_RADIUS,
 ): string | null {
@@ -364,15 +364,15 @@ export function attachBoardEvents(
   // 航海者・船移動モード: 選択中の移動元の取得/設定（未指定＝船移動UI無効）。
   getMoveShipFrom: () => string | null = () => null,
   setMoveShipFrom: (eid: string | null) => void = () => {},
-  // 騎士と商人・騎士移動モード: 選択中の移動元頂点。
+  // 武将と商い・武将移動モード: 選択中の移動元頂点。
   getMoveKnightFrom: () => string | null = () => null,
   setMoveKnightFrom: (vid: string | null) => void = () => {},
-  // 騎士と商人・発明家(inventorSwap)モード: 1枚目に選んだタイルID。
+  // 武将と商い・発明家(inventorSwap)モード: 1枚目に選んだタイルID。
   getInventorFirst: () => string | null = () => null,
   setInventorFirst: (tid: string | null) => void = () => {},
-  // 騎士と商人・メトロポリス手動選択(selectMetropolis)モード: 今+1する都市改善ツリー。
+  // 武将と商い・天守手動選択(selectMetropolis)モード: 今+1する城下の改善ツリー。
   getMetropolisTrack: () => CkTrack | null = () => null,
-  // 騎士と商人・鍛冶屋(selectSmithKnight)モード: 1体目に選んだ騎士頂点ID（2体目のタップで昇格）。
+  // 武将と商い・鍛冶屋(selectSmithKnight)モード: 1体目に選んだ武将頂点ID（2体目のタップで加増）。
   getSmithFirst: () => string | null = () => null,
   setSmithFirst: (vid: string | null) => void = () => {},
 ): void {
@@ -380,15 +380,15 @@ export function attachBoardEvents(
     // 直前のパン/ピンチで動いた指のクリックは配置に使わない（誤配置防止）。
     if (consumeSuppressClick()) return;
     // 手番の操作権が無い（ローカルでCPUの手番 / LANで他人の手番）なら盤面操作を無視する。
-    // これが無いとCPUの盗賊待ち時間に人間がタイルをタップして盗賊移動・盗み相手選択・
-    // 初期配置・街道建設の道を代行でき、エンジンは手番プレイヤーの合法手として受理してしまう。
+    // これが無いとCPUの野盗待ち時間に人間がタイルをタップして野盗移動・盗み相手選択・
+    // 初期配置・街道建設の街道を代行でき、エンジンは手番プレイヤーの合法手として受理してしまう。
     if (!canAct()) return;
     const target = e.target as SVGElement;
     const state = getState();
     const pid = state.playerOrder[state.currentPlayerIndex]!;
     const mode = getBuildMode();
 
-    // ---- 盗賊フェーズ: タイル。直接ヒット優先、外したら最近傍タイルへスナップ（光ったタイルを選びやすく）----
+    // ---- 野盗フェーズ: タイル。直接ヒット優先、外したら最近傍タイルへスナップ（光ったタイルを選びやすく）----
     if (state.phase === 'MAIN' && state.turnPhase === 'ROBBER') {
       let tileId = target.closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
       if (!tileId) {
@@ -399,8 +399,8 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 蛮族敗北の都市格下げ。盤面で（格下げ対象の）光った都市をタップ → DOWNGRADE_CITY ----
-    // 駒（都市画像）を直接タップした場合を最優先。外しても広めの距離でスナップして取りこぼさない。
+    // ---- 武将と商い: 一揆勢敗北の城格下げ。盤面で（格下げ対象の）光った城をタップ → DOWNGRADE_CITY ----
+    // 駒（城画像）を直接タップした場合を最優先。外しても広めの距離でスナップして取りこぼさない。
     if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
       const pendingSet = new Set(state.pendingCityDowngrade ?? []);
       const isDowngradable = (vid: string | null): boolean => {
@@ -410,7 +410,7 @@ export function attachBoardEvents(
       // 1) 直接ヒット（建物/頂点要素）。
       let vid = (e.target as SVGElement).closest('[data-vertex-id]')?.getAttribute('data-vertex-id') ?? null;
       if (!isDowngradable(vid)) vid = null;
-      // 2) 近傍スナップ（広め=60px。都市は疎なので誤爆しにくい）。
+      // 2) 近傍スナップ（広め=60px。城は疎なので誤爆しにくい）。
       if (!vid) {
         const ptd = clickToBoardPixel(svg, e.clientX, e.clientY);
         vid = ptd ? nearestDowngradableCityId(state, ptd.x, ptd.y, 60) : null;
@@ -438,7 +438,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 騎士の移動モード（騎士を選択 → 移動先頂点をタップ）----
+    // ---- 武将と商い: 武将の移動モード（武将を選択 → 移動先頂点をタップ）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'moveKnight') {
       const from = getMoveKnightFrom();
       const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
@@ -453,7 +453,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 騎士を建てるモード（合法頂点をタップ → BUILD_KNIGHT。モードは維持して連続配置可）----
+    // ---- 武将と商い: 武将を召し抱えるモード（合法頂点をタップ → BUILD_KNIGHT。モードは維持して連続配置可）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'buildKnight') {
       const ptk = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptk ? nearestBuildKnightVertexId(state, pid, ptk.x, ptk.y) : null;
@@ -461,8 +461,8 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 騎士を起動するモード（起動できる自分の騎士をタップ → ACTIVATE_KNIGHT）----
-    // タッチ時は誤起動防止に確認バーを挟む（建物配置と同じ流儀）。マウスは即実行。
+    // ---- 武将と商い: 武将を出陣させるモード（出陣できる自分の武将をタップ → ACTIVATE_KNIGHT）----
+    // タッチ時は誤出陣防止に確認バーを挟む（建物配置と同じ流儀）。マウスは即実行。
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'activateKnight') {
       const pta = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = pta ? nearestActivateKnightVertexId(state, pid, pta.x, pta.y) : null;
@@ -473,7 +473,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 騎士を昇格するモード（昇格できる自分の騎士をタップ → UPGRADE_KNIGHT）----
+    // ---- 武将と商い: 武将を加増するモード（加増できる自分の武将をタップ → UPGRADE_KNIGHT）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'upgradeKnight') {
       const ptu = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptu ? nearestUpgradeKnightVertexId(state, pid, ptu.x, ptu.y) : null;
@@ -484,7 +484,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 強盗を追い払うモード（追い払える騎士頂点をタップ → 即 CHASE_ROBBER）----
+    // ---- 武将と商い: 野盗を追い払うモード（追い払える武将頂点をタップ → 即 CHASE_ROBBER）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'chaseRobber') {
       const ptc = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptc ? nearestChaseRobberVertexId(state, pid, ptc.x, ptc.y) : null;
@@ -492,7 +492,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 商人カードのタイル配置（光った自分の隣接資源タイルをタップ → PLAY_PROGRESS）----
+    // ---- 武将と商い: 御用商人カードのタイル配置（光った自分の隣接資源タイルをタップ → PLAY_PROGRESS）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'placeMerchant') {
       const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
       let tid = (e.target as SVGElement).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
@@ -500,14 +500,14 @@ export function attachBoardEvents(
       else if (tid && !new Set(merchantTileIds(state, pid)).has(tid)) tid = null; // 候補外の直接ヒットは無効
       const card = state.players[pid]?.progressCards?.find(c => c.type === 'merchant');
       if (tid && card) {
-        // 商人はカードを消費するため、タッチ時は確認バーを挟んで誤配置を防ぐ。
+        // 御用商人はカードを消費するため、タッチ時は確認バーを挟んで誤配置を防ぐ。
         if (requireConfirm()) setUIPhase({ type: 'placePreview', kind: 'placeMerchant', targetId: tid });
         else dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { merchantTileId: tid } });
       }
       return;
     }
 
-    // ---- 騎士と商人: 発明家カードの数字入替（光った2タイルを順にタップ → PLAY_PROGRESS）----
+    // ---- 武将と商い: 発明家カードの数字入替（光った2タイルを順にタップ → PLAY_PROGRESS）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'inventorSwap') {
       const pti = clickToBoardPixel(svg, e.clientX, e.clientY);
       let tid = (e.target as SVGElement).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
@@ -523,7 +523,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 僧正カードの盗賊配置（光ったタイルをタップ → PLAY_PROGRESS bishopTileId）----
+    // ---- 武将と商い: 僧正カードの野盗配置（光ったタイルをタップ → PLAY_PROGRESS bishopTileId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'placeBishop') {
       const ptb = clickToBoardPixel(svg, e.clientX, e.clientY);
       let tid = (e.target as SVGElement).closest('[data-tile-id]')?.getAttribute('data-tile-id') ?? null;
@@ -534,7 +534,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 外交官カードの道撤去（光った相手の端の道をタップ → PLAY_PROGRESS diplomatEdgeId）----
+    // ---- 武将と商い: 外交官カードの街道撤去（光った相手の端の街道をタップ → PLAY_PROGRESS diplomatEdgeId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectDiplomatRoad') {
       const ptd = clickToBoardPixel(svg, e.clientX, e.clientY);
       let eid = (e.target as SVGElement).closest('[data-edge-id]')?.getAttribute('data-edge-id') ?? null;
@@ -545,7 +545,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 脱走兵カードの騎士除去（光った相手の騎士をタップ → PLAY_PROGRESS deserterVertexId）----
+    // ---- 武将と商い: 脱走兵カードの武将除去（光った相手の武将をタップ → PLAY_PROGRESS deserterVertexId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectDeserterKnight') {
       const ptk = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptk ? nearestDeserterVertexId(state, pid, ptk.x, ptk.y) : null;
@@ -554,7 +554,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 医術カードの都市化（光った自分の開拓地をタップ → PLAY_PROGRESS medicineVertexId）----
+    // ---- 武将と商い: 医術カードの築城（光った自分の砦をタップ → PLAY_PROGRESS medicineVertexId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectMedicineSettlement') {
       const ptm = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = ptm ? nearestMedicineVertexId(state, pid, ptm.x, ptm.y) : null;
@@ -563,7 +563,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: メトロポリス化する都市の手動選択（光った自分の都市をタップ → BUILD_IMPROVEMENT metropolisVertexId）----
+    // ---- 武将と商い: 天守化する城の手動選択（光った自分の城をタップ → BUILD_IMPROVEMENT metropolisVertexId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectMetropolis') {
       const ptp = clickToBoardPixel(svg, e.clientX, e.clientY);
       let vid = (e.target as SVGElement).closest('[data-vertex-id]')?.getAttribute('data-vertex-id') ?? null;
@@ -574,7 +574,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 鍛冶屋の騎士昇格（最大2体）。1体目タップで選択、2体目で昇格。候補1体なら即実行。----
+    // ---- 武将と商い: 鍛冶屋の武将加増（最大2体）。1体目タップで選択、2体目で加増。候補1体なら即実行。----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectSmithKnight') {
       const pts = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = pts ? nearestSmithKnightVertexId(state, pid, pts.x, pts.y) : null;
@@ -582,17 +582,17 @@ export function attachBoardEvents(
       if (!vid || !card) { if (getSmithFirst()) setSmithFirst(null); return; } // 空タップで選択解除
       const first = getSmithFirst();
       if (!first) {
-        // 候補が1体しかいないなら2体目を待たず即昇格。2体以上なら1体目を選択。
+        // 候補が1体しかいないなら2体目を待たず即加増。2体以上なら1体目を選択。
         if (smithKnightTargets(state, pid).length <= 1) { dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { smithVertexIds: [vid] } }); return; }
         setSmithFirst(vid); return;
       }
-      if (vid === first) { setSmithFirst(null); return; } // 同じ騎士の再タップ＝解除
+      if (vid === first) { setSmithFirst(null); return; } // 同じ武将の再タップ＝解除
       dispatch({ type: 'PLAY_PROGRESS', cardId: card.id, choice: { smithVertexIds: [first, vid] } });
       setSmithFirst(null);
       return;
     }
 
-    // ---- 騎士と商人: 技師の城壁建設（光った自分の都市をタップ → PLAY_PROGRESS engineerVertexId）----
+    // ---- 武将と商い: 技師の石垣建設（光った自分の城をタップ → PLAY_PROGRESS engineerVertexId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectEngineerCity') {
       const pte = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = pte ? nearestEngineerCityVertexId(state, pid, pte.x, pte.y) : null;
@@ -601,7 +601,7 @@ export function attachBoardEvents(
       return;
     }
 
-    // ---- 騎士と商人: 陰謀の敵騎士退去（光った敵騎士をタップ → PLAY_PROGRESS intrigueVertexId）----
+    // ---- 武将と商い: 陰謀の敵武将退去（光った敵武将をタップ → PLAY_PROGRESS intrigueVertexId）----
     if (state.phase === 'MAIN' && state.turnPhase === 'TRADE_BUILD' && mode === 'selectIntrigueKnight') {
       const pti2 = clickToBoardPixel(svg, e.clientX, e.clientY);
       const vid = pti2 ? nearestIntrigueKnightVertexId(state, pid, pti2.x, pti2.y) : null;
@@ -698,7 +698,7 @@ export function resolvePlacePreviewAction(
 ): Action | null {
   if (kind === 'road') return resolveEdgeAction(state, pid, 'road', targetId);
   if (kind === 'ship') return canBuildShip(state, pid, targetId) ? { type: 'BUILD_SHIP', edgeId: targetId } : null;
-  // 騎士と商人: 即時1タップ系（起動/昇格/商人）もタッチ時は確認バーを挟む。
+  // 武将と商い: 即時1タップ系（出陣/加増/御用商人）もタッチ時は確認バーを挟む。
   if (kind === 'activateKnight') return canActivateKnight(state, pid, targetId) ? { type: 'ACTIVATE_KNIGHT', vertexId: targetId } : null;
   if (kind === 'upgradeKnight') return canUpgradeKnight(state, pid, targetId) ? { type: 'UPGRADE_KNIGHT', vertexId: targetId } : null;
   if (kind === 'placeMerchant') {
@@ -915,7 +915,7 @@ function handleTileClick(
     return;
   }
 
-  // ---- 陸タイル: 盗賊を移動（隣接建物の所有者から盗む）----
+  // ---- 陸タイル: 野盗を移動（隣接建物の所有者から盗む）----
   const currentRobberTile = Object.values(state.tiles).find(t => t.hasRobber);
   if (currentRobberTile?.id === tileId) return;
 

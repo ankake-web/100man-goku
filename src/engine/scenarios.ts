@@ -4,8 +4,8 @@
 //
 // 盤面生成を「シナリオ」として抽象化する。各シナリオは
 //   - coords(): タイル座標集合（盤面幾何 buildBoardGeometry の入力）
-//   - build(geo, rng): タイル種別・数字・港の割り当て
-// を返す。既定は 'classic'（基本カタン）で、既存の生成（createRandomBoard）に委譲する
+//   - build(geo, rng): タイル種別・数字・湊の割り当て
+// を返す。既定は 'classic'（基本ルール）で、既存の生成（createRandomBoard）に委譲する
 // ため挙動は不変。航海者は 'seafarers_*' として追加する。
 //
 // 注意: 純粋関数（DOM非依存）。createInitialGameState から使う。
@@ -36,17 +36,17 @@ export interface Scenario {
   readonly description: string;
   /** UI のグルーピング用カテゴリ。 */
   readonly category: 'basic' | 'seafarers' | 'cities_knights';
-  /** 騎士と商人拡張を有効化する（GameState.expansion に反映）。 */
+  /** 武将と商い拡張を有効化する（GameState.expansion に反映）。 */
   readonly expansion?: 'cities_knights';
   /** タイル座標集合（盤面幾何の生成に使う）。航海者の可変盤ではここを差し替える。 */
   coords(): AxialCoord[];
-  /** 幾何確定後にタイル種別・数字・港を割り当てる。 */
+  /** 幾何確定後にタイル種別・数字・湊を割り当てる。 */
   build(geo: BoardGeometry, rng: () => number): ScenarioBoard;
   /** 勝利に必要な勝利点。未指定は基本の VP_TABLE.target(10)。航海者は新島活用を促すため高め。 */
   readonly victoryTarget?: number;
 }
 
-// ---- 基本カタン（既定）。挙動は従来どおり createRandomBoard に委譲。 ----
+// ---- 基本ルール（既定）。挙動は従来どおり createRandomBoard に委譲。 ----
 const classic: Scenario = {
   id: 'classic',
   name: '基本',
@@ -72,7 +72,7 @@ const NEW_SHORES_LAND: Record<string, { type: TileType; number: number | null; r
   '-2,1':  { type: 'forest',   number: 11 },
   '-2,2':  { type: 'field',    number: 3 },
   '-1,-2': { type: 'pasture',  number: 6 },
-  '-1,-1': { type: 'desert',   number: null, robber: true }, // 砂漠（盗賊初期位置）
+  '-1,-1': { type: 'desert',   number: null, robber: true }, // 荒野（野盗初期位置）
   '-1,0':  { type: 'hill',     number: 2 },
   '-1,1':  { type: 'mountain', number: 9 },
   '-1,2':  { type: 'forest',   number: 10 },
@@ -88,8 +88,8 @@ const NEW_SHORES_LAND: Record<string, { type: TileType; number: number | null; r
   '3,-1':  { type: 'hill',     number: 4 },
 };
 
-// 海岸線（陸1・海1 に面する辺）に港を決定論的に配置する。
-// 各辺の2頂点は陸の沿岸頂点なので、そこに港を持たせる。港が密集しないよう
+// 海岸線（陸1・海1 に面する辺）に湊を決定論的に配置する。
+// 各辺の2頂点は陸の沿岸頂点なので、そこに湊を持たせる。湊が密集しないよう
 // 使用頂点とその隣接頂点を避けながら最大 max 個まで、種別をプールから順に割り当てる。
 const HARBOR_POOL: HarborType[] = ['generic', 'wood', 'brick', 'generic', 'wool', 'grain', 'ore'];
 function coastalHarbors(geo: BoardGeometry, tiles: Record<TileId, Tile>, max = 4): Harbor[] {
@@ -108,7 +108,7 @@ function coastalHarbors(geo: BoardGeometry, tiles: Record<TileId, Tile>, max = 4
     const vA = geo.vertices[va];
     const vB = geo.vertices[vb];
     if (!vA || !vB) continue;
-    // 使用済み頂点・その隣接頂点に被るなら避ける（港の密集を防ぐ）。
+    // 使用済み頂点・その隣接頂点に被るなら避ける（湊の密集を防ぐ）。
     if (used.has(va) || used.has(vb)) continue;
     if (vA.adjacentVertexIds.some(v => used.has(v)) || vB.adjacentVertexIds.some(v => used.has(v))) continue;
     const type = HARBOR_POOL[harbors.length % HARBOR_POOL.length]!;
@@ -121,9 +121,9 @@ function coastalHarbors(geo: BoardGeometry, tiles: Record<TileId, Tile>, max = 4
   return harbors;
 }
 
-// 陸タイル定義表（タイルID→種別/数字/盗賊）から固定盤面を作る共通ビルダ。
+// 陸タイル定義表（タイルID→種別/数字/野盗）から固定盤面を作る共通ビルダ。
 // 表に無いタイルは海(sea)。19タイル footprint 内で陸塊を海で分離する航海者マップ用。
-// 海岸線には港を自動配置する（沿岸開拓地の交易価値）。
+// 海岸線には湊を自動配置する（沿岸の砦の交易価値）。
 type LandMap = Record<string, { type: TileType; number: number | null; robber?: boolean }>;
 function buildFromLandMap(landMap: LandMap): (geo: BoardGeometry, rng: () => number) => ScenarioBoard {
   return (geo) => {
@@ -155,7 +155,7 @@ const seafarersNewShores: Scenario = {
 //   新島A(右上 6・玄関口に金) / 新島B(右下 3)。島が3つあるため島ボーナス・金・航海の競争が core。
 //   陸21タイル（本島12＋A6＋B3）。
 const ARCHIPELAGO_LAND: LandMap = {
-  // 本島（左 12）。全5資源が揃う自給島。砂漠=盗賊初期位置。
+  // 本島（左 12）。全5資源が揃う自給島。荒野=野盗初期位置。
   '-3,0':  { type: 'pasture',  number: 9 },
   '-3,1':  { type: 'forest',   number: 5 },
   '-3,2':  { type: 'field',    number: 11 },
@@ -194,10 +194,10 @@ const seafarersArchipelago: Scenario = {
 // ============================================================
 // 追加シナリオ（航海者）。いずれも「本島＝最大の陸塊」で初期配置し、
 // それ以外の島へは航海で渡る（最初の入植で+2点）。陸タイル定義のみ書けば
-// 残りは海・港は自動配置（buildFromLandMap / coastalHarbors）。
+// 残りは海・湊は自動配置（buildFromLandMap / coastalHarbors）。
 // ============================================================
 
-// 共通の本島（左 q=-3..-1、12タイル・全5資源＋砂漠）。各追加マップで使い回す。
+// 共通の本島（左 q=-3..-1、12タイル・全5資源＋荒野）。各追加マップで使い回す。
 const MAIN_ISLAND: LandMap = {
   '-3,0':  { type: 'forest',   number: 9 },
   '-3,1':  { type: 'field',    number: 8 },
@@ -213,7 +213,7 @@ const MAIN_ISLAND: LandMap = {
   '-1,2':  { type: 'field',    number: 5 },
 };
 
-// ---- 砂漠を越えて：広い大洋(q=0,1は海)の先に、遠い金の島（右奥 q=2,3）。長い航路が要る。 ----
+// ---- 荒野を越えて：広い大洋(q=0,1は海)の先に、遠い金の島（右奥 q=2,3）。長い航路が要る。 ----
 const THROUGH_DESERT_LAND: LandMap = {
   ...MAIN_ISLAND,
   '2,-2': { type: 'forest',   number: 5 },
@@ -254,7 +254,7 @@ const CHAIN_ISLES_LAND: LandMap = {
 };
 
 // ---- 大連邦：海を少なくした大きな一枚陸。船は控えめ、人数多めでも遊べる大盤（12点）。 ----
-// 本島を右へ拡張して大陸化。沿岸に港、奥に金1。新島ボーナスは発生しない（1つの陸塊）。
+// 本島を右へ拡張して大陸化。沿岸に湊、奥に金1。新島ボーナスは発生しない（1つの陸塊）。
 const GREATER_CATAN_LAND: LandMap = {
   ...MAIN_ISLAND,
   '0,-2': { type: 'forest',   number: 3 },
@@ -272,7 +272,7 @@ const GREATER_CATAN_LAND: LandMap = {
 
 const seafarersThroughDesert: Scenario = {
   id: 'seafarers_throughdesert',
-  name: '航海者：砂漠を越えて',
+  name: '航海者：荒野を越えて',
   description: '広い大洋の先に遠い「金の島」。長い航路を繋いで渡れた者が勝つ（13点）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,
@@ -307,11 +307,11 @@ const seafarersGreaterCatan: Scenario = {
   victoryTarget: 12,
 };
 
-// ---- 騎士と商人(Cities & Knights) ----
+// ---- 武将と商い(Cities & Knights) ----
 const citiesKnights: Scenario = {
   id: 'cities_knights',
-  name: '都市と騎士',
-  description: '商品・都市改善・騎士・蛮族の襲来。最も奥深い拡張ルール（13点）。',
+  name: '城と武将',
+  description: '物産・城下の改善・武将・一揆勢の襲来。最も奥深い拡張ルール（13点）。',
   category: 'cities_knights',
   coords: () => getAllTileCoords(),
   build: (geo, rng) => createRandomBoard(geo, rng),

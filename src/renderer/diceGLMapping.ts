@@ -26,7 +26,7 @@ export const PROD_FACE_VALUE: ReadonlyArray<number> = [3, 4, 5, 2, 1, 6];
 
 export type EventResult = 'ship' | 'politics' | 'science' | 'trade';
 // イベントダイス: 面インデックス→結果（船×3＋ゲート×3）。
-//   +X=科学 / -X=商業 / +Y=船 / -Y=政治 / +Z=船 / -Z=船
+//   +X=学 / -X=商 / +Y=船 / -Y=政 / +Z=船 / -Z=船
 export const EVENT_FACE_RESULT: ReadonlyArray<EventResult> = [
   'science', 'trade', 'ship', 'politics', 'ship', 'ship',
 ];

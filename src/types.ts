@@ -1,5 +1,5 @@
-// ============================================================
-// src/types.ts — カタン全型定義
+﻿// ============================================================
+// src/types.ts — 100万石 全型定義
 // ============================================================
 
 // ---- 座標 ----
@@ -12,11 +12,11 @@ export type Point = { readonly x: number; readonly y: number };
 export type ResourceType = 'wood' | 'brick' | 'wool' | 'grain' | 'ore';
 export type ResourceHand = Record<ResourceType, number>;
 
-// ---- 騎士と商人(Cities & Knights)拡張: 商品(コモディティ) ----
-// 都市が「森→紙 / 牧草→布 / 山→金貨」を1個ずつ追加産出する。都市改善の支払いに使う。
+// ---- 武将と商い(Cities & Knights)拡張: 物産(コモディティ) ----
+// 城が「森林→紙 / 牧→絹 / 鉱山→金」を1個ずつ追加産出する。城下の改善の支払いに使う。
 export type CommodityType = 'coin' | 'cloth' | 'paper';
 export type CommodityHand = Record<CommodityType, number>;
-/** バンク交易の対象（資源または商品）。商品交易は騎士と商人のみ。 */
+/** バンク交易の対象（資源または物産）。物産交易は武将と商いのみ。 */
 export type TradeKind = ResourceType | CommodityType;
 
 // ---- タイル ----
@@ -30,7 +30,7 @@ export interface Tile {
   readonly id: TileId;
   readonly coord: AxialCoord;
   type: TileType;
-  number: number | null; // 砂漠は null
+  number: number | null; // 荒野は null
   hasRobber: boolean;
 }
 
@@ -47,7 +47,7 @@ export interface Vertex {
   readonly adjacentVertexIds: VertexId[];
   building: Building | null;
   harborType: HarborType | null;
-  // 騎士と商人: この頂点の騎士コマ（建物とは排他）。基本/航海者では未設定。
+  // 武将と商い: この頂点の武将コマ（建物とは排他）。基本/航海者では未設定。
   knight?: Knight | null;
 }
 
@@ -58,70 +58,70 @@ export type EdgeId = string;
 
 export interface Edge {
   readonly id: EdgeId;
-  readonly midpoint: Point;              // 道コマのSVG配置位置
+  readonly midpoint: Point;              // 街道コマのSVG配置位置
   readonly vertexIds: readonly [VertexId, VertexId];
-  readonly adjacentEdgeIds: EdgeId[];    // 最長道路DFS用
+  readonly adjacentEdgeIds: EdgeId[];    // 最長街道DFS用
   road: Road | null;
   // 航海者拡張: 海に面した辺に置く船。1つの辺は road か ship のどちらか一方のみ。
   // 基本ゲームでは常に null（海タイルが無いため）。
   ship?: Ship | null;
 }
 
-// ---- 建物・道 ----
+// ---- 建物・街道 ----
 
 export type BuildingType = 'settlement' | 'city';
 
 export interface Building {
   readonly type: BuildingType;
   readonly playerId: PlayerId;
-  // 騎士と商人: 都市改善Lv4到達でメトロポリス化した都市（勝利点4・城壁扱い）。
+  // 武将と商い: 城下の改善Lv4到達で天守化した城（勝利点4・石垣扱い）。
   readonly metropolis?: boolean;
-  // 騎士と商人: 城壁付きの都市（7の捨て札上限+2）。
+  // 武将と商い: 石垣付きの城（7の捨て札上限+2）。
   readonly wall?: boolean;
 }
 
-// ---- 騎士と商人(Cities & Knights) ----
-export type CkTrack = 'trade' | 'politics' | 'science'; // 交易(布)/政治(金貨)/科学(紙)
+// ---- 武将と商い(Cities & Knights) ----
+export type CkTrack = 'trade' | 'politics' | 'science'; // 商(絹)/政(金)/学(紙)
 export type KnightStrength = 1 | 2 | 3;                  // 基本/強力/最強
 
-// 騎士コマ（頂点に置く。自分の道網に接続。起動すると蛮族防衛に算入）。
+// 武将コマ（頂点に置く。自分の街道網に接続。起動すると一揆勢防衛に算入）。
 export interface Knight {
   readonly playerId: PlayerId;
   readonly strength: KnightStrength;
   readonly active: boolean;
-  // 騎士と商人: このターンに起動したか。起動したターンは行動(移動/押出/追払い)不可。END_TURNでクリア。
+  // 武将と商い: このターンに起動したか。起動したターンは行動(移動/押出/追払い)不可。END_TURNでクリア。
   readonly activatedThisTurn?: boolean;
 }
 
-// 進歩カード（発展カードの置換）。色イベント面で改善レベルに応じて引く。即時効果。
+// 進歩カード（軍略カードの置換）。色イベント面で改善レベルに応じて引く。即時効果。
 export type ProgressCardType =
-  // 科学(緑/紙)
-  | 'smith'        // 騎士を最大2体まで無料で1段昇格
-  | 'engineer'     // 城壁を1つ無料建設
-  | 'irrigation'   // 自分の建物に隣接する畑1つにつき麦2
-  | 'mining'       // 自分の建物に隣接する山1つにつき鉱石2
+  // 学(緑/紙)
+  | 'smith'        // 武将を最大2体まで無料で1段昇格
+  | 'engineer'     // 石垣を1つ無料建設
+  | 'irrigation'   // 自分の建物に隣接する田1つにつき米2
+  | 'mining'       // 自分の建物に隣接する鉱山1つにつき鉄2
   | 'alchemist'    // 次のダイスの目を自分で決めてから振る（自動で最良の目）
-  | 'crane'        // 都市改善を商品1個安く即建設
+  | 'crane'        // 城下の改善を物産1個安く即建設
   | 'inventor'     // 数字トークン2枚を入れ替え（自動で自分に有利に）
-  | 'medicine'     // 麦1鉱石2で開拓地を都市化
+  | 'medicine'     // 米1鉄2で砦を築城
   | 'printer'      // 即時+1勝利点
-  | 'road_building_progress' // 道を2本無料建設
-  // 交易(黄/布)
+  | 'road_building_progress' // 街道を2本無料建設
+  // 商(黄/絹)
   | 'resource_monopoly' // 各相手から指定資源を2枚（自動で最良資源）
-  | 'trade_monopoly'    // 各相手から指定商品を1枚（自動で最良商品）
+  | 'trade_monopoly'    // 各相手から指定物産を1枚（自動で最良物産）
   | 'master_merchant'   // VP最多の相手から無作為2枚
-  | 'commercial_harbor' // 各相手と 自分の資源1⇄相手の商品1 を交換
-  | 'merchant'          // 商人コマを資源地形に置く（+1VP・その地形2:1）
+  | 'commercial_harbor' // 各相手と 自分の資源1⇄相手の物産1 を交換
+  | 'merchant'          // 御用商人コマを資源地形に置く（+1VP・その地形2:1）
   | 'merchant_fleet'    // このターン、指定1種を2:1で交易
-  // 政治(青/金貨)
-  | 'warlord'      // 自分の騎士を全て無料で起動
+  // 政(青/金)
+  | 'warlord'      // 自分の武将を全て無料で起動
   | 'saboteur'     // 自分以上のVPの全員が資源を半数捨てる
   | 'wedding'      // 自分よりVPが高い各相手から2枚もらう
-  | 'bishop'       // 盗賊を移動し移動先隣接の全相手から各1枚
+  | 'bishop'       // 野盗を移動し移動先隣接の全相手から各1枚
   | 'constitution' // 即時+1勝利点
-  | 'deserter'     // 相手の騎士を1体消し、自分は同強度の非起動騎士を得る
-  | 'diplomat'     // 端の道1本を撤去（自分の道なら再建設）
-  | 'intrigue'     // 自分の道に隣接する敵騎士を1体退去
+  | 'deserter'     // 相手の武将を1体消し、自分は同強度の非起動武将を得る
+  | 'diplomat'     // 端の街道1本を撤去（自分の街道なら再建設）
+  | 'intrigue'     // 自分の街道に隣接する敵武将を1体退去
   | 'spy';         // 相手の進歩カードを1枚奪う
 
 export interface ProgressCard {
@@ -134,12 +134,12 @@ export interface Road {
   readonly playerId: PlayerId;
 }
 
-// 航海者拡張: 船（海上の道）。
+// 航海者拡張: 船（海上の街道）。
 export interface Ship {
   readonly playerId: PlayerId;
 }
 
-// ---- 港 ----
+// ---- 湊 ----
 
 export type HarborType = 'generic' | ResourceType; // generic = 3:1、ResourceType = 2:1
 
@@ -179,21 +179,21 @@ export interface Player {
   readonly aiDifficulty?: AiDifficulty;
 
   hand: ResourceHand;
-  // 騎士と商人: 商品(コモディティ)の手札。基本/航海者では未設定。
+  // 武将と商い: 物産(コモディティ)の手札。基本/航海者では未設定。
   commodities?: CommodityHand;
-  // 騎士と商人: 都市改善の各ツリーのレベル(0..5)。
+  // 武将と商い: 城下の改善の各ツリーのレベル(0..5)。
   improvements?: Record<CkTrack, number>;
-  // 騎士と商人: 蛮族撃退で得た「カタンの守護者」勝利点。
+  // 武将と商い: 一揆勢撃退で得た「国の守護者」勝利点。
   defenderVP?: number;
-  // 騎士と商人: 進歩カード(印刷/立憲)で得た恒久勝利点。
+  // 武将と商い: 進歩カード(印刷/立憲)で得た恒久勝利点。
   progressVP?: number;
-  // 騎士と商人: 商船隊(merchant_fleet)で「このターン2:1で交易できる」種別。END_TURN でクリア。
+  // 武将と商い: 商船隊(merchant_fleet)で「このターン2:1で交易できる」種別。END_TURN でクリア。
   merchantFleetType?: TradeKind | null;
-  // 騎士と商人: 手札の進歩カード（最大4枚）。
+  // 武将と商い: 手札の進歩カード（最大4枚）。
   progressCards?: ProgressCard[];
   // LANマスク用: 相手の進歩カード枚数（中身は隠す）。
   progressCardCount?: number;
-  // LANマスク用: 相手の商品(コモディティ)枚数（内訳は隠す）。
+  // LANマスク用: 相手の物産(コモディティ)枚数（内訳は隠す）。
   commodityCount?: number;
 
   // - アクションカードは使用後に除去する
@@ -205,8 +205,8 @@ export interface Player {
   remainingCities: number;       // 初期 4
   remainingShips?: number;       // 航海者拡張の船コマ（初期 15）。基本ゲームでは未使用。
 
-  knightsPlayed: number;        // 使用済み騎士カード枚数
-  longestRoadLength: number;    // 現在の最長道路長
+  knightsPlayed: number;        // 使用済み武将カード枚数
+  longestRoadLength: number;    // 現在の最長街道長
 
   hasLongestRoad: boolean;
   hasLargestArmy: boolean;
@@ -227,12 +227,12 @@ export type GamePhase =
   | 'GAME_OVER';
 
 export type TurnPhase =
-  | 'PRE_ROLL'    // ダイスロール前（発展カード使用可）
-  | 'ROBBER'      // 強盗処理中
+  | 'PRE_ROLL'    // ダイスロール前（軍略カード使用可）
+  | 'ROBBER'      // 野盗処理中
   | 'DISCARD'     // 手札8枚以上の捨て処理
   | 'GOLD'        // 航海者: 金タイル産出の資源選択待ち（DISCARD と同様の多人数解決）
-  | 'CITY_DOWNGRADE' // 騎士と商人: 蛮族敗北で格下げする都市の選択待ち（DISCARD と同様の多人数解決）
-  | 'PROGRESS_DISCARD' // 騎士と商人: 進歩カード上限超過（5枚目）で捨てる1枚の選択待ち（多人数解決）
+  | 'CITY_DOWNGRADE' // 武将と商い: 一揆勢敗北で格下げする城の選択待ち（DISCARD と同様の多人数解決）
+  | 'PROGRESS_DISCARD' // 武将と商い: 進歩カード上限超過（5枚目）で捨てる1枚の選択待ち（多人数解決）
   | 'TRADE_BUILD' // 交易・建設
   | 'END';
 
@@ -283,27 +283,27 @@ export interface GameState {
   playerOrder: PlayerId[];
 
   bank: ResourceHand;
-  // 騎士と商人: 商品(コモディティ)の銀行在庫。バンク交易/産出で増減し枯渇したら配れない。非CKでは未設定。
+  // 武将と商い: 物産(コモディティ)の銀行在庫。バンク交易/産出で増減し枯渇したら配れない。非CKでは未設定。
   commodityBank?: CommodityHand;
-  // 騎士と商人(Cities & Knights)拡張が有効か。未設定=基本/航海者ルール。
+  // 武将と商い(Cities & Knights)拡張が有効か。未設定=基本/航海者ルール。
   expansion?: 'cities_knights';
-  // 騎士と商人: 蛮族船の進行度(0..7)。7で襲来して判定後 0 に戻る。
+  // 武将と商い: 一揆勢船の進行度(0..7)。7で襲来して判定後 0 に戻る。
   barbarianPosition?: number;
-  // 騎士と商人: これまでの蛮族襲来回数。
+  // 武将と商い: これまでの一揆勢襲来回数。
   barbarianAttacks?: number;
-  // 騎士と商人: 直近のイベントダイスの目（'ship'=蛮族前進 / 色=進歩カード抽選）。
+  // 武将と商い: 直近のイベントダイスの目（'ship'=一揆勢前進 / 色=進歩カード抽選）。
   lastEventDie?: 'ship' | CkTrack;
-  // 騎士と商人: 直近に使われた進歩カード（公開情報）。使用した瞬間に種類を全員へ見せる演出に使う。
+  // 武将と商い: 直近に使われた進歩カード（公開情報）。使用した瞬間に種類を全員へ見せる演出に使う。
   // LANでは使用者の手札がマスクされ札種を引けないため、ここに公開で載せて他プレイヤーにも表示できるようにする。
   lastProgressPlay?: { playerId: PlayerId; cardType: ProgressCardType } | null;
-  // 騎士と商人: 各メトロポリスの保持者と所在頂点（ツリーごとに最大1人・盤面で一意）。
+  // 武将と商い: 各天守の保持者と所在頂点（ツリーごとに最大1人・盤面で一意）。
   // Lv5到達者が Lv4保持者から奪取するために頂点IDを保持する。
   metropolis?: Partial<Record<CkTrack, { playerId: PlayerId; vertexId: VertexId }>>;
-  // 騎士と商人: 進歩カードの山札（ツリー別）。
+  // 武将と商い: 進歩カードの山札（ツリー別）。
   progressDecks?: Record<CkTrack, ProgressCard[]>;
-  // 騎士と商人: 商人(merchant)コマの保持者と所在タイル（盤面で一意・移動式・+1VP/2:1）。
+  // 武将と商い: 御用商人(merchant)コマの保持者と所在タイル（盤面で一意・移動式・+1VP/2:1）。
   merchant?: { playerId: PlayerId; tileId: TileId } | null;
-  // 騎士と商人: 錬金術師(alchemist)で事前指定した次ROLL_DICEの目。消費したら null。
+  // 武将と商い: 錬金術師(alchemist)で事前指定した次ROLL_DICEの目。消費したら null。
   alchemistForcedDice?: [number, number] | null;
 
   devDeck: DevCard[];
@@ -320,27 +320,27 @@ export interface GameState {
   // MAIN / GAME_OVER では null
   setupSubPhase: SetupSubPhase | null;
 
-  // セットアップで直前に置いた開拓地の頂点。直後の道はこの開拓地に接続せねばならない
+  // セットアップで直前に置いた砦の頂点。直後の街道はこの砦に接続せねばならない
   // （標準ルール）。PLACE_ROAD 解決後は null に戻す。未設定時は従来の接続判定にフォールバック。
   setupRoadAnchor?: VertexId | null;
 
   lastDiceRoll: [number, number] | null;
-  // このターンにダイスを振ったか（騎士カードをダイス前に使用した場合の判別用）
+  // このターンにダイスを振ったか（武将カードをダイス前に使用した場合の判別用）
   diceRolledThisTurn: boolean;
-  // 街道建設カードで残り無料配置できる道路数（0=通常モード、1 or 2=無料配置中）
+  // 普請カードで残り無料配置できる街道数（0=通常モード、1 or 2=無料配置中）
   roadBuildingRoadsRemaining: number;
   // 航海者: このターンに船を移動したか（航海は1ターン1回）。END_TURN でリセット。
   shipMovedThisTurn?: boolean;
   // 航海者: このターンに建設した船の辺ID（建てたばかりの船は移動できない）。END_TURN でリセット。
   shipsBuiltThisTurn?: EdgeId[];
-  // 騎士と商人: このターンに騎士を移動したか（移動は1ターン1回）。END_TURN でリセット。
+  // 武将と商い: このターンに武将を移動したか（移動は1ターン1回）。END_TURN でリセット。
   knightMovedThisTurn?: boolean;
-  // 騎士と商人: このターンに騎士で強盗を追い払ったか（1ターン1回）。END_TURN でリセット。
+  // 武将と商い: このターンに武将で野盗を追い払ったか（1ターン1回）。END_TURN でリセット。
   knightChasedThisTurn?: boolean;
-  // 航海者: 海賊コマの現在地（海タイルID）。未配置は undefined。盗賊の海版で、隣接する
+  // 航海者: 海賊コマの現在地（海タイルID）。未配置は undefined。野盗の海版で、隣接する
   // 自分の船建設を封じ、隣接船の所有者から1枚奪える。基本ゲームでは未使用。
   piratePosition?: TileId;
-  // このターンに騎士・進歩カードを使ったか（1ターン1枚制限）
+  // このターンに武将・進歩カードを使ったか（1ターン1枚制限）
   devCardPlayedThisTurn: boolean;
 
   longestRoadHolder: PlayerId | null;
@@ -358,12 +358,12 @@ export interface GameState {
   // TRADE_BUILD へ進む（DISCARD と同様の多人数解決）。基本ゲームでは常に未使用。
   pendingGoldChoice?: Record<string, number>;
 
-  // 騎士と商人: 蛮族敗北で「都市1つを格下げする」必要があるプレイヤー（最弱・平の都市持ち）。
+  // 武将と商い: 一揆勢敗北で「城1つを格下げする」必要があるプレイヤー（最弱・平の城持ち）。
   // turnPhase==='CITY_DOWNGRADE' の間だけ非空。各自 DOWNGRADE_CITY で解決し、全員空になると
   // 生産/捨て札など本来の続きへ進む（DISCARD と同様の多人数解決）。
   pendingCityDowngrade?: PlayerId[];
 
-  // 騎士と商人: 進歩カードの手札上限(4・VPカード除外)を超えて引いたため、捨てる1枚を選ぶ必要が
+  // 武将と商い: 進歩カードの手札上限(4・VPカード除外)を超えて引いたため、捨てる1枚を選ぶ必要が
   // あるプレイヤー。turnPhase==='PROGRESS_DISCARD' の間だけ非空。各自 DISCARD_PROGRESS で解決。
   pendingProgressDiscard?: PlayerId[];
 
@@ -402,28 +402,28 @@ export interface ProgressChoice {
   dice?: readonly [number, number];
   // 発明家: 数字トークンを入れ替える2タイルのID。
   inventorTiles?: readonly [TileId, TileId];
-  // 商人: 商人コマを置く資源タイルのID（自分の建物に隣接する陸タイル）。
+  // 御用商人: 御用商人コマを置く資源タイルのID（自分の建物に隣接する陸タイル）。
   merchantTileId?: TileId;
-  // クレーン: 1段安く改善するトラック（交易/政治/科学）。
+  // クレーン: 1段安く改善するトラック（商/政/学）。
   craneTrack?: CkTrack;
-  // 僧正(bishop): 盗賊を置くタイルのID（隣接する全相手から1枚ずつ奪う）。
+  // 僧正(bishop): 野盗を置くタイルのID（隣接する全相手から1枚ずつ奪う）。
   bishopTileId?: TileId;
-  // 外交官(diplomat): 撤去する相手の「端の道」の辺ID。
+  // 外交官(diplomat): 撤去する相手の「端の街道」の辺ID。
   diplomatEdgeId?: EdgeId;
-  // 脱走兵(deserter): 消す相手の騎士の頂点ID（同強度の騎士を自分が得る）。
+  // 脱走兵(deserter): 消す相手の武将の頂点ID（同強度の武将を自分が得る）。
   deserterVertexId?: VertexId;
-  // 医術(medicine): 都市に格上げする自分の開拓地の頂点ID。
+  // 医術(medicine): 城に格上げする自分の砦の頂点ID。
   medicineVertexId?: VertexId;
-  // 商業港(commercial_harbor): 各相手に渡す自分の資源1種＋各相手から要求する商品1種を指名（全相手共通）。
+  // 商業湊(commercial_harbor): 各相手に渡す自分の資源1種＋各相手から要求する物産1種を指名（全相手共通）。
   commercialGive?: ResourceType;
   commercialTake?: CommodityType;
-  // 商船隊(merchant_fleet): このターン 2:1 で交易する1種（資源 or 商品）。
+  // 商船隊(merchant_fleet): このターン 2:1 で交易する1種（資源 or 物産）。
   fleetType?: TradeKind;
-  // 鍛冶屋(smith): 1段昇格する自分の騎士の頂点ID（最大2体）。
+  // 鍛冶屋(smith): 1段昇格する自分の武将の頂点ID（最大2体）。
   smithVertexIds?: readonly VertexId[];
-  // 技師(engineer): 城壁を建てる自分の都市の頂点ID。
+  // 技師(engineer): 石垣を建てる自分の城の頂点ID。
   engineerVertexId?: VertexId;
-  // 陰謀(intrigue): 退去させる「自分の道/船に隣接する敵騎士」の頂点ID。
+  // 陰謀(intrigue): 退去させる「自分の街道/船に隣接する敵武将」の頂点ID。
   intrigueVertexId?: VertexId;
   // スパイ(spy): 進歩カードを盗む相手と、盗む札のID（公式: 相手の手札を見て1枚選ぶ）。
   spyTargetPlayerId?: PlayerId;
@@ -435,7 +435,7 @@ export type Action =
   | { type: 'MOVE_ROBBER';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'MOVE_PIRATE';         tileId: TileId; stealFromPlayerId: PlayerId | null }
   | { type: 'DISCARD_RESOURCES';   playerId: PlayerId; resources: Partial<ResourceHand>; commodities?: Partial<CommodityHand> }
-  | { type: 'DOWNGRADE_CITY';      playerId: PlayerId; vertexId: VertexId } // 蛮族敗北で都市を格下げ
+  | { type: 'DOWNGRADE_CITY';      playerId: PlayerId; vertexId: VertexId } // 一揆勢敗北で城を格下げ
   | { type: 'DISCARD_PROGRESS';    playerId: PlayerId; cardId: string }     // 進歩カード上限超過で1枚捨てる
   | { type: 'BUILD_ROAD';          edgeId: EdgeId }
   | { type: 'BUILD_SHIP';          edgeId: EdgeId }
@@ -452,10 +452,10 @@ export type Action =
   | { type: 'BUILD_KNIGHT';        vertexId: VertexId }
   | { type: 'ACTIVATE_KNIGHT';     vertexId: VertexId }
   | { type: 'UPGRADE_KNIGHT';      vertexId: VertexId }
-  | { type: 'BUILD_IMPROVEMENT';   track: CkTrack; metropolisVertexId?: VertexId } // metropolisVertexId: Lv4+到達時にメトロポリス化する都市を手動指定（任意）
+  | { type: 'BUILD_IMPROVEMENT';   track: CkTrack; metropolisVertexId?: VertexId } // metropolisVertexId: Lv4+到達時に天守化する城を手動指定（任意）
   | { type: 'BUILD_CITY_WALL';     vertexId: VertexId }
   | { type: 'MOVE_KNIGHT';         fromVertexId: VertexId; toVertexId: VertexId }
-  | { type: 'CHASE_ROBBER';        vertexId: VertexId } // 騎士で強盗を追い払う（ROBBERフェーズへ遷移）
+  | { type: 'CHASE_ROBBER';        vertexId: VertexId } // 武将で野盗を追い払う（ROBBERフェーズへ遷移）
   | { type: 'PLAY_PROGRESS';       cardId: string; choice?: ProgressChoice; cardType?: ProgressCardType } // cardType: 使用札の種類（公開情報）。LANで他プレイヤーが盤面表示するため送信側が付与する。
   | { type: 'OFFER_TRADE';         offer: TradeOffer; targetPlayerIds: PlayerId[] }
   | { type: 'RESPOND_TRADE';       response: PlayerResponse }

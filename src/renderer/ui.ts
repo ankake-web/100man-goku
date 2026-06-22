@@ -13,7 +13,7 @@ import {
   isCk, canBuildImprovement, canBuildKnight, canActivateKnight, canUpgradeKnight, canBuildCityWall, canPlayProgressLoose,
   playerHasMovableKnight, playerHasChasableKnight, robberAdjacentChasableVertexIds, inventorTiles, progressDiscardCandidates, craneEligibleTracks,
 } from '../engine/citiesKnights';
-import { CK_TRACK_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
+import { CK_TRACK_NAME, CK_PROGRESS_CATEGORY_NAME, CK_TRACK_COMMODITY, CK_BARBARIAN_MAX, COMMODITY_TYPES, improvementCost, PROGRESS_CARD_NAME, PROGRESS_CARD_DESC, PROGRESS_DECK_CARDS, TILE_RESOURCE_MAP } from '../constants';
 import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, ProgressChoice } from '../types';
 import type { BuildMode } from './events';
 
@@ -21,18 +21,18 @@ import type { BuildMode } from './events';
 import { ASSETS, assetImg, houseImg, cityImg, type ColorKey } from '../assets/manifest';
 
 const knightImg = ASSETS.knight.basic;
-// 騎士と商人: 商品アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
+// 武将と商い: 物産アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
 const COMMODITY_IMG: Record<CommodityType, string> = ASSETS.commodity;
-// 騎士と商人: 都市改善トラックのアイコン画像。
+// 武将と商い: 城下の改善トラックのアイコン画像。
 const IMP_IMG: Record<CkTrack, string> = ASSETS.trackIcon;
-// 各トラックの段階で得られる恩恵（Lv3=特殊建築の効果 / Lv4=メトロポリス / Lv5=最大）。
+// 各トラックの段階で得られる恩恵（Lv3=特殊建築の効果 / Lv4=天守 / Lv5=最大）。
 // 「Lv3で何が起きるか」を建設ボタンに表示するために使う（エンジンの実装と一致）。
 const CK_TRACK_BENEFIT: Record<CkTrack, Record<number, string>> = {
-  trade:    { 3: '商品を銀行と2:1で交易', 4: 'メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
-  politics: { 3: '騎士を最強(Lv3)に昇格可', 4: 'メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
-  science:  { 3: '無産出のターンに資源1枚', 4: 'メトロポリス（+2点）', 5: '他のメトロポリスを奪取可' },
+  trade:    { 3: '物産を銀行と2:1で交易', 4: '天守（+2点）', 5: '他の天守を奪取可' },
+  politics: { 3: '武将を精兵(Lv3)に加増可', 4: '天守（+2点）', 5: '他の天守を奪取可' },
+  science:  { 3: '無産出のターンに資源1枚', 4: '天守（+2点）', 5: '他の天守を奪取可' },
 };
-// 商品アイコンの <img>。
+// 物産アイコンの <img>。
 function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
   const img = document.createElement('img');
   img.className = cls; img.src = COMMODITY_IMG[c]; img.alt = c; img.draggable = false;
@@ -42,12 +42,12 @@ function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
 function inlineIc(src: string | null | undefined, cls = 'inline-ic'): HTMLImageElement {
   return assetImg(src ?? null, cls, '', '');
 }
-// 資源/商品の「アイコン画像＋テキスト」を span へ詰める（交易・捨て札UI等で絵文字を画像へ置換）。
+// 資源/物産の「アイコン画像＋テキスト」を span へ詰める（交易・捨て札UI等で絵文字を画像へ置換）。
 function setIconText(target: HTMLElement, imgSrc: string, text: string): void {
   target.textContent = '';
   target.append(inlineIc(imgSrc, 'inline-ic'), document.createTextNode(text));
 }
-// 「選択中：◯ ・ ◯ ・ ？」を絵文字でなく素材画像で描く（金タイル/年の豊穣の選択状況）。
+// 「選択中：◯ ・ ◯ ・ ？」を絵文字でなく素材画像で描く（金タイル/豊作の選択状況）。
 function appendChosenIcons(target: HTMLElement, slots: (ResourceType | null)[]): void {
   target.textContent = '選択中：';
   slots.forEach((s, i) => {
@@ -73,7 +73,7 @@ function makeImgBtn(icon: string | HTMLElement, label: string | (string | HTMLEl
   if (!disabled) btn.addEventListener('click', onClick);
   return btn;
 }
-// ログ中の絵文字（資源/商品/コマ/称号…）を素材アイコン/CSSグリフに置換する。
+// ログ中の絵文字（資源/物産/コマ/称号…）を素材アイコン/CSSグリフに置換する。
 // RESOURCE_IMG 等は後方定義のため、参照は呼び出し時(実行時)に解決する（遅延構築）。
 let _logEmojiMap: Record<string, string | (() => HTMLElement)> | null = null;
 function logEmojiMap(): Record<string, string | (() => HTMLElement)> {
@@ -81,7 +81,7 @@ function logEmojiMap(): Record<string, string | (() => HTMLElement)> {
   _logEmojiMap = {
     // 資源
     '🌲': RESOURCE_IMG.wood, '🧱': RESOURCE_IMG.brick, '🐑': RESOURCE_IMG.wool, '🌾': RESOURCE_IMG.grain, '⛰': RESOURCE_IMG.ore,
-    // 商品
+    // 物産
     '🪙': COMMODITY_IMG.coin, '🧵': COMMODITY_IMG.cloth, '📜': COMMODITY_IMG.paper,
     // コマ/建物/称号
     '🏠': ASSETS.piece.settlement ?? '', '🏙': ASSETS.piece.city ?? '',
@@ -116,7 +116,7 @@ function renderLogMessage(parent: HTMLElement, message: string): void {
   }
   flush();
 }
-// modeBtn のアイコン版（道/開拓地/都市などの建設トグル）。
+// modeBtn のアイコン版（街道/砦/城などの建設トグル）。
 function modeImgBtn(icon: string | HTMLElement, label: string | (string | HTMLElement)[], mode: Exclude<BuildMode, 'idle'>, canAfford: boolean, current: BuildMode, setBuildMode: (m: BuildMode) => void): HTMLButtonElement {
   const isActive = current === mode;
   const disabled = !canAfford && !isActive;
@@ -169,7 +169,7 @@ const PLAYER_COLORS: Record<string, string> = {
   player3: '#a855f7',
   player4: '#f0a020',
 };
-// プレイヤーID→コマ画像の色キー（開拓地/都市の色つき画像用）。
+// プレイヤーID→コマ画像の色キー（砦/城の色つき画像用）。
 const PLAYER_COLOR_KEY: Record<string, ColorKey> = {
   player1: 'red', player2: 'blue', player3: 'purple', player4: 'orange',
 };
@@ -212,23 +212,23 @@ function resIconImg(r: ResourceType, cls: string): HTMLImageElement {
 }
 
 const RESOURCE_NAMES: Record<ResourceType, string> = {
-  wood: '木材', brick: 'レンガ', wool: '羊毛', grain: '麦', ore: '鉄鉱',
+  wood: '木材', brick: '石材', wool: '馬', grain: '米', ore: '鉄',
 };
-const COMMODITY_NAMES: Record<CommodityType, string> = { coin: '金貨', cloth: '布', paper: '紙' };
+const COMMODITY_NAMES: Record<CommodityType, string> = { coin: '金', cloth: '絹', paper: '紙' };
 
 const DEV_CARD_NAMES: Record<string, string> = {
-  knight:          '⚔ 騎士',
-  road_building:   '🛤 道路建設',
-  year_of_plenty:  '🌾 年の豊穣',
-  monopoly:        '🏛 独占',
+  knight:          '⚔ 武将',
+  road_building:   '🛤 普請',
+  year_of_plenty:  '🌾 豊作',
+  monopoly:        '🏛 専売',
 };
 
 // F-06: カードパネル用コンパクト名
 const DEV_CARD_CHIP_NAMES: Record<string, string> = {
-  knight:          '⚔騎士',
-  road_building:   '🛤道路建設',
-  year_of_plenty:  '🌾年の豊穣',
-  monopoly:        '🏛独占',
+  knight:          '⚔武将',
+  road_building:   '🛤普請',
+  year_of_plenty:  '🌾豊作',
+  monopoly:        '🏛専売',
   victory_point:   '★',
 };
 
@@ -254,15 +254,15 @@ function phaseText(state: GameState): string {
     const half = state.phase === 'SETUP_FORWARD' ? '前半' : '後半';
     if (isCpuTurn) return `セットアップ${half}：配置中…`;
     return state.setupSubPhase === 'PLACE_SETTLEMENT'
-      ? `セットアップ${half}：開拓地を置く`
-      : `セットアップ${half}：道を置く`;
+      ? `セットアップ${half}：砦を置く`
+      : `セットアップ${half}：街道を置く`;
   }
 
   switch (state.turnPhase) {
     case 'PRE_ROLL':
       return isCpuTurn ? '手番中…' : 'ダイスを振る';
     case 'ROBBER':
-      return isCpuTurn ? '盗賊を移動中…' : '盗賊を動かすタイルをクリック';
+      return isCpuTurn ? '野盗を移動中…' : '野盗を動かすタイルをクリック';
     case 'DISCARD': {
       // 捨て札は手番者とは限らない（手札8枚以上の全員が対象）ので、対象者名は出す。
       const discardPid = findPendingDiscarder(state);
@@ -319,7 +319,7 @@ function modeBtn(
 }
 
 // ============================================================
-// 発展カード：使用可能カード一覧
+// 軍略カード：使用可能カード一覧
 // ============================================================
 
 function getPlayableDevCards(
@@ -374,7 +374,7 @@ function buildDiscardUI(
   header.append(` ${player.name}：${target}枚を捨てる（あと ${remaining}枚 ・ ${chosen}/${target}）`);
   div.appendChild(header);
 
-  // 騎士と商人では資源と商品の両方が捨て対象なので、見出しと背景色で区別する。
+  // 武将と商いでは資源と物産の両方が捨て対象なので、見出しと背景色で区別する。
   if (ck) div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '捨てる資源：' }));
   const resRow = el('div', 'modal-res-row');
   resRow.setAttribute('data-kind', 'resource');
@@ -398,9 +398,9 @@ function buildDiscardUI(
   }
   div.appendChild(resRow);
 
-  // 騎士と商人: 商品も捨て対象。
+  // 武将と商い: 物産も捨て対象。
   if (ck) {
-    div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '捨てる商品：' }));
+    div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: '捨てる物産：' }));
     const comm = player.commodities!;
     const commRow = el('div', 'modal-res-row');
     commRow.setAttribute('data-kind', 'commodity');
@@ -456,8 +456,8 @@ function buildRobberTargetUI(
     const opponent = state.players[opponentPid];
     if (!opponent) continue;
     const color = PLAYER_COLORS[opponentPid] ?? '#aaa';
-    // 他プレイヤーの手札はLANではマスクされ枚数のみ開示される。騎士と商人では
-    // 商品も奪取対象なので合算した「奪える枚数」を表示する（エンジン判定と一致）。
+    // 他プレイヤーの手札はLANではマスクされ枚数のみ開示される。武将と商いでは
+    // 物産も奪取対象なので合算した「奪える枚数」を表示する（エンジン判定と一致）。
     const totalCards = robbableCardCount(state, opponentPid);
     const btn = makeBtn(
       `${opponent.name}（手札${totalCards}枚）`,
@@ -513,7 +513,7 @@ function buildBankTradeUI(
     return makeImgBtn(kindIcon(k), kindName(k), receive === k ? 'btn-active' : inBank ? 'btn-build' : 'btn-disabled', !inBank,
       () => setUIPhase({ type: 'bankTrade', give, receive: receive === k ? null : k }));
   };
-  // 資源・商品を別々の見出し＋行（背景色で区別）で描画する。
+  // 資源・物産を別々の見出し＋行（背景色で区別）で描画する。
   const appendKindSection = (isReceive: boolean): void => {
     const verb = isReceive ? '受け取る' : '渡す';
     div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: `${verb}資源：` }));
@@ -521,7 +521,7 @@ function buildBankTradeUI(
     for (const k of RESOURCE_TYPES) { if (isReceive && k === give) continue; resRow.appendChild(kindButton(k, isReceive)); }
     div.appendChild(resRow);
     if (ck) {
-      div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: `${verb}商品：` }));
+      div.appendChild(Object.assign(el('div', 'modal-section-label'), { textContent: `${verb}物産：` }));
       const comRow = el('div', 'modal-res-row'); comRow.setAttribute('data-kind', 'commodity');
       for (const k of COMMODITY_TYPES) { if (isReceive && k === give) continue; comRow.appendChild(kindButton(k, isReceive)); }
       div.appendChild(comRow);
@@ -550,11 +550,11 @@ function buildBankTradeUI(
 }
 
 // ============================================================
-// 騎士と商人: 蛮族敗北での都市格下げ選択
+// 武将と商い: 一揆勢敗北での城の格下げ選択
 // ============================================================
-// （蛮族敗北の都市格下げは盤面の都市タップで選ぶ方式に変更。専用モーダルは廃止。）
+// （一揆勢敗北の城の格下げは盤面の城タップで選ぶ方式に変更。専用モーダルは廃止。）
 
-// 騎士と商人: 進歩カード上限超過（5枚目を引いた）→ 捨てる1枚を選ぶモーダル。
+// 武将と商い: 進歩カード上限超過（5枚目を引いた）→ 捨てる1枚を選ぶモーダル。
 // 勝利点カード(憲法/印刷機)は上限対象外なので候補に出さない。
 function buildProgressDiscardUI(state: GameState, pid: PlayerId, dispatch: (a: Action) => void): HTMLDivElement {
   const div = el('div', 'modal-panel');
@@ -644,7 +644,7 @@ export function buildGoldChoiceUI(
 }
 
 // ============================================================
-// Year of Plenty UI（年の豊穣）
+// Year of Plenty UI（豊作）
 // ============================================================
 
 function buildYearOfPlentyUI(
@@ -659,7 +659,7 @@ function buildYearOfPlentyUI(
     uiPhase.type === 'yearOfPlenty' ? uiPhase.slots : [null, null];
 
   const header = el('div', 'modal-header');
-  header.append(inlineIc(RESOURCE_IMG.grain, 'inline-ic'), document.createTextNode(' 年の豊穣：資源2枚を受け取る'));
+  header.append(inlineIc(RESOURCE_IMG.grain, 'inline-ic'), document.createTextNode(' 豊作：資源2枚を受け取る'));
   div.appendChild(header);
 
   const status = el('div', 'modal-section-label');
@@ -706,7 +706,7 @@ function buildYearOfPlentyUI(
 }
 
 // ============================================================
-// Monopoly UI（独占）
+// Monopoly UI（専売）
 // ============================================================
 
 function buildMonopolyUI(
@@ -719,7 +719,7 @@ function buildMonopolyUI(
   const resource = uiPhase.type === 'monopoly' ? uiPhase.resource : null;
 
   const header = el('div', 'modal-header');
-  header.textContent = '🏛 独占：資源1種を宣言';
+  header.textContent = '🏛 専売：資源1種を宣言';
   div.appendChild(header);
 
   const resRow = el('div', 'modal-res-row');
@@ -736,7 +736,7 @@ function buildMonopolyUI(
   div.appendChild(resRow);
 
   div.appendChild(makeBtn(
-    '✓ 独占実行',
+    '✓ 専売実行',
     resource !== null ? 'btn-primary' : 'btn-disabled',
     resource === null,
     () => { if (resource) dispatch({ type: 'PLAY_MONOPOLY', resource }); },
@@ -1200,7 +1200,7 @@ function buildPendingTradeUI(
 }
 
 // ============================================================
-// 発展カードボタン共通ヘルパー（PRE_ROLL / TRADE_BUILD 両方で使用）
+// 軍略カードボタン共通ヘルパー（PRE_ROLL / TRADE_BUILD 両方で使用）
 // ============================================================
 
 function appendDevCardButtons(
@@ -1210,11 +1210,11 @@ function appendDevCardButtons(
   setUIPhase: (p: UIPhase) => void,
   dispatch: (a: Action) => void,
 ): void {
-  // 街道建設カード処理中は表示しない
+  // 普請カード処理中は表示しない
   if (state.roadBuildingRoadsRemaining > 0) return;
 
   let playable = getPlayableDevCards(player, state.globalTurnNumber);
-  // ダイス前（PRE_ROLL）は騎士カードのみ使用可。他はダイス後の交易・建設フェーズで。
+  // ダイス前（PRE_ROLL）は武将カードのみ使用可。他はダイス後の交易・建設フェーズで。
   if (!state.diceRolledThisTurn) {
     playable = playable.filter(c => c.type === 'knight');
   }
@@ -1234,12 +1234,12 @@ function appendDevCardButtons(
         if (type === 'monopoly')       setUIPhase({ type: 'monopoly', resource: null });
       },
     );
-    // 騎士は ⚔ 絵文字の代わりに騎士フィギュア画像をアイコンとして先頭に表示。
+    // 武将は ⚔ 絵文字の代わりに武将フィギュア画像をアイコンとして先頭に表示。
     if (type === 'knight') {
       btn.textContent = label.replace('⚔ ', '');
       const ic = document.createElement('img');
       ic.className = 'dev-knight-icon';
-      ic.src = knightImg; ic.alt = '騎士'; ic.draggable = false;
+      ic.src = knightImg; ic.alt = '武将'; ic.draggable = false;
       btn.prepend(ic);
     }
     div.appendChild(btn);
@@ -1278,11 +1278,11 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
   const ul = document.createElement('ul');
   ul.className = 'help-list';
   for (const r of [
-    '船は「木材＋羊毛」。海に面した辺に置けます。',
-    '道・船は自分の建物／道／船とつながっている必要があります。',
+    '船は「木材＋馬」。海に面した辺に置けます。',
+    '街道・船は自分の建物／街道／船とつながっている必要があります。',
     '動かせるのは「行き止まり（片端が他とつながっていない）の船」だけ。',
     '船の移動は1ターンに1隻まで。',
-    '新しい島に開拓地を建てると、そこから先へさらに船を伸ばせます。',
+    '新しい島に砦を建てると、そこから先へさらに船を伸ばせます。',
   ]) {
     const li = document.createElement('li');
     li.textContent = r;
@@ -1301,8 +1301,8 @@ function showShipRulesHelp(state: GameState, pid: PlayerId): void {
   document.body.appendChild(overlay);
 }
 
-// 騎士と商人: 進歩カードの「効果説明＋使う/やめる」モーダル（使用前に効果が分かるように）。
-// 公式準拠の選択UI: 資源独占=資源を指名 / 交易独占=商品を指名 / 大商人=相手を選ぶ。
+// 武将と商い: 進歩カードの「効果説明＋使う/やめる」モーダル（使用前に効果が分かるように）。
+// 公式準拠の選択UI: 資源独占=資源を指名 / 交易独占=物産を指名 / 大商人=相手を選ぶ。
 function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: PlayerId | undefined, play: (c: ProgressChoice) => void, cancel: () => void): HTMLElement {
   const wrap = el('div', 'pc-choice');
   const label = el('div', 'pc-choice-label');
@@ -1359,11 +1359,11 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     return wrap;
   }
   if (card.type === 'crane') {
-    // クレーン: 商品1個分安く1段上げるトラックを選ぶ（払えるトラックのみ・割引後コストを表示）。
-    label.textContent = '改善するトラックを選ぶ（通常より商品1個分安い）';
+    // クレーン: 物産1個分安く1段上げるトラックを選ぶ（払えるトラックのみ・割引後コストを表示）。
+    label.textContent = '改善するトラックを選ぶ（通常より物産1個分安い）';
     const tracks = pid ? craneEligibleTracks(state, pid) : [];
     if (tracks.length === 0) {
-      row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '改善できるトラックがありません（都市と商品が必要）' }));
+      row.appendChild(Object.assign(el('div', 'pc-choice-empty'), { textContent: '改善できるトラックがありません（城と物産が必要）' }));
       row.appendChild(makeBtn('効果なしで使う（カードを消費）', 'btn-end', false, () => play({})));
     } else {
       const lvOf = (t: CkTrack): number => state.players[pid!]?.improvements?.[t] ?? 0;
@@ -1378,7 +1378,7 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     return wrap;
   }
   if (card.type === 'merchant_fleet') {
-    // 商船隊: このターン 2:1 で交易する1種（資源5＋商品3）を選ぶ。
+    // 商船隊: このターン 2:1 で交易する1種（資源5＋物産3）を選ぶ。
     label.textContent = '2:1で交易する種類を選ぶ（このターン中）';
     for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ fleetType: r })));
     for (const c of COMMODITY_TYPES) row.appendChild(makeImgBtn(COMMODITY_IMG[c], COMMODITY_NAMES[c], 'btn-build', false, () => play({ fleetType: c })));
@@ -1386,8 +1386,8 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     return wrap;
   }
   if (card.type === 'commercial_harbor') {
-    // 商業港: 各相手に渡す資源1種＋もらう商品1種を指名（全相手共通の宣言型）。
-    label.textContent = '渡す資源と もらう商品を選ぶ（各相手と交換）';
+    // 商業湊: 各相手に渡す資源1種＋もらう物産1種を指名（全相手共通の宣言型）。
+    label.textContent = '渡す資源と もらう物産を選ぶ（各相手と交換）';
     const me = pid ? state.players[pid] : null;
     let give: ResourceType | null = null;
     let take: CommodityType | null = null;
@@ -1410,7 +1410,7 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     render();
     wrap.append(label,
       Object.assign(el('div', 'pc-choice-sub'), { textContent: '渡す資源（自分の手札から1種）' }), giveRow,
-      Object.assign(el('div', 'pc-choice-sub'), { textContent: 'もらう商品（各相手から1枚ずつ）' }), takeRow,
+      Object.assign(el('div', 'pc-choice-sub'), { textContent: 'もらう物産（各相手から1枚ずつ）' }), takeRow,
       confirm, makeBtn('やめる', 'btn-end', false, cancel));
     return wrap;
   }
@@ -1449,12 +1449,12 @@ function buildProgressChoicePicker(card: ProgressCard, state: GameState, pid: Pl
     label.textContent = '奪う資源を選ぶ';
     for (const r of RESOURCE_TYPES) row.appendChild(makeImgBtn(RESOURCE_IMG[r], RESOURCE_NAMES[r], 'btn-build', false, () => play({ resource: r })));
   } else if (card.type === 'trade_monopoly') {
-    label.textContent = '奪う商品を選ぶ';
+    label.textContent = '奪う物産を選ぶ';
     for (const c of COMMODITY_TYPES) row.appendChild(makeImgBtn(COMMODITY_IMG[c], COMMODITY_NAMES[c], 'btn-build', false, () => play({ commodity: c })));
   } else { // master_merchant
     label.textContent = '相手を選ぶ（自分よりVPが高い相手）';
     const myVp = pid ? calcVP(state, pid) : 0;
-    const cardsOf = (o: PlayerId): number => robbableCardCount(state, o); // 資源＋商品（大商人は商品も奪える）
+    const cardsOf = (o: PlayerId): number => robbableCardCount(state, o); // 資源＋物産（大商人は物産も奪える）
     const eligible = state.playerOrder.filter(o => o !== pid && calcVP(state, o) > myVp && cardsOf(o as PlayerId) > 0) as PlayerId[];
     for (const o of eligible) {
       const b = makeBtn(`${state.players[o]!.name}（★${calcVP(state, o)}）`, 'btn-build', false, () => play({ targetPlayerId: o }));
@@ -1491,14 +1491,14 @@ function showProgressCardInfo(card: ProgressCard, canPlay: boolean, dispatch: (a
   title.textContent = `📜 ${PROGRESS_CARD_NAME[card.type]}`;
   box.appendChild(title);
   const deck = el('div', `pc-info-deck pc-deck-${card.deck}`);
-  deck.textContent = `${CK_TRACK_NAME[card.deck]}デッキ`;
+  deck.textContent = `${CK_PROGRESS_CATEGORY_NAME[card.deck]}デッキ`;
   box.appendChild(deck);
   const desc = el('div', 'pc-info-desc');
   desc.textContent = PROGRESS_CARD_DESC[card.type];
   box.appendChild(desc);
 
   // 公式: 資源独占/交易独占=奪う種類を指名、大商人=相手を選ぶ。これらは「使う」で選択UIへ。
-  // 商人・発明家は「使う」後に盤面でタイルを選ぶ（dispatch 側で placeMerchant/inventorSwap へ）ため
+  // 御用商人・発明家は「使う」後に盤面でタイルを選ぶ（dispatch 側で placeMerchant/inventorSwap へ）ため
   // モーダルの選択UIは出さない（needsChoice から除外）。
   const needsChoice = card.type === 'resource_monopoly' || card.type === 'trade_monopoly' || card.type === 'master_merchant' || card.type === 'alchemist' || card.type === 'crane'
     || card.type === 'merchant_fleet' || card.type === 'commercial_harbor' || card.type === 'spy';
@@ -1549,7 +1549,7 @@ export function showAssetGallery(): void {
   const overlay = el('div', 'gallery-overlay');
   const modal = el('div', 'gallery-modal');
   const header = el('div', 'gallery-header');
-  header.textContent = '🖼 コマ・カード図鑑（都市と騎士）';
+  header.textContent = '🖼 コマ・カード図鑑（城下の発展と武将）';
   modal.appendChild(header);
   const body = el('div', 'gallery-body');
 
@@ -1583,39 +1583,39 @@ export function showAssetGallery(): void {
   };
 
   let g = section('🧩 コマ');
-  item(g, ASSETS.piece.settlement, '開拓地', '1点。資源を1個産む');
-  item(g, ASSETS.piece.city, '都市', '2点。資源2 か 資源1+商品1 を産む');
-  item(g, ASSETS.knight.basic, '騎士（基本）', '強さ1。建設→麦で起動して防衛・行動');
-  item(g, ASSETS.knight.strong, '騎士（強い）', '強さ2。鉱石+羊で昇格');
-  item(g, ASSETS.knight.mighty, '騎士（最強）', '強さ3。要塞(政治Lv3)で昇格可');
-  item(g, ASSETS.piece.metropolisGate, 'メトロポリス門', '改善Lv4で都市に。4点・略奪されない');
-  item(g, ASSETS.piece.cityWall, '城壁', 'レンガ2。7の手札上限+2（最大3）');
-  item(g, ASSETS.piece.merchant, '商人コマ', '隣接地形を2:1で交易・保持中+1点');
-  item(g, ASSETS.piece.defenderBadge, '守護者VP', '蛮族撃退の最大貢献者が+1点');
-  item(g, ASSETS.piece.robber, '盗賊', '7で移動し隣接から1枚奪う（初回襲来後）');
-  item(g, ASSETS.piece.barbarianShip, '蛮族船', '船イベントで前進。満タンで襲来');
+  item(g, ASSETS.piece.settlement, '砦', '1点。資源を1個産む');
+  item(g, ASSETS.piece.city, '城', '2点。資源2 か 資源1+物産1 を産む');
+  item(g, ASSETS.knight.basic, '武将（足軽）', '強さ1。召し抱え→米で出陣して防衛・行動');
+  item(g, ASSETS.knight.strong, '武将（侍）', '強さ2。鉄+馬で加増');
+  item(g, ASSETS.knight.mighty, '武将（精兵）', '強さ3。要塞(政Lv3)で加増可');
+  item(g, ASSETS.piece.metropolisGate, '天守門', '改善Lv4で城に。4点・略奪されない');
+  item(g, ASSETS.piece.cityWall, '石垣', '石材2。7の手札上限+2（最大3）');
+  item(g, ASSETS.piece.merchant, '御用商人コマ', '隣接地形を2:1で交易・保持中+1点');
+  item(g, ASSETS.piece.defenderBadge, '守護者VP', '一揆勢撃退の最大貢献者が+1点');
+  item(g, ASSETS.piece.robber, '野盗', '7で移動し隣接から1枚奪う（初回襲来後）');
+  item(g, ASSETS.piece.barbarianShip, '一揆勢の船', '船イベントで前進。満タンで襲来');
 
   g = section('🌲 資源（5種）');
-  item(g, ASSETS.resource.lumber, '木材', '森から産出');
-  item(g, ASSETS.resource.brick, 'レンガ', '丘から産出');
-  item(g, ASSETS.resource.wool, '羊毛', '牧草地から産出');
-  item(g, ASSETS.resource.grain, '小麦', '畑から産出');
-  item(g, ASSETS.resource.ore, '鉱石', '山から産出');
+  item(g, ASSETS.resource.lumber, '木材', '森林から産出');
+  item(g, ASSETS.resource.brick, '石材', '石切場から産出');
+  item(g, ASSETS.resource.wool, '馬', '牧から産出');
+  item(g, ASSETS.resource.grain, '米', '田から産出');
+  item(g, ASSETS.resource.ore, '鉄', '鉱山から産出');
 
-  g = section('💰 商品（3種・都市が産出）');
-  item(g, ASSETS.commodity.paper, '紙', '森の都市から（科学トラック）');
-  item(g, ASSETS.commodity.cloth, '布', '牧草地の都市から（商業トラック）');
-  item(g, ASSETS.commodity.coin, '金貨', '山の都市から（政治トラック）');
+  g = section('💰 物産（3種・城が産出）');
+  item(g, ASSETS.commodity.paper, '紙', '森林の城から（学トラック）');
+  item(g, ASSETS.commodity.cloth, '絹', '牧の城から（商トラック）');
+  item(g, ASSETS.commodity.coin, '金', '鉱山の城から（政トラック）');
 
-  g = section('🏛 都市の発展（建築）');
-  item(g, ASSETS.building.trade[3], '交易所（商業Lv3）', '商品を銀行と2:1で交易');
-  item(g, ASSETS.building.trade[4], '銀行（商業Lv4）', 'メトロポリス（商業）');
-  item(g, ASSETS.building.politics[3], '要塞（政治Lv3）', '最強騎士への昇格を解禁');
-  item(g, ASSETS.building.politics[4], '大聖堂（政治Lv4）', 'メトロポリス（政治）');
-  item(g, ASSETS.building.science[3], '水道橋（科学Lv3）', '無産出のターンに資源1枚');
-  item(g, ASSETS.building.science[4], '劇場（科学Lv4）', 'メトロポリス（科学）');
+  g = section('🏛 城下の発展（建築）');
+  item(g, ASSETS.building.trade[3], '交易所（商Lv3）', '物産を銀行と2:1で交易');
+  item(g, ASSETS.building.trade[4], '銀行（商Lv4）', '天守（商）');
+  item(g, ASSETS.building.politics[3], '要塞（政Lv3）', '精兵への加増を解禁');
+  item(g, ASSETS.building.politics[4], '大聖堂（政Lv4）', '天守（政）');
+  item(g, ASSETS.building.science[3], '水道橋（学Lv3）', '無産出のターンに資源1枚');
+  item(g, ASSETS.building.science[4], '劇場（学Lv4）', '天守（学）');
 
-  for (const [deck, label] of [['politics', '政治'], ['science', '科学'], ['trade', '商業']] as [CkTrack, string][]) {
+  for (const [deck, label] of [['politics', '政策'], ['science', '兵学'], ['trade', '商策']] as [CkTrack, string][]) {
     const cg = cardSection(`📜 進歩カード（${label}デッキ）`);
     for (const type of PROGRESS_DECK_CARDS[deck]) {
       const art = ASSETS.progressCard[type] ?? ASSETS.cardBack[deck];
@@ -1633,7 +1633,7 @@ export function showAssetGallery(): void {
   document.body.appendChild(overlay);
 }
 
-// 騎士と商人: 都市改善・騎士・城壁の操作セクション（騎士の建設は最初の有効頂点へ自動配置・移動は盤面で選択）。
+// 武将と商い: 城下の改善・武将・石垣の操作セクション（武将の建設は最初の有効頂点へ自動配置・移動は盤面で選択）。
 function appendCkBuildSection(
   div: HTMLElement, state: GameState, pid: PlayerId, dispatch: (a: Action) => void,
   buildMode: BuildMode, setBuildMode: (m: BuildMode) => void,
@@ -1641,12 +1641,12 @@ function appendCkBuildSection(
   const player = state.players[pid]!;
   const sec = el('div', 'ck-build');
   const title = el('div', 'ck-build-title');
-  title.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(' 都市と騎士 アクション'));
+  title.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(' 城下の発展と武将 アクション'));
   sec.appendChild(title);
 
-  // 都市改善（3ツリー）
+  // 城下の改善（3ツリー）
   const impLabel = el('div', 'ck-sub-label');
-  impLabel.append(inlineIc(ASSETS.piece.metropolisGate, 'inline-ic'), document.createTextNode(' 都市の発展（商品で強化・Lv4でメトロポリス+4点）'));
+  impLabel.append(inlineIc(ASSETS.piece.metropolisGate, 'inline-ic'), document.createTextNode(' 城下の発展（物産で強化・Lv4で天守+4点）'));
   sec.appendChild(impLabel);
   const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
   const impRow = el('div', 'ck-imp-row');
@@ -1655,11 +1655,11 @@ function appendCkBuildSection(
     const can = canBuildImprovement(state, pid, track);
     const c = CK_TRACK_COMMODITY[track];
     const nextLvl = lvl + 1;
-    // コストの商品は絵文字ではなく素材画像で表示。
+    // コストの物産は絵文字ではなく素材画像で表示。
     const label: (string | HTMLElement)[] = lvl >= 5
       ? [`${CK_TRACK_NAME[track]} Lv5（最大）`]
       : [`${CK_TRACK_NAME[track]} Lv${lvl}→${nextLvl}（`, inlineIc(COMMODITY_IMG[c], 'inline-ic'), `×${improvementCost(lvl)}）`];
-    // その段で得られる恩恵（科学Lv3=水道橋 等）を2行目に出して「Lv3で何が起きるか」を分かるようにする。
+    // その段で得られる恩恵（学Lv3=水道橋 等）を2行目に出して「Lv3で何が起きるか」を分かるようにする。
     const benefit = lvl >= 5 ? CK_TRACK_BENEFIT[track][5] : CK_TRACK_BENEFIT[track][nextLvl];
     if (benefit) label.push(Object.assign(el('div', 'imp-benefit'), { textContent: benefit }));
     // 改良建築: Lv3/Lv4 へ進む時はその建築画像（交易所/銀行/要塞/大聖堂/水道橋/劇場）、他はトラックアイコン。
@@ -1671,43 +1671,43 @@ function appendCkBuildSection(
   }
   sec.appendChild(impRow);
 
-  // 騎士・城壁
+  // 武将・石垣
   const knLabel = el('div', 'ck-sub-label');
-  knLabel.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(' 騎士・防衛（建設→麦で起動して使える）'));
+  knLabel.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(' 武将・防衛（召し抱え→米で出陣して使える）'));
   sec.appendChild(knLabel);
   const knightRow = el('div', 'ck-knight-row');
   const firstV = (pred: (vid: string) => boolean): string | undefined => Object.keys(state.vertices).find(pred);
-  // 騎士の配置は盤面で頂点を選ぶ（自動配置をやめ、置く場所を自分で選べるように）。
+  // 武将の配置は盤面で頂点を選ぶ（自動配置をやめ、置く場所を自分で選べるように）。
   const canBuildKn = !!firstV(v => canBuildKnight(state, pid, v));
-  knightRow.appendChild(modeImgBtn(knightImg, [costLabel('騎士を建てる', resCostParts(CK_COSTS.knightBuild))], 'buildKnight', canBuildKn, buildMode, setBuildMode));
-  // 起動・昇格も対象の騎士を盤面で選ぶ（騎士が複数いるとき自分で選べるように）。
-  // 起動(雷)・昇格(矢印)のアイコンはやや大きく見切れるため、専用クラスで一回り小さく表示する。
+  knightRow.appendChild(modeImgBtn(knightImg, [costLabel('武将を召し抱える', resCostParts(CK_COSTS.knightBuild))], 'buildKnight', canBuildKn, buildMode, setBuildMode));
+  // 出陣・加増も対象の武将を盤面で選ぶ（武将が複数いるとき自分で選べるように）。
+  // 出陣(雷)・加増(矢印)のアイコンはやや大きく見切れるため、専用クラスで一回り小さく表示する。
   const canActKn = !!firstV(v => canActivateKnight(state, pid, v));
-  const actKnBtn = modeImgBtn(ASSETS.action.knightActivate, [costLabel('騎士を起動', resCostParts(CK_COSTS.knightActivate))], 'activateKnight', canActKn, buildMode, setBuildMode);
+  const actKnBtn = modeImgBtn(ASSETS.action.knightActivate, [costLabel('武将を出陣', resCostParts(CK_COSTS.knightActivate))], 'activateKnight', canActKn, buildMode, setBuildMode);
   actKnBtn.classList.add('btn-knight-op');
   knightRow.appendChild(actKnBtn);
   const canUpKn = !!firstV(v => canUpgradeKnight(state, pid, v));
-  const upKnBtn = modeImgBtn(ASSETS.action.knightUpgrade, [costLabel('騎士を昇格', resCostParts(CK_COSTS.knightUpgrade))], 'upgradeKnight', canUpKn, buildMode, setBuildMode);
+  const upKnBtn = modeImgBtn(ASSETS.action.knightUpgrade, [costLabel('武将を加増', resCostParts(CK_COSTS.knightUpgrade))], 'upgradeKnight', canUpKn, buildMode, setBuildMode);
   upKnBtn.classList.add('btn-knight-op');
   knightRow.appendChild(upKnBtn);
-  // 騎士の移動（盤面で 騎士→移動先 を選択。起動済みの騎士のみ・1ターン1回）。
+  // 武将の移動（盤面で 武将→移動先 を選択。出陣済みの武将のみ・1ターン1回）。
   if (playerHasMovableKnight(state, pid)) {
-    knightRow.appendChild(modeBtn('🏇 騎士を移動', 'moveKnight', true, buildMode, setBuildMode));
+    knightRow.appendChild(modeBtn('🏇 武将を移動', 'moveKnight', true, buildMode, setBuildMode));
   }
-  // 盗賊を追い払う（盗賊に隣接した自分のアクティブ騎士で。1ターン1回・騎士は非起動になる）。
-  // 候補騎士が1つだけなら1タップで即追い払う（盤面選択を挟まない＝「ボタンが無反応」を解消）。
-  // 複数いる時だけ盤面で騎士を選ばせる。
+  // 野盗を追い払う（野盗に隣接した自分のアクティブ武将で。1ターン1回・武将は非出陣になる）。
+  // 候補武将が1つだけなら1タップで即追い払う（盤面選択を挟まない＝「ボタンが無反応」を解消）。
+  // 複数いる時だけ盤面で武将を選ばせる。
   if (playerHasChasableKnight(state, pid)) {
     const chasable = robberAdjacentChasableVertexIds(state, pid);
     if (chasable.length === 1) {
-      knightRow.appendChild(makeBtn('🦹 盗賊を追い払う', 'btn-build', false,
+      knightRow.appendChild(makeBtn('🦹 野盗を追い払う', 'btn-build', false,
         () => dispatch({ type: 'CHASE_ROBBER', vertexId: chasable[0]! })));
     } else {
-      knightRow.appendChild(modeBtn('🦹 盗賊を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
+      knightRow.appendChild(modeBtn('🦹 野盗を追い払う', 'chaseRobber', true, buildMode, setBuildMode));
     }
   }
   const wallVid = firstV(v => canBuildCityWall(state, pid, v));
-  knightRow.appendChild(makeImgBtn(ASSETS.piece.cityWall ?? RESOURCE_IMG.brick, [costLabel('城壁', resCostParts(CK_COSTS.cityWall))], wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
+  knightRow.appendChild(makeImgBtn(ASSETS.piece.cityWall ?? RESOURCE_IMG.brick, [costLabel('石垣', resCostParts(CK_COSTS.cityWall))], wallVid ? 'btn-build' : 'btn-disabled', !wallVid,
     () => wallVid && dispatch({ type: 'BUILD_CITY_WALL', vertexId: wallVid })));
   sec.appendChild(knightRow);
 
@@ -1720,7 +1720,7 @@ function appendCkBuildSection(
     const pcRow = el('div', 'ck-pc-row');
     for (const c of cards) {
       const can = canPlayProgressLoose(state, pid, c.id); // 効果が空でも使える（消費される）
-      // 進歩カードは25種すべて専用アート。未登録のみトラック色のカード裏（科学=緑/商業=黄/政治=青）。
+      // 進歩カードは25種すべて専用アート。未登録のみトラック色のカード裏（学=緑/商=黄/政=青）。
       const icon = ASSETS.progressCard[c.type] ?? ASSETS.cardBack[c.deck];
       // タップで「効果説明＋使う/やめる」のカード詳細を表示（使用前に効果が分かるように）。
       // 使えないカードも閲覧可能（disabled=false）。実際の使用可否はモーダルの「使う」で制御。
@@ -1757,13 +1757,13 @@ function buildActionButtons(
   // 進歩カードの盤面選択中は「何をタップするか」を操作パネルに常駐表示する
   // （board-notice は2.2秒で消えてしまい、迷っている間に指示が無くなるため）。
   const selectHint: Partial<Record<BuildMode, string>> = {
-    placeMerchant: '🏪 盤面で光った資源タイルをタップして商人を置く',
+    placeMerchant: '🏪 盤面で光った資源タイルをタップして御用商人を置く',
     inventorSwap: '🔄 盤面で光ったタイルを2つ選んで数字を入れ替える',
-    placeBishop: '⛪ 盤面で光ったタイルをタップして盗賊を置く（隣接の全相手から1枚ずつ奪う）',
-    selectDiplomatRoad: '📜 盤面で光った相手の端の道をタップして撤去',
-    selectDeserterKnight: '🏃 盤面で光った相手の騎士をタップして消す（同じ強さの騎士を得る）',
-    selectMedicineSettlement: '💊 盤面で光った自分の開拓地をタップして都市化（麦1＋鉱石2）',
-    selectMetropolis: '🏛 盤面で光った自分の都市をタップしてメトロポリス化（+2点）',
+    placeBishop: '⛪ 盤面で光ったタイルをタップして野盗を置く（隣接の全相手から1枚ずつ奪う）',
+    selectDiplomatRoad: '📜 盤面で光った相手の端の街道をタップして撤去',
+    selectDeserterKnight: '🏃 盤面で光った相手の武将をタップして消す（同じ強さの武将を得る）',
+    selectMedicineSettlement: '💊 盤面で光った自分の砦をタップして築城（米1＋鉄2）',
+    selectMetropolis: '🏛 盤面で光った自分の城をタップして天守化（+2点）',
   };
   if (selectHint[buildMode]) {
     const hint = el('div', 'board-select-hint');
@@ -1793,23 +1793,23 @@ function buildActionButtons(
     return div;
   }
 
-  // ---- 騎士と商人: 蛮族敗北での都市格下げ（ボタンは出さず、盤面で自分の都市をタップして選ぶ）----
+  // ---- 武将と商い: 一揆勢敗北での城の格下げ（ボタンは出さず、盤面で自分の城をタップして選ぶ）----
   if (state.turnPhase === 'CITY_DOWNGRADE') {
     const pending = state.pendingCityDowngrade ?? [];
     const me = lanMode && viewerId != null ? viewerId : pending.find(p => state.players[p]?.type === 'human');
     if (!me || !pending.includes(me)) return null;
-    // ボタンは廃止し、盤面の光った都市をタップする案内だけ出す（駒で選択する方式）。
+    // ボタンは廃止し、盤面の光った城をタップする案内だけ出す（駒で選択する方式）。
     const panel = el('div', 'modal-panel');
     const header = el('div', 'modal-header');
-    header.textContent = '⚔ 蛮族に敗北';
+    header.textContent = '⚔ 一揆勢に敗北';
     panel.appendChild(header);
     panel.appendChild(Object.assign(el('div', 'modal-section-label'),
-      { textContent: '盤面で光っている自分の都市をタップして、1つを開拓地に格下げしてください' }));
+      { textContent: '盤面で光っている自分の城をタップして、1つを砦に格下げしてください' }));
     div.appendChild(panel);
     return div;
   }
 
-  // ---- 騎士と商人: 進歩カード上限超過（5枚目）の捨て札選択（多人数解決）----
+  // ---- 武将と商い: 進歩カード上限超過（5枚目）の捨て札選択（多人数解決）----
   if (state.turnPhase === 'PROGRESS_DISCARD') {
     const pending = state.pendingProgressDiscard ?? [];
     const me = lanMode && viewerId != null ? viewerId : pending.find(p => state.players[p]?.type === 'human');
@@ -1856,7 +1856,7 @@ function buildActionButtons(
   // ---- PRE_ROLL ----
   if (state.turnPhase === 'PRE_ROLL') {
     div.appendChild(makeBtn('🎲 ダイスを振る', 'btn-primary', false, () => dispatch({ type: 'ROLL_DICE' })));
-    // ダイス前は騎士のみ使用可（appendDevCardButtons 内で制御）。LANも対応。
+    // ダイス前は武将のみ使用可（appendDevCardButtons 内で制御）。LANも対応。
     appendDevCardButtons(div, state, player, setUIPhase, dispatch);
     if (calcVP(state, pid) >= victoryTarget(state)) {
       div.appendChild(makeBtn('🏆 勝利宣言！', 'btn-primary', false, () => dispatch({ type: 'DECLARE_VICTORY' })));
@@ -1866,13 +1866,13 @@ function buildActionButtons(
 
   if (state.turnPhase !== 'TRADE_BUILD') return null;
 
-  // ---- 街道建設カード使用中 ----
+  // ---- 普請カード使用中 ----
   if (state.roadBuildingRoadsRemaining > 0) {
     const info = el('div', 'turn-phase-text');
-    info.textContent = `🛤 街道建設カード使用中（残り ${state.roadBuildingRoadsRemaining} 本）`;
+    info.textContent = `🛤 普請カード使用中（残り ${state.roadBuildingRoadsRemaining} 本）`;
     div.appendChild(info);
-    div.appendChild(modeBtn('🛤 道を置く', 'road', player.remainingRoads > 0, buildMode, setBuildMode));
-    div.appendChild(makeBtn('✓ 道路建設を完了', 'btn-end', false, () => dispatch({ type: 'FINISH_ROAD_BUILDING' })));
+    div.appendChild(modeBtn('🛤 街道を置く', 'road', player.remainingRoads > 0, buildMode, setBuildMode));
+    div.appendChild(makeBtn('✓ 普請を完了', 'btn-end', false, () => dispatch({ type: 'FINISH_ROAD_BUILDING' })));
     return div;
   }
 
@@ -1888,9 +1888,9 @@ function buildActionButtons(
   // 建設モード選択中のヒント文（「選択中：光っている場所をタップ」）は操作パネルの
   // レイアウトを崩すため表示しない。配置可能な頂点/辺は盤面側のハイライトで示す。
 
-  // 建設ボタンは絵文字でなくコマ画像/CSSアイコンで（道=CSSバー・開拓地/都市=色つきコマ画像）。
+  // 建設ボタンは絵文字でなくコマ画像/CSSアイコンで（街道=CSSバー・砦/城=色つきコマ画像）。
   const ckey = PLAYER_COLOR_KEY[pid] ?? 'red';
-  div.appendChild(modeImgBtn(ASSETS.action.road, [costLabel('道', resCostParts(BUILD_COSTS.road))], 'road', canRoad, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(ASSETS.action.road, [costLabel('街道', resCostParts(BUILD_COSTS.road))], 'road', canRoad, buildMode, setBuildMode));
   if (hasSea) {
     div.appendChild(modeBtn('🚢 船', 'ship', canShip, buildMode, setBuildMode));
     // 航海者: 動かせる船があるときだけ「船を移動」モードを出す（1ターン1回）。
@@ -1900,15 +1900,15 @@ function buildActionButtons(
     // 船ルールはいつでも見られるよう常時ヘルプを置く（作れても動かせない等の疑問対策）。
     div.appendChild(makeBtn('⛵ 船のルール', 'btn-ship-help', false, () => showShipRulesHelp(state, pid)));
   }
-  div.appendChild(modeImgBtn(houseImg(ckey), [costLabel('開拓地', resCostParts(BUILD_COSTS.settlement))], 'settlement', canSettl, buildMode, setBuildMode));
-  div.appendChild(modeImgBtn(cityImg(ckey), [costLabel('都市', resCostParts(BUILD_COSTS.city))], 'city', canCity, buildMode, setBuildMode));
-  // 発展カードは騎士と商人では使わない（進歩カードに置換）。基本/航海者のみ表示。
+  div.appendChild(modeImgBtn(houseImg(ckey), [costLabel('砦', resCostParts(BUILD_COSTS.settlement))], 'settlement', canSettl, buildMode, setBuildMode));
+  div.appendChild(modeImgBtn(cityImg(ckey), [costLabel('城', resCostParts(BUILD_COSTS.city))], 'city', canCity, buildMode, setBuildMode));
+  // 軍略カードは武将と商いでは使わない（進歩カードに置換）。基本/航海者のみ表示。
   if (!isCk(state)) {
-    div.appendChild(makeImgBtn(glyph('ic-cards'), [costLabel('発展カード', resCostParts(BUILD_COSTS.dev_card))], canDev ? 'btn-build' : 'btn-disabled', !canDev,
+    div.appendChild(makeImgBtn(glyph('ic-cards'), [costLabel('軍略カード', resCostParts(BUILD_COSTS.dev_card))], canDev ? 'btn-build' : 'btn-disabled', !canDev,
       () => dispatch({ type: 'BUY_DEV_CARD' })));
   }
 
-  // 騎士と商人: 都市改善・騎士・城壁。
+  // 武将と商い: 城下の改善・武将・石垣。
   if (isCk(state)) appendCkBuildSection(div, state, pid, dispatch, buildMode, setBuildMode);
 
   div.appendChild(makeImgBtn(ASSETS.action.bankTrade, 'バンク交易', 'btn-build', false,
@@ -1921,7 +1921,7 @@ function buildActionButtons(
       () => setUIPhase({ type: 'playerTradeOffer', give: makeZeroHand(), receive: makeZeroHand(), targetPids: state.playerOrder.filter(p => p !== pid) as PlayerId[] })));
   }
 
-  // TRADE_BUILD でも発展カードを使用できる（1ターン1枚制限あり）
+  // TRADE_BUILD でも軍略カードを使用できる（1ターン1枚制限あり）
   appendDevCardButtons(div, state, player, setUIPhase, dispatch);
 
   if (calcVP(state, pid) >= victoryTarget(state)) {
@@ -2042,16 +2042,16 @@ export function renderUI(
     turnPanel.appendChild(diceEl);
   }
 
-  // 称号状況（保持者名＋現在値）＋発展カード山札残数（すべて公開情報）
+  // 称号状況（保持者名＋現在値）＋軍略カード山札残数（すべて公開情報）
   const titles = el('div', 'turn-titles');
   const lrHolder = state.longestRoadHolder ? state.players[state.longestRoadHolder] : null;
   const laHolder = state.largestArmyHolder ? state.players[state.largestArmyHolder] : null;
-  // 最長交易路: 道の画像アイコン＋保持者（道建設ボタンと同じ絵柄に統一）。
+  // 最長街道: 街道の画像アイコン＋保持者（街道建設ボタンと同じ絵柄に統一）。
   const t1 = el('span', 'turn-title-item');
   t1.append(inlineIc(ASSETS.action.road, 'inline-ic'), document.createTextNode(lrHolder ? ` 最長 ${lrHolder.name}(${lrHolder.longestRoadLength})` : ' 最長 未獲得'));
   const t3 = el('span', 'turn-title-item');
   if (isCk(state)) {
-    // 騎士と商人: 蛮族トラックを 蛮族船画像＋ピップ＋残数 で表示（漢字/絵文字なし）。
+    // 武将と商い: 一揆勢トラックを 一揆勢の船画像＋ピップ＋残数 で表示（漢字/絵文字なし）。
     const pos = state.barbarianPosition ?? 0;
     const danger = pos >= CK_BARBARIAN_MAX - 2;
     const t2 = el('span', `turn-title-item barb-track${danger ? ' ck-barb-danger' : ''}`);
@@ -2065,9 +2065,9 @@ export function renderUI(
     if (danger) t2.append(Object.assign(el('span', 'barb-warn'), { textContent: 'まもなく襲来！' }));
     titles.append(t1, t2);
   } else {
-    // 最大騎士: 騎士画像＋保持者 / 山札: カードCSSアイコン＋残数。
+    // 武威: 武将画像＋保持者 / 山札: カードCSSアイコン＋残数。
     const t2 = el('span', 'turn-title-item');
-    t2.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(laHolder ? ` 最大騎士 ${laHolder.name}(${laHolder.knightsPlayed})` : ' 最大騎士 未獲得'));
+    t2.append(inlineIc(knightImg, 'inline-ic'), document.createTextNode(laHolder ? ` 武威 ${laHolder.name}(${laHolder.knightsPlayed})` : ' 武威 未獲得'));
     t3.append(glyph('ic-cards'), document.createTextNode(` 山札 ${state.devDeck.length}`));
     titles.append(t1, t2, t3);
   }
@@ -2078,7 +2078,7 @@ export function renderUI(
   const lastLog = state.log.length > 0 ? state.log[state.log.length - 1] : null;
   if (lastLog) {
     const ev = el('div', 'last-event');
-    // ログ中の絵文字（資源/商品/コマ…）を素材画像に置換して表示。
+    // ログ中の絵文字（資源/物産/コマ…）を素材画像に置換して表示。
     renderLogMessage(ev, lastLog.message);
     turnPanel.appendChild(ev);
   }
@@ -2183,7 +2183,7 @@ const MINI_CORNERS: Record<number, string[]> = {
 // 盤面四隅のミニプレイヤーパネルを #board-area に重ねて描画する（縦持ちスマホ専用）。
 // 「自分=大・他=小」の並びは盤面下の大きい .player-panel 側で表現するため、ミニは四隅に戻す。
 // 表示する公開情報のみ: 名前 / VP / 手札枚数 / 現手番 / 最長・最大の小アイコン。
-// 他プレイヤーの手札内訳・発展カード内容は出さない（手札は枚数のみ＝公開情報）。
+// 他プレイヤーの手札内訳・軍略カード内容は出さない（手札は枚数のみ＝公開情報）。
 function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
   const boardArea = document.getElementById('board-area');
   if (!boardArea) return;
@@ -2202,7 +2202,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     const isWinner = state.phase === 'GAME_OVER' && pid === state.winner;
     // 自分・勝者は内部VP（VPカード込み）、他プレイヤーは公開VPのみ（秘匿維持）。
     const vp = (isSelf || isWinner) ? calcVP(state, pid as PlayerId) : calcPublicVP(state, pid as PlayerId);
-    // 手札枚数は資源＋商品（騎士と商人）。7の捨て札・強盗の対象枚数と一致させる。
+    // 手札枚数は資源＋物産（武将と商い）。7の捨て札・強盗の対象枚数と一致させる。
     const handTotal = robbableCardCount(state, pid as PlayerId);
     const isCurrent = pid === currentPid && state.phase !== 'GAME_OVER';
     const mine = pid === selfPid;
@@ -2220,7 +2220,7 @@ function renderMiniPanels(state: GameState, viewerId?: PlayerId): void {
     name.textContent = clipByWidth(p.name, 8);   // 全角4文字相当で単純切り捨て（省略記号なし）
     row1.append(dot, name);
 
-    // 2行目: ★点数 手札枚数（カードアイコン）＋ 称号アイコン（道=CSS / 騎士=画像）
+    // 2行目: ★点数 手札枚数（カードアイコン）＋ 称号アイコン（街道=CSS / 武将=画像）
     const row2 = el('div', 'mini-row2');
     const stat = el('span', 'mini-stat');
     stat.append(
@@ -2254,7 +2254,7 @@ function buildPlayerPanel(
   dispatch: (a: Action) => void,
   viewerId?: PlayerId,
 ): HTMLDivElement {
-  // GAME_OVER時の勝者はVPカード・内訳のみ開示。資源・他発展カードは非公開のまま。
+  // GAME_OVER時の勝者はVPカード・内訳のみ開示。資源・他軍略カードは非公開のまま。
   const isWinner = state.phase === 'GAME_OVER' && pId === state.winner;
   // LAN対戦では viewerId（自分のID）基準で自分のみ全公開。
   // 単一端末プレイ（viewerId 未指定）では従来どおり human=自分。
@@ -2293,9 +2293,9 @@ function buildPlayerPanel(
   nameSpan.textContent = player.name;
   nameRow.appendChild(nameSpan);
   h3.appendChild(nameRow);
-  // 2行目: VP + 順位 + コンパクト統計（開拓地/都市/手札枚数）。1行固定で折り返さない。
+  // 2行目: VP + 順位 + コンパクト統計（砦/城/手札枚数）。1行固定で折り返さない。
   const bd = calcVPBreakdown(state, pId);
-  // 手札枚数は資源＋商品（騎士と商人）。7の捨て札・強盗の対象枚数と一致させる。
+  // 手札枚数は資源＋物産（武将と商い）。7の捨て札・強盗の対象枚数と一致させる。
   const handTotal = robbableCardCount(state, pId);
   const statRow = el('span', 'panel-stat-row');
   const vpSpan = el('span', 'panel-vp');
@@ -2305,18 +2305,18 @@ function buildPlayerPanel(
   const rankEl = el('span', `rank-badge${rank === 1 ? ' rank-1' : ''}`);
   rankEl.textContent = rankLabel;
   statRow.appendChild(rankEl);
-  // 開拓地数・都市数・手札枚数（コマは色つき画像・手札はカードCSSアイコン＝絵文字を排除）。
+  // 砦数・城数・手札枚数（コマは色つき画像・手札はカードCSSアイコン＝絵文字を排除）。
   const ckey = PLAYER_COLOR_KEY[pId] ?? 'red';
   const counts = el('span', 'stat-counts');
-  const sChip = statChip(houseImg(ckey), bd.settlements); sChip.title = '開拓地';
-  const cChip = statChip(cityImg(ckey), bd.cities); cChip.title = '都市';
-  const hChip = statChip(null, handTotal, 'stat-hand', 'ic-cards'); hChip.title = isCk(state) ? '手札（資源＋商品の枚数）' : '手札（枚数）';
+  const sChip = statChip(houseImg(ckey), bd.settlements); sChip.title = '砦';
+  const cChip = statChip(cityImg(ckey), bd.cities); cChip.title = '城';
+  const hChip = statChip(null, handTotal, 'stat-hand', 'ic-cards'); hChip.title = isCk(state) ? '手札（資源＋物産の枚数）' : '手札（枚数）';
   counts.append(sChip, cChip, hChip);
   statRow.appendChild(counts);
   h3.appendChild(statRow);
   div.appendChild(h3);
 
-  // ボーナスVP内訳（最長/最大/VPカード）。開拓地・都市数は stat-row に集約済み。
+  // ボーナスVP内訳（最長/最大/VPカード）。砦・城数は stat-row に集約済み。
   // GAME_OVER時は勝者のVPカード枚数も開示する（他プレイヤーは非公開のまま）。
   const showVpCards = (isSelf || isWinner) && bd.vpCards > 0;
   if (bd.lr || bd.la || bd.islandBonus > 0 || showVpCards) {
@@ -2347,29 +2347,29 @@ function buildPlayerPanel(
     div.appendChild(vpRow);
   }
 
-  // 称号の現在値＋残コマ数（公開情報。未使用発展カードや手札内訳は出さない）
+  // 称号の現在値＋残コマ数（公開情報。未使用軍略カードや手札内訳は出さない）
   const meta = el('div', 'panel-meta');
   const lrLen = player.longestRoadLength; // エンジン維持のキャッシュ（calcLongestRoad の再計算は不要）
   const lrItem = el('span', `panel-meta-item${player.hasLongestRoad ? ' held' : ''}`);
   lrItem.append(inlineIc(ASSETS.action.road, 'stat-ic'), Object.assign(el('span'), { textContent: String(lrLen) }));
   lrItem.title = player.hasLongestRoad
-    ? `最長交易路 保持中（${lrLen}本）`
-    : `最長道路 ${lrLen}本（獲得は${LONGEST_ROAD_MIN}本以上）`;
+    ? `最長街道 保持中（${lrLen}本）`
+    : `最長街道 ${lrLen}本（獲得は${LONGEST_ROAD_MIN}本以上）`;
   meta.appendChild(lrItem);
-  // 最大騎士力（Largest Army）は基本ルールのみ。騎士と商人には存在しない（基本の騎士発展カードが
-  // 廃され、騎士は盤上コマ＋蛮族防衛になるため）。C&K では誤解を招くので騎士アイコンを出さない。
+  // 武威（Largest Army）は基本ルールのみ。武将と商いには存在しない（基本の武将軍略カードが
+  // 廃され、武将は盤上コマ＋一揆勢防衛になるため）。C&K では誤解を招くので武将アイコンを出さない。
   if (!isCk(state)) {
     const knItem = el('span', `panel-meta-item${player.hasLargestArmy ? ' held' : ''}`);
     { const kn = document.createElement('img'); kn.className = 'stat-ic'; kn.src = ASSETS.knight.basic; kn.alt = ''; kn.draggable = false; knItem.append(kn, Object.assign(el('span'), { textContent: String(player.knightsPlayed) })); }
     knItem.title = player.hasLargestArmy
-      ? `最大騎士力 保持中（騎士${player.knightsPlayed}回）`
-      : `騎士使用 ${player.knightsPlayed}回（獲得は${LARGEST_ARMY_MIN}回以上）`;
+      ? `武威 保持中（武将${player.knightsPlayed}回）`
+      : `武将使用 ${player.knightsPlayed}回（獲得は${LARGEST_ARMY_MIN}回以上）`;
     meta.appendChild(knItem);
   }
   // 区切りの「·」は分かりにくいとの指摘により廃止（flexのgapで間隔を確保）。
   const pieces = el('span', 'panel-meta-item');
-  pieces.textContent = `道${player.remainingRoads} 家${player.remainingSettlements} 都${player.remainingCities}`;
-  pieces.title = '残り 道 / 開拓地 / 都市';
+  pieces.textContent = `街${player.remainingRoads} 砦${player.remainingSettlements} 城${player.remainingCities}`;
+  pieces.title = '残り 街道 / 砦 / 城';
   meta.appendChild(pieces);
   div.appendChild(meta);
 
@@ -2389,7 +2389,7 @@ function buildPlayerPanel(
     }
     div.appendChild(resRow);
 
-    // 騎士と商人: 商品の手札（自分のみ）。
+    // 武将と商い: 物産の手札（自分のみ）。
     if (isCk(state)) {
       const comm = player.commodities ?? { coin: 0, cloth: 0, paper: 0 };
       const cRow = el('div', 'ck-comm-row');
@@ -2404,34 +2404,34 @@ function buildPlayerPanel(
     }
   }
 
-  // 騎士と商人: 都市改善レベルと騎士・城壁（全員・公開情報）。
-  // 「改善」ラベルは省き、騎士は「起動済みの数」だけ表示する（テストプレイ要望）。
+  // 武将と商い: 城下の改善レベルと武将・石垣（全員・公開情報）。
+  // 「改善」ラベルは省き、武将は「出陣済みの数」だけ表示する（テストプレイ要望）。
   if (isCk(state)) {
     const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
     const kActive = Object.values(state.vertices)
       .filter(v => v.knight?.playerId === pId && v.knight.active).length;
     const walls = Object.values(state.vertices)
       .filter(v => v.building?.playerId === pId && (v.building as { wall?: boolean }).wall).length;
-    // 改善トラックは短ラベル(交/政/科)を維持。騎士・城壁は絵文字をやめ素材アイコンで表記統一。
+    // 改善トラックは短ラベル(商/政/学)を維持。武将・石垣は絵文字をやめ素材アイコンで表記統一。
     const ck = el('div', 'ck-status');
     const impEl = el('span', 'ck-imp');
-    impEl.textContent = `交${imp.trade}/政${imp.politics}/科${imp.science}`;
-    impEl.title = '都市改善 交易/政治/科学';
+    impEl.textContent = `商${imp.trade}/政${imp.politics}/学${imp.science}`;
+    impEl.title = '城下の改善 商/政/学';
     ck.appendChild(impEl);
     const knEl = el('span', 'ck-stat');
-    knEl.title = '起動済みの騎士';
+    knEl.title = '出陣済みの武将';
     knEl.append(inlineIc(knightImg, 'stat-ic'), Object.assign(el('span'), { textContent: String(kActive) }));
     ck.appendChild(knEl);
     if (walls > 0) {
       const wlEl = el('span', 'ck-stat');
-      wlEl.title = '城壁';
+      wlEl.title = '石垣';
       wlEl.append(inlineIc(ASSETS.piece.cityWall, 'stat-ic'), Object.assign(el('span'), { textContent: String(walls) }));
       ck.appendChild(wlEl);
     }
     div.appendChild(ck);
   }
 
-  // 発展カードUI
+  // 軍略カードUI
   // 他プレイヤーは秘匿マスクで devCards が空・devCardCount に枚数が入る場合がある。
   const devCount = isSelf ? player.devCards.length : (player.devCardCount ?? player.devCards.length);
   if (devCount > 0) {
@@ -2449,7 +2449,7 @@ function buildPlayerPanel(
         const chipCls = isVP ? 'vp' : playable > 0 ? 'playable' : 'new-card';
         const chip = el('span', `dev-card-chip ${chipCls}`);
         chip.textContent = `${DEV_CARD_CHIP_NAMES[type] ?? type}${total > 1 ? ` ×${total}` : ''}`;
-        chip.title = isVP ? '勝利点カード（常時効果）'
+        chip.title = isVP ? '由緒カード（常時効果）'
           : playable > 0 ? '使用可能（PRE_ROLLに使用）'
           : '今ターン購入（次ターンから使用可）';
         devPanel.appendChild(chip);
@@ -2463,7 +2463,7 @@ function buildPlayerPanel(
     div.appendChild(devPanel);
   }
 
-  // 騎士と商人: 自分の進歩カードはパネルにも常時表示（他プレイヤーのターン中でも確認できるように）。
+  // 武将と商い: 自分の進歩カードはパネルにも常時表示（他プレイヤーのターン中でも確認できるように）。
   // タップで効果説明＝詳細を開く。使用は自分のターン(TRADE_BUILD等)のみ有効、他人のターンは閲覧のみ。
   if (isSelf && isCk(state)) {
     const pcards = player.progressCards ?? [];

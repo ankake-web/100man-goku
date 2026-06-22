@@ -41,7 +41,7 @@ export function axialToPixel(coord: AxialCoord, size = HEX_SIZE): Point {
 // ============================================================
 
 /**
- * カタンボード上の有効な全19タイル座標を返す。
+ * 100万石ボード上の有効な全19タイル座標を返す。
  * 条件: |q| <= 2 && |r| <= 2 && |q+r| <= 2
  * 結果はq優先・r順でソートされる。
  */
@@ -128,7 +128,7 @@ export type BoardGeometry = {
 };
 
 /**
- * L-02 メイン関数: 空のカタンボードのジオメトリグラフを構築する。
+ * L-02 メイン関数: 空の100万石ボードのジオメトリグラフを構築する。
  *
  * アルゴリズム概要（tech_spec.md §10参照）:
  *   1. 全19タイルを列挙
@@ -278,8 +278,8 @@ export function isDistanceRuleOk(
 }
 
 /**
- * 指定辺が特定プレイヤーの道ネットワークに接続しているかチェックする。
- * 接続条件: 辺の頂点いずれかに自分の道または建物がある。
+ * 指定辺が特定プレイヤーの街道ネットワークに接続しているかチェックする。
+ * 接続条件: 辺の頂点いずれかに自分の街道または建物がある。
  */
 export function isEdgeConnected(
   edge: Edge,
@@ -294,7 +294,7 @@ export function isEdgeConnected(
     // 自分の建物がある頂点は接続点
     if (v.building?.playerId === playerId) return true;
 
-    // 自分の道が隣接辺にある
+    // 自分の街道が隣接辺にある
     return v.adjacentEdgeIds.some(eid => {
       const e = edges[eid];
       return e != null && e.id !== edge.id && e.road?.playerId === playerId;
@@ -323,22 +323,22 @@ export function isSeaEdge(
   return edgeTileIds(edge, vertices).some(t => tiles[t]?.type === 'sea');
 }
 
-/** 辺が陸に面するか（道を置ける辺）。基本ゲームは常に true。 */
+/** 辺が陸に面するか（街道を置ける辺）。基本ゲームは常に true。 */
 export function isLandEdge(
   edge: Edge, vertices: Record<VertexId, Vertex>, tiles: Record<TileId, Tile>,
 ): boolean {
   return edgeTileIds(edge, vertices).some(t => { const ty = tiles[t]?.type; return ty != null && ty !== 'sea'; });
 }
 
-/** 頂点が陸に面するか（開拓地を置ける）。基本ゲームは常に true。 */
+/** 頂点が陸に面するか（砦を置ける）。基本ゲームは常に true。 */
 export function isLandVertex(vertex: Vertex, tiles: Record<TileId, Tile>): boolean {
   return vertex.adjacentTileIds.some(t => { const ty = tiles[t]?.type; return ty != null && ty !== 'sea'; });
 }
 
 /**
- * コマ種別（道/船）を考慮した接続判定。
- *   - 自分の建物（開拓地/都市）がある頂点ではどの種別とも接続できる（道↔船の切替点）。
- *   - 建物が無い頂点では、同種のコマ（道は道、船は船）のみ接続できる。
+ * コマ種別（街道/船）を考慮した接続判定。
+ *   - 自分の建物（砦/城）がある頂点ではどの種別とも接続できる（街道↔船の切替点）。
+ *   - 建物が無い頂点では、同種のコマ（街道は街道、船は船）のみ接続できる。
  */
 export function isEdgeConnectedForPiece(
   edge: Edge,
@@ -350,10 +350,10 @@ export function isEdgeConnectedForPiece(
   return edge.vertexIds.some(vid => {
     const v = vertices[vid];
     if (!v) return false;
-    // 建物がある頂点: 自分の建物のみ接続点になる。相手の開拓地/都市はこの頂点での
-    // 接続を遮断する（相手の建物を越えて道・船を伸ばせない＝最長交易路の分断と同じルール）。
+    // 建物がある頂点: 自分の建物のみ接続点になる。相手の砦/城はこの頂点での
+    // 接続を遮断する（相手の建物を越えて街道・船を伸ばせない＝最長街道の分断と同じルール）。
     if (v.building) return v.building.playerId === playerId;
-    // 建物なし: その頂点に接する自分の道/船があれば接続。
+    // 建物なし: その頂点に接する自分の街道/船があれば接続。
     return v.adjacentEdgeIds.some(eid => {
       if (eid === edge.id) return false;
       const e = edges[eid];

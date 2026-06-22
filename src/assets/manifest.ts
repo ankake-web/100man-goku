@@ -30,19 +30,19 @@ import cityGeneric from './city.png';
 import robber from './robber.png';
 import pirate from './pirate.png';
 import barbarianShip from './barbarian-ship.png';
-// ---- アクション系アイコン（道建設・バンク交易・プレイヤー間交易） ----
+// ---- アクション系アイコン（街道建設・バンク交易・プレイヤー間交易） ----
 import roadIcon from './road.png';
 import bankTradeIcon from './bank-trade.png';
 import playerTradeIcon from './player-trade.png';
 import knightActivateIcon from './knight-activate.png';
 import knightUpgradeIcon from './knight-upgrade.png';
 
-// ---- 騎士（基本/強い/最強。盤面はプレイヤー色の土台ディスクで所有者を示す中立コマ） ----
+// ---- 武将（足軽/侍/精兵。盤面はプレイヤー色の土台ディスクで所有者を示す中立コマ） ----
 import knightBasic from './knight-basic.png';
 import knightStrong from './knight-strong.png';
 import knightMighty from './knight-mighty.png';
 
-// ---- 騎士と商人の追加コマ ----
+// ---- 武将と商いの追加コマ ----
 import merchant from './merchant.png';
 import metropolisGate from './metropolis-gate.png';
 import defenderBadge from './defender-badge.png';
@@ -55,18 +55,18 @@ import resWool from './res-wool.png';
 import resGrain from './res-grain.png';
 import resOre from './res-ore.png';
 
-// ---- 商品3 ----
+// ---- 物産3 ----
 import comPaper from './com-paper.png';
 import comCloth from './com-cloth.png';
 import comCoin from './com-coin.png';
 
 // ---- 改良建築6（トラック×レベル：Lv3/Lv4） ----
-import bldTradingHouse from './bld-trading-house.png'; // 商業L3
-import bldBank from './bld-bank.png';                  // 商業L4
-import bldFortress from './bld-fortress.png';          // 政治L3
-import bldCathedral from './bld-cathedral.png';        // 政治L4
-import bldAqueduct from './bld-aqueduct.png';          // 科学L3
-import bldTheater from './bld-theater.png';            // 科学L4
+import bldTradingHouse from './bld-trading-house.png'; // 商策L3
+import bldBank from './bld-bank.png';                  // 商策L4
+import bldFortress from './bld-fortress.png';          // 政策L3
+import bldCathedral from './bld-cathedral.png';        // 政策L4
+import bldAqueduct from './bld-aqueduct.png';          // 兵学L3
+import bldTheater from './bld-theater.png';            // 兵学L4
 
 // ---- 改良トラックのアイコン（ボタン用、Lv1–2/5 など建築が無いレベルで使用） ----
 import impTrade from './track-trade.png';
@@ -78,7 +78,7 @@ import cardBackTrade from './card-back-trade.png';
 import cardBackPolitics from './card-back-politics.png';
 import cardBackScience from './card-back-science.png';
 
-// ---- 政治カード9種 ----
+// ---- 政策カード9種 ----
 import polBishop from './card-pol-bishop.png';
 import polDiplomat from './card-pol-diplomat.png';
 import polIntrigue from './card-pol-intrigue.png';
@@ -89,7 +89,7 @@ import polSaboteur from './card-pol-saboteur.png';
 import polWedding from './card-pol-wedding.png';
 import polConstitution from './card-pol-constitution.png';
 
-// ---- 科学カード10種（緑） ----
+// ---- 兵学カード10種（緑） ----
 import sciAlchemist from './card-sci-alchemist.png';
 import sciCrane from './card-sci-crane.png';
 import sciEngineer from './card-sci-engineer.png';
@@ -101,7 +101,7 @@ import sciRoadBuilding from './card-sci-road-building.png';
 import sciSmith from './card-sci-smith.png';
 import sciPrinter from './card-sci-printer.png';
 
-// ---- 商業カード6種（黄） ----
+// ---- 商策カード6種（黄） ----
 import comMerchant from './card-com-merchant.png';
 import comMerchantFleet from './card-com-merchant-fleet.png';
 import comMasterMerchant from './card-com-master-merchant.png';
@@ -136,7 +136,7 @@ export const ASSETS = {
     metropolisGate,
     defenderBadge,
     cityWall,
-    barbarianShip: barbarianShip as string | null, // 蛮族船コマ
+    barbarianShip: barbarianShip as string | null, // 一揆勢の船コマ
   },
   knight: { basic: knightBasic, strong: knightStrong, mighty: knightMighty } as Record<'basic' | 'strong' | 'mighty', string>,
   resource: { lumber: resLumber, brick: resBrick, wool: resWool, grain: resGrain, ore: resOre } as Record<'lumber' | 'brick' | 'wool' | 'grain' | 'ore', string>,
@@ -155,17 +155,17 @@ export const ASSETS = {
     bishop: polBishop, diplomat: polDiplomat, intrigue: polIntrigue, deserter: polDeserter,
     warlord: polWarlord, spy: polSpy, saboteur: polSaboteur, wedding: polWedding, constitution: polConstitution,
   } as Record<string, string>,
-  // 進歩カード25種の個別アート（エンジンの型スラッグ→画像）。政治9＋科学10＋商業6。
+  // 進歩カード25種の個別アート（エンジンの型スラッグ→画像）。政策9＋兵学10＋商策6。
   // 表示側は ASSETS.progressCard[type] ?? ASSETS.cardBack[deck] で参照（未登録のみデッキ裏へ）。
   progressCard: {
-    // 政治9
+    // 政策9
     bishop: polBishop, diplomat: polDiplomat, intrigue: polIntrigue, deserter: polDeserter,
     warlord: polWarlord, spy: polSpy, saboteur: polSaboteur, wedding: polWedding, constitution: polConstitution,
-    // 科学10
+    // 兵学10
     alchemist: sciAlchemist, crane: sciCrane, engineer: sciEngineer, inventor: sciInventor,
     irrigation: sciIrrigation, medicine: sciMedicine, mining: sciMining,
     road_building_progress: sciRoadBuilding, smith: sciSmith, printer: sciPrinter,
-    // 商業6
+    // 商策6
     merchant: comMerchant, merchant_fleet: comMerchantFleet, master_merchant: comMasterMerchant,
     commercial_harbor: comCommercialHarbor, resource_monopoly: comResourceMonopoly, trade_monopoly: comTradeMonopoly,
   } as Record<string, string>,

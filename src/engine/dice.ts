@@ -20,13 +20,13 @@ export function rollDice(rng: () => number = Math.random): [number, number] {
  * ダイス合計値で「各プレイヤーが実際に得る資源（種類×枚数）」だけを計算して返す。
  * GameState は変更しない純粋関数。バンク枯渇ルールも適用済みの“実配布量”を返す。
  *
- * 計算に使うのはすべて公開情報（タイル種別/数字/強盗位置/盤面の建物/バンク在庫）のみ。
+ * 計算に使うのはすべて公開情報（タイル種別/数字/野盗位置/盤面の建物/バンク在庫）のみ。
  * そのため LAN のマスク済み state（自分以外の手札は隠れている）でも、各端末で
  * 同じ「誰が何を得たか」を導出できる（手札の中身は一切参照しない）。
  *
  * 配布ルール:
  *   - diceTotal === 7 → 配布なし（空オブジェクト）。
- *   - 強盗コマがあるタイル・砂漠は配布しない。開拓地=1枚、都市=2枚。
+ *   - 野盗コマがあるタイル・荒野は配布しない。砦=1枚、城=2枚。
  *   - バンク枯渇: 複数人需要が在庫超なら配布なし。単独なら在庫分だけ配布。
  */
 export function computeDiceProduction(
@@ -65,7 +65,7 @@ export function computeDiceProduction(
     const affectedPids = Object.keys(resourceDemand);
     if (affectedPids.length === 0) continue;
 
-    // Catan公式ルール: 複数プレイヤーへの配布合計がバンク在庫を超える場合、
+    // 100万石公式ルール: 複数プレイヤーへの配布合計がバンク在庫を超える場合、
     // その資源は誰にも配布しない（単一プレイヤーの場合は在庫分だけ配布）
     const totalDemand = affectedPids.reduce((s, pid) => s + (resourceDemand[pid] ?? 0), 0);
     if (affectedPids.length > 1 && totalDemand > bankLeft[resource]) {
@@ -88,10 +88,10 @@ export function computeDiceProduction(
 
 /**
  * 航海者: 金タイル(gold)の出目一致による「任意資源を選ぶ枚数」をプレイヤー別に計算する純粋関数。
- * 開拓地=1・都市=2。強盗のあるタイルは産出しない。7 は対象外。
+ * 砦=1・城=2。野盗のあるタイルは産出しない。7 は対象外。
  *
  * 金は固定の対応資源を持たないため computeDiceProduction では配布されず、ここで「選択権の枚数」
- * だけを公開情報（タイル/数字/強盗/盤面の建物）から導出する（手札は一切参照しない＝LAN安全）。
+ * だけを公開情報（タイル/数字/野盗/盤面の建物）から導出する（手札は一切参照しない＝LAN安全）。
  * 返り値は picks>0 のプレイヤーのみを含む（基本ゲームは金タイルが無く常に空）。
  */
 export function computeGoldPicks(

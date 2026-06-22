@@ -376,7 +376,7 @@ function playSE(type: SEType): void {
         break;
       }
       case 'sevenRoll':
-        // 7（盗賊）: 少し不穏な下降音
+        // 7（野盗）: 少し不穏な下降音
         note(240, 0.18, 'sawtooth', 0.4, 0.00);
         note(180, 0.28, 'sawtooth', 0.32, 0.12);
         break;
@@ -396,7 +396,7 @@ function playSE(type: SEType): void {
         note(1047, 0.16, 'sine', 0.38, 0.07);
         break;
       case 'bonusGain':
-        // 称号獲得（最長交易路/最大騎士力）: 少し派手な3音ファンファーレ
+        // 称号獲得（最長街道/武威）: 少し派手な3音ファンファーレ
         note(659, 0.14, 'triangle', 0.5, 0.00);
         note(880, 0.14, 'triangle', 0.5, 0.10);
         note(1175, 0.26, 'triangle', 0.46, 0.20);
@@ -413,7 +413,7 @@ function playSE(type: SEType): void {
         note(220, 0.06, 'triangle', 0.3, 0.00);
         break;
       case 'barbarianAttack':
-        // 蛮族襲来: 不穏な戦角笛＋地鳴り（低く重く、半音の不協和で緊張）。二段で吹き上げる。
+        // 一揆勢襲来: 不穏な戦角笛＋地鳴り（低く重く、半音の不協和で緊張）。二段で吹き上げる。
         note(64, 0.85, 'sine', 0.7, 0.00);        // 地鳴りの重低音
         note(110, 0.6, 'sawtooth', 0.4, 0.00);    // 角笛
         note(116, 0.6, 'sawtooth', 0.26, 0.02);   // 半音上＝不協和（緊張）

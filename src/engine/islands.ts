@@ -70,7 +70,7 @@ function homeIslandRep(repOf: Record<TileId, string>): string | null {
 }
 
 /**
- * 航海者: 初期配置で開拓地を置ける「本島」上の頂点か。
+ * 航海者: 初期配置で砦を置ける「本島」上の頂点か。
  * 新しい島へは航海（船）でのみ渡れる（New Shores ルール）。本島=最大の陸の島。
  * 基本ゲーム（海タイル無し）は制限しない（常に true）。
  */
@@ -86,7 +86,7 @@ export function isHomeIslandVertex(state: GameState, vertexId: VertexId): boolea
 }
 
 /**
- * 航海者: その空き頂点に開拓地を建てると「新島への最初の入植」=+2VP の対象になるか。
+ * 航海者: その空き頂点に砦を建てると「新島への最初の入植」=+2VP の対象になるか。
  * = 海タイルのある盤で、本島でない島に属し、その島にまだ建物が無い頂点。
  * AI が新島開拓（島ボーナス・金タイル）へ向かう動機づけに使う（基本ゲームでは常に false）。
  */
@@ -106,11 +106,11 @@ export function isUnclaimedNewIslandVertex(state: GameState, vertexId: VertexId)
 }
 
 /**
- * MAIN フェーズで開拓地を建てた“直後の state”を受け取り、その頂点が
+ * MAIN フェーズで砦を建てた“直後の state”を受け取り、その頂点が
  * 「その島で最初の建物」（=新しい島への最初の入植）なら島代表IDを返す。
  * 対象外（海タイルの無い基本ゲーム / 既に他の建物がある島 / 陸に面さない）の場合は null。
  *
- * 判定は「島内の建物がちょうど1個（＝今置いた開拓地のみ）」で行う。建物は撤去されないため、
+ * 判定は「島内の建物がちょうど1個（＝今置いた砦のみ）」で行う。建物は撤去されないため、
  * これは島ごとに一度だけ true になり、初入植者を一意に特定できる。
  */
 export function newIslandBonusRep(state: GameState, builtVertexId: VertexId): string | null {

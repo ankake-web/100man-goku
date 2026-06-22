@@ -37,11 +37,11 @@ function isSetupPhase(state: GameState): boolean {
 }
 
 // ============================================================
-// 道（Road）
+// 街道（Road）
 // ============================================================
 
 /**
- * 指定辺に道を建設できるか検証する。
+ * 指定辺に街道を建設できるか検証する。
  *
  * MAIN フェーズ: 資源コスト + 残コマ + 辺未使用 + ネットワーク接続
  * SETUP フェーズ: 資源不要。残コマ + 辺未使用 + 接続
@@ -54,15 +54,15 @@ export function canBuildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeI
   const edge = state.edges[edgeId];
   if (!edge) return false;
   if (edge.road != null) return false;
-  if (edge.ship != null) return false; // 既に船がある辺には道を置けない
-  // 道は陸に面した辺のみ（航海者: 純粋な海上の辺には置けない）。基本ゲームは常に true。
+  if (edge.ship != null) return false; // 既に船がある辺には街道を置けない
+  // 街道は陸に面した辺のみ（航海者: 純粋な海上の辺には置けない）。基本ゲームは常に true。
   if (!isLandEdge(edge, state.vertices, state.tiles)) return false;
 
-  // セットアップ or 街道建設カード使用中は資源コスト不要
+  // セットアップ or 普請カード使用中は資源コスト不要
   const freeRoad = isSetupPhase(state) || state.roadBuildingRoadsRemaining > 0;
   if (!freeRoad && !hasEnoughResources(player.hand, BUILD_COSTS.road)) return false;
 
-  // セットアップ中は「直前に置いた開拓地」に接続する道のみ許可（標準ルール）。
+  // セットアップ中は「直前に置いた砦」に接続する街道のみ許可（標準ルール）。
   // anchor 未設定（手組みの state 等）の場合は従来の接続判定にフォールバック。
   if (isSetupPhase(state) && state.setupRoadAnchor) {
     return edge.vertexIds.includes(state.setupRoadAnchor);
@@ -78,9 +78,9 @@ export function canBuildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeI
 /**
  * 指定辺に船を建設できるか検証する。
  *   - 海に面した辺（sea-edge）のみ。
- *   - 道/船が未設置。残コマあり。
- *   - 接続: 自分の船 or 建物に連結（道とは建物経由でのみ切替）。
- *   - MAIN は資源コスト（木+羊）。セットアップは無料＋直前の開拓地に接続。
+ *   - 街道/船が未設置。残コマあり。
+ *   - 接続: 自分の船 or 建物に連結（街道とは建物経由でのみ切替）。
+ *   - MAIN は資源コスト（木材+馬）。セットアップは無料＋直前の砦に接続。
  */
 export function canBuildShip(state: GameState, playerId: PlayerId, edgeId: EdgeId): boolean {
   const player = state.players[playerId];
@@ -131,8 +131,8 @@ export function buildShip(state: GameState, playerId: PlayerId, edgeId: EdgeId):
 // ============================================================
 
 /**
- * 頂点 v が「自分の交易路の開放端」か（船を持ち上げてよい端）。
- * = その頂点に建物が無く、fromEdge 以外に自分の道/船が接続していない（行き止まり）。
+ * 頂点 v が「自分の街道網の開放端」か（船を持ち上げてよい端）。
+ * = その頂点に建物が無く、fromEdge 以外に自分の街道/船が接続していない（行き止まり）。
  */
 function isOpenShipEnd(
   state: GameState, playerId: PlayerId, vertexId: VertexId, fromEdgeId: EdgeId,
@@ -212,7 +212,7 @@ export function moveShip(
   };
 }
 
-/** 道を建設して新しい GameState を返す（バリデーション済み前提）。 */
+/** 街道を建設して新しい GameState を返す（バリデーション済み前提）。 */
 export function buildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeId): GameState {
   const player = state.players[playerId]!;
   const freeRoad = isSetupPhase(state) || state.roadBuildingRoadsRemaining > 0;
@@ -234,14 +234,14 @@ export function buildRoad(state: GameState, playerId: PlayerId, edgeId: EdgeId):
 }
 
 // ============================================================
-// 開拓地（Settlement）
+// 砦（Settlement）
 // ============================================================
 
 /**
- * 指定頂点に開拓地を建設できるか検証する。
+ * 指定頂点に砦を建設できるか検証する。
  *
- * MAIN フェーズ: 資源コスト + 残コマ + 頂点未使用 + 距離ルール + 道への接続
- * SETUP フェーズ: 資源不要・道接続不要。残コマ + 頂点未使用 + 距離ルール
+ * MAIN フェーズ: 資源コスト + 残コマ + 頂点未使用 + 距離ルール + 街道への接続
+ * SETUP フェーズ: 資源不要・街道接続不要。残コマ + 頂点未使用 + 距離ルール
  */
 export function canBuildSettlement(
   state: GameState, playerId: PlayerId, vertexId: VertexId,
@@ -253,9 +253,9 @@ export function canBuildSettlement(
   const vertex = state.vertices[vertexId];
   if (!vertex) return false;
   if (vertex.building != null) return false;
-  // 騎士と商人: 騎士が立つ頂点には開拓地を建てられない（建てると騎士コマが描画上消える＝盤面不整合）。
+  // 武将と商い: 武将が立つ頂点には砦を建てられない（建てると武将コマが描画上消える＝盤面不整合）。
   if (vertex.knight != null) return false;
-  // 開拓地は陸に面した頂点のみ（航海者: 外洋だけに接する頂点には置けない）。基本ゲームは常に true。
+  // 砦は陸に面した頂点のみ（航海者: 外洋だけに接する頂点には置けない）。基本ゲームは常に true。
   if (!isLandVertex(vertex, state.tiles)) return false;
 
   if (!isDistanceRuleOk(vertex, state.vertices)) return false;
@@ -265,7 +265,7 @@ export function canBuildSettlement(
   if (setup && !isHomeIslandVertex(state, vertexId)) return false;
   if (!setup && !hasEnoughResources(player.hand, BUILD_COSTS.settlement)) return false;
 
-  // MAIN フェーズ: 自分の道 or 船への接続が必要（航海者: 船でも開拓地を建てられる）。
+  // MAIN フェーズ: 自分の街道 or 船への接続が必要（航海者: 船でも砦を建てられる）。
   if (!setup) {
     const connected = vertex.adjacentEdgeIds.some(eid => {
       const e = state.edges[eid];
@@ -277,7 +277,7 @@ export function canBuildSettlement(
   return true;
 }
 
-/** 開拓地を建設して新しい GameState を返す（バリデーション済み前提）。 */
+/** 砦を建設して新しい GameState を返す（バリデーション済み前提）。 */
 export function buildSettlement(
   state: GameState, playerId: PlayerId, vertexId: VertexId,
 ): GameState {
@@ -308,12 +308,12 @@ export function buildSettlement(
 }
 
 // ============================================================
-// 都市（City）
+// 城（City）
 // ============================================================
 
 /**
- * 指定頂点を都市に昇格できるか検証する。
- * 昇格元となる自分の開拓地がその頂点に必要。
+ * 指定頂点を城に昇格できるか検証する。
+ * 昇格元となる自分の砦がその頂点に必要。
  */
 export function canBuildCity(state: GameState, playerId: PlayerId, vertexId: VertexId): boolean {
   const player = state.players[playerId];
@@ -330,8 +330,8 @@ export function canBuildCity(state: GameState, playerId: PlayerId, vertexId: Ver
 }
 
 /**
- * 開拓地を都市に昇格させて新しい GameState を返す（バリデーション済み前提）。
- * 都市昇格した開拓地コマは手元に戻るため remainingSettlements +1。
+ * 砦を城に昇格させて新しい GameState を返す（バリデーション済み前提）。
+ * 築城した砦コマは手元に戻るため remainingSettlements +1。
  */
 export function buildCity(state: GameState, playerId: PlayerId, vertexId: VertexId): GameState {
   const player = state.players[playerId]!;
@@ -351,7 +351,7 @@ export function buildCity(state: GameState, playerId: PlayerId, vertexId: Vertex
       [playerId]: {
         ...player,
         hand: deductCost(player.hand, BUILD_COSTS.city),
-        remainingSettlements: player.remainingSettlements + 1, // 開拓地コマ返却
+        remainingSettlements: player.remainingSettlements + 1, // 砦コマ返却
         remainingCities: player.remainingCities - 1,
       },
     },

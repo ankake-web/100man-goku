@@ -33,11 +33,11 @@ describe('金タイル選択モーダル（人間UI・jsdom）', () => {
     const dispatch = (a: Action): void => { dispatched.push(a); };
     const setUIPhase = (p: UIPhase): void => { uiPhase = p; };
 
-    // 1枚目: 鉱石、2枚目: 小麦 を選ぶ（クリックのたびに再構築＝アプリの再描画を模す）。
+    // 1枚目: 鉄(ore)、2枚目: 米(grain) を選ぶ（クリックのたびに再構築＝アプリの再描画を模す）。
     const render = (): HTMLDivElement => buildGoldChoiceUI(s, 'player1', uiPhase, setUIPhase, dispatch);
 
-    clickByText(render(), '鉄鉱');   // ore → setUIPhase slots[ore, null]
-    clickByText(render(), '麦');     // grain → setUIPhase slots[ore, grain]
+    clickByText(render(), '鉄');   // ore → setUIPhase slots[ore, null]
+    clickByText(render(), '米');     // grain → setUIPhase slots[ore, grain]
     expect(uiPhase).toMatchObject({ type: 'goldChoice', slots: ['ore', 'grain'] });
 
     // 全スロット埋まったので「受け取る」が有効 → dispatch
@@ -60,7 +60,7 @@ describe('金タイル選択モーダル（人間UI・jsdom）', () => {
     const s: GameState = { ...base, bank: { ...base.bank, ore: 0 } };
     const uiPhase: UIPhase = { type: 'goldChoice', playerId: 'player1', slots: [null, null] };
     const div = buildGoldChoiceUI(s, 'player1', uiPhase, () => {}, () => {});
-    const oreBtn = [...div.querySelectorAll('button')].find(b => (b.textContent ?? '').includes('鉄鉱'))!;
+    const oreBtn = [...div.querySelectorAll('button')].find(b => (b.textContent ?? '').includes('鉄'))!;
     expect(oreBtn.hasAttribute('disabled')).toBe(true);
   });
 });

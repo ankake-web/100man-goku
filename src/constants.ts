@@ -8,7 +8,7 @@ import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, Com
 
 export const RESOURCE_TYPES: ResourceType[] = ['wood', 'brick', 'wool', 'grain', 'ore'];
 
-// ---- 騎士と商人(Cities & Knights): 商品(コモディティ) ----
+// ---- 武将と商い(Cities & Knights): 物産(コモディティ) ----
 export const COMMODITY_TYPES: CommodityType[] = ['coin', 'cloth', 'paper'];
 
 /** 全コモディティキーを含む CommodityHand を生成。省略キーは 0。 */
@@ -16,10 +16,10 @@ export function makeCommodities(partial: Partial<CommodityHand> = {}): Commodity
   return { coin: 0, cloth: 0, paper: 0, ...partial };
 }
 
-/** 騎士と商人: 商品銀行の初期在庫（資源バンクと対称に各19）。実質枯渇しないが供給の有限性を表す。 */
+/** 武将と商い: 物産銀行の初期在庫（資源バンクと対称に各19）。実質枯渇しないが供給の有限性を表す。 */
 export const COMMODITY_BANK_INITIAL: CommodityHand = { coin: 19, cloth: 19, paper: 19 };
 
-// 都市が追加産出する商品の対応（森→紙 / 牧草→布 / 山→金貨）。他地形は商品なし。
+// 城が追加産出する物産の対応（森林→紙 / 牧→絹 / 鉱山→金）。他地形は物産なし。
 export const TILE_COMMODITY_MAP: Record<TileType, CommodityType | null> = {
   forest:   'paper',
   pasture:  'cloth',
@@ -58,7 +58,7 @@ export function makeHand(partial: Partial<ResourceHand> = {}): ResourceHand {
 // Partial<ResourceHand> ではなく ResourceHand を使用（undefined − n = NaN を防ぐ）
 export const BUILD_COSTS: Record<'road' | 'ship' | 'settlement' | 'city' | 'dev_card', ResourceHand> = {
   road:       makeHand({ wood: 1, brick: 1 }),
-  ship:       makeHand({ wood: 1, wool: 1 }), // 航海者: 船＝木＋羊
+  ship:       makeHand({ wood: 1, wool: 1 }), // 航海者: 船＝木＋馬
   settlement: makeHand({ wood: 1, brick: 1, wool: 1, grain: 1 }),
   city:       makeHand({ grain: 2, ore: 3 }),
   dev_card:   makeHand({ wool: 1, grain: 1, ore: 1 }),
@@ -69,29 +69,33 @@ export const PIECE_LIMITS = {
   ships: 15,
   settlements: 5,
   cities: 4,
-  knights: 6, // 騎士と商人: 騎士コマ上限
+  knights: 6, // 武将と商い: 武将コマ上限
 } as const;
 
-// ---- 騎士と商人(Cities & Knights) ----
+// ---- 武将と商い(Cities & Knights) ----
 export const CK_VICTORY_TARGET = 13;
 export const CK_COSTS = {
-  knightBuild:    makeHand({ ore: 1, wool: 1 }),  // 騎士1体（基本・非起動）
+  knightBuild:    makeHand({ ore: 1, wool: 1 }),  // 武将1体（基本・非出陣）
   knightUpgrade:  makeHand({ ore: 1, wool: 1 }),  // 強さ+1
-  knightActivate: makeHand({ grain: 1 }),         // 起動（麦1）
-  cityWall:       makeHand({ brick: 2 }),          // 城壁（手札上限+2）
+  knightActivate: makeHand({ grain: 1 }),         // 出陣（米1）
+  cityWall:       makeHand({ brick: 2 }),          // 石垣（手札上限+2）
 };
 export const CK_TRACK_COMMODITY: Record<CkTrack, CommodityType> = {
   trade: 'cloth', politics: 'coin', science: 'paper',
 };
 export const CK_TRACK_NAME: Record<CkTrack, string> = {
-  trade: '交易', politics: '政治', science: '科学',
+  trade: '商', politics: '政', science: '学',
 };
-export const CK_MAX_IMPROVEMENT = 5;     // 都市改善の最大レベル
-export const CK_METROPOLIS_LEVEL = 4;    // この到達でメトロポリス化
-export const CK_BARBARIAN_MAX = 7;       // 蛮族船がこの距離で襲来
-export const CK_WALL_DISCARD_BONUS = 2;  // 城壁1つにつき7の捨て札上限+2
+// 進歩カードのカテゴリ表示専用（3デッキ）。城下の発展トラック名(商/政/学)とは別ラベル。
+export const CK_PROGRESS_CATEGORY_NAME: Record<CkTrack, string> = {
+  trade: '商策', politics: '政策', science: '兵学',
+};
+export const CK_MAX_IMPROVEMENT = 5;     // 城下の改善の最大レベル
+export const CK_METROPOLIS_LEVEL = 4;    // この到達で天守化
+export const CK_BARBARIAN_MAX = 7;       // 一揆勢の船がこの距離で襲来
+export const CK_WALL_DISCARD_BONUS = 2;  // 石垣1つにつき7の捨て札上限+2
 export const CK_MAX_WALLS = 3;
-/** 都市改善 level→level+1 のコスト（その商品を level+1 個）。 */
+/** 城下の改善 level→level+1 のコスト（その物産を level+1 個）。 */
 export function improvementCost(currentLevel: number): number {
   return currentLevel + 1;
 }
@@ -118,37 +122,37 @@ export const PROGRESS_DECK_COUNTS: Record<ProgressCardType, number> = {
 };
 export const PROGRESS_CARD_NAME: Record<ProgressCardType, string> = {
   smith: '鍛冶屋', engineer: '技師', irrigation: '灌漑', mining: '採掘',
-  alchemist: '錬金術師', crane: 'クレーン', inventor: '発明家', medicine: '医術', printer: '印刷機', road_building_progress: '街道建設',
+  alchemist: '錬金術師', crane: 'クレーン', inventor: '発明家', medicine: '医術', printer: '印刷機', road_building_progress: '普請',
   resource_monopoly: '資源独占', trade_monopoly: '交易独占', master_merchant: '大商人',
-  commercial_harbor: '商業港', merchant: '商人', merchant_fleet: '商船隊',
+  commercial_harbor: '商業湊', merchant: '御用商人', merchant_fleet: '商船隊',
   warlord: '将軍', saboteur: '破壊工作員', wedding: '婚礼',
   bishop: '僧正', constitution: '憲法', deserter: '脱走兵', diplomat: '外交官', intrigue: '陰謀', spy: 'スパイ',
 };
 export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
-  smith: '騎士を最大2体まで無料で1段昇格',
-  engineer: '城壁を1つ無料で建設',
-  irrigation: '建物に隣接する畑1つにつき麦2',
-  mining: '建物に隣接する山1つにつき鉱石2',
+  smith: '武将を最大2体まで無料で1段加増',
+  engineer: '石垣を1つ無料で建設',
+  irrigation: '建物に隣接する田1つにつき米2',
+  mining: '建物に隣接する鉱山1つにつき鉄2',
   alchemist: '次のダイスの目を自分で決めてから振る',
-  crane: '都市の改善トラック（交易/政治/科学）を1段、必要な商品より1個少なく上げる',
+  crane: '城下の改善トラック（商/政/学）を1段、必要な物産より1個少なく上げる',
   inventor: '数字トークン2枚を入れ替え（2/6/8/12以外）',
-  medicine: '開拓地を都市に格上げ（通常より安い 麦1＋鉱石2 で）',
+  medicine: '砦を城に格上げ（通常より安い 米1＋鉄2 で）',
   printer: '即座に+1勝利点',
-  road_building_progress: '道を2本まで無料で建設',
+  road_building_progress: '街道を2本まで無料で建設',
   resource_monopoly: '各相手から最良の資源を2枚ずつ',
-  trade_monopoly: '各相手から最良の商品を1枚ずつ',
+  trade_monopoly: '各相手から最良の物産を1枚ずつ',
   master_merchant: 'VP最多の相手から無作為に2枚',
-  commercial_harbor: '各相手と 自分の資源1⇄相手の商品1 を交換',
-  merchant: '資源地形に商人を置く（+1VP・その資源2:1）',
+  commercial_harbor: '各相手と 自分の資源1⇄相手の物産1 を交換',
+  merchant: '資源地形に御用商人を置く（+1VP・その資源2:1）',
   merchant_fleet: 'このターン、指定1種を2:1で交易',
-  warlord: '自分の騎士を全て無料で起動',
+  warlord: '自分の武将を全て無料で出陣',
   saboteur: '自分以上のVPを持つ全員が資源を半数捨てる',
   wedding: '自分よりVPが高い各相手から2枚もらう',
-  bishop: '盗賊を移動し移動先隣接の全相手から各1枚',
+  bishop: '野盗を移動し移動先隣接の全相手から各1枚',
   constitution: '即座に+1勝利点',
-  deserter: '相手の騎士を1体消し、自分は同強度の騎士を得る',
-  diplomat: '端の道1本を撤去（自分の道なら再建設）',
-  intrigue: '自分の道に隣接する敵騎士を1体退去',
+  deserter: '相手の武将を1体消し、自分は同強度の武将を得る',
+  diplomat: '端の街道1本を撤去（自分の街道なら再建設）',
+  intrigue: '自分の街道に隣接する敵武将を1体退去',
   spy: '相手の進歩カードを1枚奪う',
 };
 
@@ -158,7 +162,7 @@ export const BANK_INITIAL: ResourceHand = makeHand({
   wood: 19, brick: 19, wool: 19, grain: 19, ore: 19,
 });
 
-// ---- 発展カード ----
+// ---- 軍略カード ----
 
 export const DEV_CARD_COUNTS: Record<DevCardType, number> = {
   knight:         14,
@@ -183,7 +187,7 @@ export const VP_TABLE = {
 export const LONGEST_ROAD_MIN = 5;
 export const LARGEST_ARMY_MIN = 3;
 
-// ---- 強盗 ----
+// ---- 野盗 ----
 
 export const DICE_ROBBER_NUMBER      = 7;
 export const ROBBER_HAND_DISCARD_MIN = 8; // 手札がこの枚数以上で半数捨て

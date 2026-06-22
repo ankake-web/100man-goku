@@ -1,5 +1,5 @@
 // ============================================================
-// src/engine/setup.ts — L-03: タイルランダム配置・数字トークン・港配置
+// src/engine/setup.ts — L-03: タイルランダム配置・数字トークン・湊配置
 // ============================================================
 
 import type {
@@ -10,7 +10,7 @@ import { TILE_COUNTS, NUMBER_TOKENS } from '../constants';
 import { getAllTileCoords, getTileNeighbors, tileId, type BoardGeometry } from './board';
 
 // ============================================================
-// 港スロット定義（位置は固定、種別はシャッフル）
+// 湊スロット定義（位置は固定、種別はシャッフル）
 // ============================================================
 // 各スロットは（タイル座標, edgeIndex）で表す。
 //
@@ -137,7 +137,7 @@ function buildTileTypePool(rng: () => number): TileType[] {
 
 /**
  * 全19タイルにランダムな種別を割り当てる。
- * 砂漠タイルには hasRobber = true を設定（強盗の初期位置）。
+ * 荒野タイルには hasRobber = true を設定（野盗の初期位置）。
  */
 export function assignTileTypes(
   coords: AxialCoord[],
@@ -180,7 +180,7 @@ function hasRedConflict(coord: AxialCoord, tiles: Record<TileId, Tile>): boolean
 }
 
 /**
- * 18枚の数字トークンを砂漠以外の全タイルに配置する。
+ * 18枚の数字トークンを荒野以外の全タイルに配置する。
  *
  * 制約: 赤トークン（6 / 8）同士が隣接しない。
  * 最大 maxAttempts 回シャッフルしてリトライする。
@@ -214,12 +214,12 @@ export function placeNumberTokens(
 }
 
 // ============================================================
-// 港配置
+// 湊配置
 // ============================================================
 
 /**
- * 9箇所の固定スロットに港を配置する（種別はランダム）。
- * 港頂点の harborType を更新して交易レート計算（trade_spec.md §3-3）に使用できるようにする。
+ * 9箇所の固定スロットに湊を配置する（種別はランダム）。
+ * 湊頂点の harborType を更新して交易レート計算（trade_spec.md §3-3）に使用できるようにする。
  */
 export function createHarbors(
   geometry: BoardGeometry,
@@ -231,7 +231,7 @@ export function createHarbors(
     const tid = tileId(slot.coord);
     const edgeId = geometry.tileToEdges[tid]?.[slot.edgeIndex];
     if (edgeId == null) {
-      throw new Error(`港スロットの辺が見つかりません: tile=${tid} edgeIndex=${slot.edgeIndex}`);
+      throw new Error(`湊スロットの辺が見つかりません: tile=${tid} edgeIndex=${slot.edgeIndex}`);
     }
 
     const edge = geometry.edges[edgeId];
@@ -242,7 +242,7 @@ export function createHarbors(
     const [va, vb] = edge.vertexIds;
     const harborType = types[i] as HarborType;
 
-    // 頂点に港種別を記録（交易レート計算に使用）
+    // 頂点に湊種別を記録（交易レート計算に使用）
     const vA = geometry.vertices[va];
     const vB = geometry.vertices[vb];
     if (vA) vA.harborType = harborType;
@@ -266,14 +266,14 @@ export interface SetupResult {
 }
 
 /**
- * L-03: カタンボードをランダムに初期化する。
+ * L-03: 100万石ボードをランダムに初期化する。
  *
  * 処理順:
- *   1. タイル種別をシャッフル配置（砂漠に強盗を初期配置）
+ *   1. タイル種別をシャッフル配置（荒野に野盗を初期配置）
  *   2. 数字トークンを赤隣接制約付きで配置
- *   3. 港種別をシャッフルして固定スロットに配置
+ *   3. 湊種別をシャッフルして固定スロットに配置
  *
- * @param geometry buildBoardGeometry() の結果（港頂点情報を内部で更新する）
+ * @param geometry buildBoardGeometry() の結果（湊頂点情報を内部で更新する）
  * @param rng 乱数生成器。省略時 Math.random、再現テスト時は createRng(seed) を渡す。
  */
 export function createRandomBoard(

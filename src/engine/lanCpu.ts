@@ -10,7 +10,7 @@
 //   - CPU は自分からはプレイヤー間交易を提案しない（skipPlayerTrade=true）。
 //     → 人間応答待ちでのスタールを避ける（CPU→人間提案は残課題）。
 //   - 人間が CPU をターゲットにした交易には CPU が承認/拒否で応答する。
-//   - 捨て札・盗賊・初期配置・通常ターンは chooseAction に委譲。
+//   - 捨て札・野盗・初期配置・通常ターンは chooseAction に委譲。
 //
 // 単一端末のローカルCPU経路（main.ts）には一切触れない（CPU戦は無傷）。
 
@@ -62,8 +62,8 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     // 捨て札済み(discardedThisRound)の CPU は除外する。16枚以上から半分捨てても8枚以上
     // 残るため、これが無いと同じ CPU を再選択し続け、エンジンの二重捨てガードで
     // 全アクションが拒否されてサーバの CPU 駆動が恒久停止する（デッドロック）。
-    // 判定はエンジンの discardCount（騎士と商人は資源＋商品で数える）で行う。資源のみで
-    // 数えると、商品込みで上限超の CPU が選ばれず捨て札フェーズが永久に終わらない（盗賊へ進めない）。
+    // 判定はエンジンの discardCount（武将と商いは資源＋物産で数える）で行う。資源のみで
+    // 数えると、物産込みで上限超の CPU が選ばれず捨て札フェーズが永久に終わらない（野盗へ進めない）。
     const dpid = state.playerOrder.find(p =>
       isCpu(state, p)
       && !(state.discardedThisRound ?? []).includes(p)
@@ -86,7 +86,7 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     return null; // 人間の選択待ち
   }
 
-  // ---- 騎士と商人: 蛮族敗北での都市格下げ（手番に関わらず対象 CPU を1人ずつ処理）----
+  // ---- 武将と商い: 一揆勢敗北での城格下げ（手番に関わらず対象 CPU を1人ずつ処理）----
   if (state.phase === 'MAIN' && state.turnPhase === 'CITY_DOWNGRADE') {
     const dpid = (state.pendingCityDowngrade ?? []).find(p => isCpu(state, p));
     if (dpid) {
@@ -96,7 +96,7 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     return null; // 人間の選択待ち
   }
 
-  // ---- 騎士と商人: 進歩カード上限超過（5枚目）→ 捨てる対象 CPU を1人ずつ処理 ----
+  // ---- 武将と商い: 進歩カード上限超過（5枚目）→ 捨てる対象 CPU を1人ずつ処理 ----
   if (state.phase === 'MAIN' && state.turnPhase === 'PROGRESS_DISCARD') {
     const dpid = (state.pendingProgressDiscard ?? []).find(p => isCpu(state, p));
     if (dpid) {
@@ -106,7 +106,7 @@ export function nextCpuAction(state: GameState, rng: () => number = Math.random)
     return null; // 人間の選択待ち
   }
 
-  // ---- 手番が CPU なら通常の一手（初期配置 / ダイス / 盗賊 / 建設等）----
+  // ---- 手番が CPU なら通常の一手（初期配置 / ダイス / 野盗 / 建設等）----
   const cur = state.playerOrder[state.currentPlayerIndex];
   if (cur && isCpu(state, cur)) {
     // CPU は自分からプレイヤー間交易を提案しない（スタール回避）

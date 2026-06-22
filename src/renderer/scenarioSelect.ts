@@ -12,7 +12,7 @@ import { createRng } from '../engine/setup';
 const CATEGORY_LABEL: Record<'basic' | 'seafarers' | 'cities_knights', string> = {
   basic: '基本',
   seafarers: '航海者（船で島へ）',
-  cities_knights: '都市と騎士（拡張）',
+  cities_knights: '城と武将（拡張）',
 };
 const CATEGORY_ORDER = ['basic', 'seafarers', 'cities_knights'] as const;
 
@@ -35,7 +35,7 @@ function hexPoints(cx: number, cy: number, s: number): string {
 // 同一シナリオのプレビューは再計算せずクローンを返す（ロビーの再描画で都度作らない）。
 const previewCache = new Map<ScenarioId, SVGSVGElement>();
 
-/** シナリオの盤面レイアウトを小さなSVGで描く（タイル色のみ・数字/港なし）。 */
+/** シナリオの盤面レイアウトを小さなSVGで描く（タイル色のみ・数字/湊なし）。 */
 export function renderScenarioPreview(id: ScenarioId): SVGSVGElement {
   const cached = previewCache.get(id);
   if (cached) return cached.cloneNode(true) as SVGSVGElement;

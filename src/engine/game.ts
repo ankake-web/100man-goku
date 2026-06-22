@@ -46,7 +46,7 @@ const TURN_CAP = 1000;
  * これを共有し、ロジックのドリフト（アニメだけズレる）を防ぐ。
  *
  * - 隣接タイルは tileToVertices の列挙順で走査（付与と同じ順序＝アニメ順も一致）。
- * - 砂漠（resource なし）は除外。
+ * - 荒野（resource なし）は除外。
  * - bank 在庫が0の資源は除外。同一資源の隣接が複数あれば在庫が尽きた分から除外。
  * 返り値は獲得した資源の順序付き配列（同じ資源が複数回入りうる）。
  *
@@ -71,7 +71,7 @@ export function setupGainFor(state: GameState, vertexId: VertexId, bank: Resourc
   return gains;
 }
 
-/** 発展カードデッキをシャッフル生成（ゲーム開始時用） */
+/** 軍略カードデッキをシャッフル生成（ゲーム開始時用） */
 export function buildDevDeck(rng: () => number = Math.random): DevCard[] {
   const deck: DevCard[] = [];
   let id = 0;
@@ -95,13 +95,13 @@ export function buildDevDeck(rng: () => number = Math.random): DevCard[] {
 // ============================================================
 
 /**
- * 騎士と商人: 蛮族解決(applyEventDie)後の「生産 or 7の捨て札/盗賊」への遷移。
- * ROLL_DICE 本体と、都市格下げ(CITY_DOWNGRADE)解決後の再開の両方から呼ぶ（重複排除＋一貫性）。
+ * 武将と商い: 一揆勢解決(applyEventDie)後の「生産 or 7の捨て札/野盗」への遷移。
+ * ROLL_DICE 本体と、城格下げ(CITY_DOWNGRADE)解決後の再開の両方から呼ぶ（重複排除＋一貫性）。
  */
 function resolveCkRollOutcome(next: GameState, total: number): GameState {
   if (total === 7) {
-    const needsDiscard = next.playerOrder.some(p => discardCount(next, p) > 0); // 資源＋商品で判定
-    // 初回の蛮族襲来までは盗賊が凍結＝7は手札破棄のみ（盗賊移動・盗みなし）。
+    const needsDiscard = next.playerOrder.some(p => discardCount(next, p) > 0); // 資源＋物産で判定
+    // 初回の一揆勢襲来までは野盗が凍結＝7は手札破棄のみ（野盗移動・盗みなし）。
     const robberActive = (next.barbarianAttacks ?? 0) >= 1;
     const afterDiscard = robberActive ? 'ROBBER' : 'TRADE_BUILD';
     return { ...next, discardedThisRound: [], turnPhase: needsDiscard ? 'DISCARD' : afterDiscard };
@@ -110,8 +110,8 @@ function resolveCkRollOutcome(next: GameState, total: number): GameState {
 }
 
 /**
- * 騎士と商人: イベントダイス解決(applyEventDie / 蛮族)後の保留フェーズ判定。
- * 都市格下げ(CITY_DOWNGRADE) → 進歩カード捨て(PROGRESS_DISCARD) の順に解決し、
+ * 武将と商い: イベントダイス解決(applyEventDie / 一揆勢)後の保留フェーズ判定。
+ * 城格下げ(CITY_DOWNGRADE) → 進歩カード捨て(PROGRESS_DISCARD) の順に解決し、
  * どちらも無ければ本来の生産/捨て札へ（resolveCkRollOutcome）。
  */
 function ckPostEventTransition(next: GameState, total: number): GameState {
@@ -144,19 +144,19 @@ export function applyAction(
       if (state.phase !== 'MAIN') throw new Error('ROLL_DICE: not MAIN phase');
       if (state.turnPhase !== 'PRE_ROLL') throw new Error('ROLL_DICE: not PRE_ROLL');
 
-      // 騎士と商人: 錬金術師(alchemist)で目を事前指定済みなら、それを使い消費する。
+      // 武将と商い: 錬金術師(alchemist)で目を事前指定済みなら、それを使い消費する。
       const forced = isCk(state) ? (state.alchemistForcedDice ?? null) : null;
       const [d1, d2] = forced ?? rollDice(rng);
       const total = d1 + d2;
 
       let next: GameState = { ...state, lastDiceRoll: [d1, d2], diceRolledThisTurn: true, ...(forced ? { alchemistForcedDice: null } : {}) };
 
-      // ---- 騎士と商人: 毎ターン イベントダイス(蛮族)も振り、産出は資源＋商品。----
+      // ---- 武将と商い: 毎ターン イベントダイス(一揆勢)も振り、産出は資源＋物産。----
       if (isCk(state)) {
-        next = applyEventDie(next, rng, d1); // 7でも蛮族は前進。色面は赤ダイス(d1)で進歩カード抽選
-        // 蛮族敗北で都市格下げの選択が要る場合は、まず格下げ（CITY_DOWNGRADE）を解決してから
+        next = applyEventDie(next, rng, d1); // 7でも一揆勢は前進。色面は赤ダイス(d1)で進歩カード抽選
+        // 一揆勢敗北で城格下げの選択が要る場合は、まず格下げ（CITY_DOWNGRADE）を解決してから
         // 生産/捨て札へ（イベントダイスは生産ダイスより先に解決する公式順序とも一致）。
-        // 蛮族撃退の守護者VPで勝利点目標に到達した場合は、その手番でそのまま勝利確定させる。
+        // 一揆勢撃退の守護者VPで勝利点目標に到達した場合は、その手番でそのまま勝利確定させる。
         return checkVictory(ckPostEventTransition(next, total), pid);
       }
 
@@ -240,7 +240,7 @@ export function applyAction(
       // 二重捨て防止: 既に今回の7で捨てたプレイヤーは再度捨てさせない。
       if ((state.discardedThisRound ?? []).includes(playerId))
         throw new Error('DISCARD_RESOURCES: already discarded this round');
-      // 捨て札は「ちょうど discardCount 枚・所持範囲内」をエンジンが一元検証（騎士と商人は資源＋商品）。
+      // 捨て札は「ちょうど discardCount 枚・所持範囲内」をエンジンが一元検証（武将と商いは資源＋物産）。
       const required = discardCount(state, playerId);
       const res = resources as Partial<Record<ResourceType, number>>;
       const com = (commodities ?? {}) as Partial<Record<CommodityType, number>>;
@@ -257,8 +257,8 @@ export function applyAction(
       const discardedThisRound = [...(next.discardedThisRound ?? []), playerId];
       next = { ...next, discardedThisRound };
 
-      // まだ捨てが必要なプレイヤーがいるか（資源＋商品で判定・既に捨てた人は除外）。
-      // 騎士と商人で初回襲来前は盗賊が凍結＝捨て後は ROBBER ではなく TRADE_BUILD へ。
+      // まだ捨てが必要なプレイヤーがいるか（資源＋物産で判定・既に捨てた人は除外）。
+      // 武将と商いで初回襲来前は野盗が凍結＝捨て後は ROBBER ではなく TRADE_BUILD へ。
       if (!findPendingDiscarder(next)) {
         const robberFrozen = isCk(next) && (next.barbarianAttacks ?? 0) < 1;
         next = { ...next, turnPhase: robberFrozen ? 'TRADE_BUILD' : 'ROBBER', discardedThisRound: [] };
@@ -268,7 +268,7 @@ export function applyAction(
     }
 
     // ----------------------------------------------------------
-    // DOWNGRADE_CITY（騎士と商人: 蛮族敗北で格下げする都市を選ぶ。DISCARDと同様の多人数解決）
+    // DOWNGRADE_CITY（武将と商い: 一揆勢敗北で格下げする城を選ぶ。DISCARDと同様の多人数解決）
     // ----------------------------------------------------------
     case 'DOWNGRADE_CITY': {
       if (state.turnPhase !== 'CITY_DOWNGRADE') throw new Error('DOWNGRADE_CITY: not in CITY_DOWNGRADE phase');
@@ -279,14 +279,14 @@ export function applyAction(
       if (after === state) throw new Error('DOWNGRADE_CITY: must downgrade your own plain city'); // 違法な頂点
       const newPending = pending.filter(p => p !== playerId);
       if (newPending.length > 0) return { ...after, pendingCityDowngrade: newPending }; // 他の対象者を待つ
-      // 全員解決 → 保留していた本来の続き（生産 or 7の捨て札/盗賊）を再開する。pending は除去。
+      // 全員解決 → 保留していた本来の続き（生産 or 7の捨て札/野盗）を再開する。pending は除去。
       const total = (state.lastDiceRoll?.[0] ?? 0) + (state.lastDiceRoll?.[1] ?? 0);
       const { pendingCityDowngrade: _done, ...cleared } = after;
       return ckPostEventTransition(cleared, total);
     }
 
     // ----------------------------------------------------------
-    // DISCARD_PROGRESS（騎士と商人: 進歩カード上限超過＝5枚目を引いた時に1枚捨てる。多人数解決）
+    // DISCARD_PROGRESS（武将と商い: 進歩カード上限超過＝5枚目を引いた時に1枚捨てる。多人数解決）
     // ----------------------------------------------------------
     case 'DISCARD_PROGRESS': {
       if (state.turnPhase !== 'PROGRESS_DISCARD') throw new Error('DISCARD_PROGRESS: not in PROGRESS_DISCARD phase');
@@ -306,14 +306,14 @@ export function applyAction(
     // MOVE_ROBBER
     // ----------------------------------------------------------
     case 'MOVE_ROBBER': {
-      // 強盗を動かせるのは ROBBER フェーズ（7 を出した後／騎士カード使用後）のみ。
-      // これが無いと PRE_ROLL 中に無料で（しかも繰り返し）盗賊移動＋強奪ができてしまう。
+      // 野盗を動かせるのは ROBBER フェーズ（7 を出した後／武将カード使用後）のみ。
+      // これが無いと PRE_ROLL 中に無料で（しかも繰り返し）野盗移動＋強奪ができてしまう。
       if (state.turnPhase !== 'ROBBER') throw new Error('MOVE_ROBBER: not in ROBBER phase');
       const { tileId, stealFromPlayerId } = action;
 
-      // 強盗は陸タイルのみ（海は海賊の領分）。これが無いと盗賊が海上で空振りになる。
+      // 野盗は陸タイルのみ（海は海賊の領分）。これが無いと野盗が海上で空振りになる。
       if (state.tiles[tileId]?.type === 'sea') throw new Error('MOVE_ROBBER: robber cannot move onto a sea tile (use the pirate)');
-      // 強盗は必ず現在地とは別ヘクスへ移動する（標準ルール）。
+      // 野盗は必ず現在地とは別ヘクスへ移動する（標準ルール）。
       const currentRobberTileId = Object.keys(state.tiles).find(tid => state.tiles[tid]!.hasRobber);
       if (currentRobberTileId === tileId) throw new Error('MOVE_ROBBER: must move to a different tile');
 
@@ -334,13 +334,13 @@ export function applyAction(
         throw new Error('MOVE_ROBBER: must steal from an adjacent opponent who holds cards');
       }
 
-      // 騎士カードをダイス前に使った場合はPRE_ROLLへ戻る（ダイスをまだ振っていない）
+      // 武将カードをダイス前に使った場合はPRE_ROLLへ戻る（ダイスをまだ振っていない）
       const nextPhase = state.diceRolledThisTurn ? 'TRADE_BUILD' : 'PRE_ROLL';
       return { ...next, turnPhase: nextPhase };
     }
 
     // ----------------------------------------------------------
-    // MOVE_PIRATE（航海者・海賊＝盗賊の海版）。7/騎士で盗賊の代わりに動かせる。
+    // MOVE_PIRATE（航海者・海賊＝野盗の海版）。7/武将で野盗の代わりに動かせる。
     // ----------------------------------------------------------
     case 'MOVE_PIRATE': {
       if (state.turnPhase !== 'ROBBER') throw new Error('MOVE_PIRATE: not in ROBBER phase');
@@ -351,7 +351,7 @@ export function applyAction(
 
       let next = movePirate(state, tileId);
 
-      // 強奪は必須（盗賊と同様）: 海賊タイルに隣接して船を持ち手札のある相手がいるなら必ず盗む。
+      // 強奪は必須（野盗と同様）: 海賊タイルに隣接して船を持ち手札のある相手がいるなら必ず盗む。
       const pirateRobbable = getPirateRobbablePlayerIds(next, tileId, pid).filter(p => robbableCardCount(next, p) > 0);
       if (stealFromPlayerId != null) {
         // 盗む相手は「海賊タイルに隣接する船を持つ相手」に限る。
@@ -383,12 +383,12 @@ export function applyAction(
       next = updateLongestRoad(next);
       next = checkVictory(next, pid);
 
-      // 街道建設カード使用中: 残り配置数をデクリメント
+      // 普請カード使用中: 残り配置数をデクリメント
       if (next.roadBuildingRoadsRemaining > 0) {
         next = { ...next, roadBuildingRoadsRemaining: next.roadBuildingRoadsRemaining - 1 };
       }
 
-      // SETUP フェーズのサブフェーズ進行（道を置いたので anchor は解除）
+      // SETUP フェーズのサブフェーズ進行（街道を置いたので anchor は解除）
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
         next = advanceSetup({ ...next, setupRoadAnchor: null });
       }
@@ -397,7 +397,7 @@ export function applyAction(
     }
 
     // ----------------------------------------------------------
-    // BUILD_SHIP（航海者拡張）。道と同じ進行・最長交易路再計算に乗せる。
+    // BUILD_SHIP（航海者拡張）。街道と同じ進行・最長街道再計算に乗せる。
     // ----------------------------------------------------------
     case 'BUILD_SHIP': {
       const { edgeId } = action;
@@ -412,7 +412,7 @@ export function applyAction(
       next = updateLongestRoad(next);
       next = checkVictory(next, pid);
 
-      // セットアップでは2個目のコマ（道 or 船）として進行。anchor 解除。
+      // セットアップでは2個目のコマ（街道 or 船）として進行。anchor 解除。
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
         next = advanceSetup({ ...next, setupRoadAnchor: null });
       }
@@ -450,10 +450,10 @@ export function applyAction(
       // SETUP 後半: 2個目の配置。
       const isSecondPlacement = state.phase === 'SETUP_BACKWARD' && state.setupSubPhase === 'PLACE_SETTLEMENT';
       if (isSecondPlacement && isCk(state)) {
-        // 騎士と商人: 2個目は「都市」。開拓地→都市へ昇格し、都市の初期産出(資源+商品)を配る。
+        // 武将と商い: 2個目は「城」。砦→城へ昇格し、城の初期産出(資源+物産)を配る。
         next = ckSetupSecondCity(next, pid, vertexId);
       } else if (isSecondPlacement) {
-        // 基本/航海者: 2個目開拓地の隣接タイルから初期資源を配布（setupGainFor に一本化）。
+        // 基本/航海者: 2個目砦の隣接タイルから初期資源を配布（setupGainFor に一本化）。
         for (const resource of setupGainFor(next, vertexId, next.bank)) {
           next = {
             ...next,
@@ -479,13 +479,13 @@ export function applyAction(
         }
       }
 
-      // 開拓地が相手の道路を分断した場合に最長道路ボーナスを再計算する。
-      // SETUP では道が短く no-op、MAIN でのみ意味を持つ（BUILD_ROAD と同順序）。
+      // 砦が相手の街道を分断した場合に最長街道ボーナスを再計算する。
+      // SETUP では街道が短く no-op、MAIN でのみ意味を持つ（BUILD_ROAD と同順序）。
       next = updateLongestRoad(next);
       next = checkVictory(next, pid);
 
       if (state.phase === 'SETUP_FORWARD' || state.phase === 'SETUP_BACKWARD') {
-        // 直後の道はこの開拓地に接続する必要がある（標準ルール）
+        // 直後の街道はこの砦に接続する必要がある（標準ルール）
         next = { ...next, setupSubPhase: 'PLACE_ROAD', setupRoadAnchor: vertexId };
       }
 
@@ -553,8 +553,8 @@ export function applyAction(
     // PLAY_KNIGHT
     // ----------------------------------------------------------
     case 'PLAY_KNIGHT': {
-      // 騎士はロール前(PRE_ROLL)とロール後(TRADE_BUILD)のみ。DISCARD/ROBBER 中に許すと
-      // 「7の捨て札待ちで騎士→ROBBERへ遷移」で全員の捨て札を踏み倒せてしまう（不正クライアント対策）。
+      // 武将はロール前(PRE_ROLL)とロール後(TRADE_BUILD)のみ。DISCARD/ROBBER 中に許すと
+      // 「7の捨て札待ちで武将→ROBBERへ遷移」で全員の捨て札を踏み倒せてしまう（不正クライアント対策）。
       if (state.phase !== 'MAIN' || (state.turnPhase !== 'PRE_ROLL' && state.turnPhase !== 'TRADE_BUILD'))
         throw new Error('PLAY_KNIGHT: must be in MAIN PRE_ROLL or TRADE_BUILD phase');
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_KNIGHT: already played a dev card this turn');
@@ -592,10 +592,10 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_YEAR_OF_PLENTY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: already played a dev card this turn');
-      // 進歩カードはダイス後のみ（ダイス前に使う実益がなく、収穫/独占はダイス前だと7で自分が
-      // 捨て札になる無駄手になる）。ダイス前に意味があるのは盗賊を動かせる騎士だけ。
+      // 進歩カードはダイス後のみ（ダイス前に使う実益がなく、豊作/専売はダイス前だと7で自分が
+      // 捨て札になる無駄手になる）。ダイス前に意味があるのは野盗を動かせる武将だけ。
       if (!state.diceRolledThisTurn) throw new Error('PLAY_YEAR_OF_PLENTY: must roll dice first');
-      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      // 7の捨て札/野盗フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_YEAR_OF_PLENTY: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const [r1, r2] = action.resources;
@@ -636,9 +636,9 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_MONOPOLY': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_MONOPOLY: already played a dev card this turn');
-      // 進歩カードはダイス後のみ（ダイス前に意味があるのは盗賊を動かせる騎士だけ）。
+      // 進歩カードはダイス後のみ（ダイス前に意味があるのは野盗を動かせる武将だけ）。
       if (!state.diceRolledThisTurn) throw new Error('PLAY_MONOPOLY: must roll dice first');
-      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      // 7の捨て札/野盗フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_MONOPOLY: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const { resource } = action;
@@ -681,9 +681,9 @@ export function applyAction(
     // ----------------------------------------------------------
     case 'PLAY_ROAD_BUILDING': {
       if (state.devCardPlayedThisTurn) throw new Error('PLAY_ROAD_BUILDING: already played a dev card this turn');
-      // 進歩カードはダイス後のみ（ダイス前に意味があるのは盗賊を動かせる騎士だけ）。
+      // 進歩カードはダイス後のみ（ダイス前に意味があるのは野盗を動かせる武将だけ）。
       if (!state.diceRolledThisTurn) throw new Error('PLAY_ROAD_BUILDING: must roll dice first');
-      // 7の捨て札/盗賊フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
+      // 7の捨て札/野盗フェーズ中などTRADE_BUILD以外では使えない（不正クライアント対策）。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('PLAY_ROAD_BUILDING: must be in MAIN TRADE_BUILD phase');
       const player = state.players[pid]!;
       const cardIdx = player.devCards.findIndex(
@@ -716,7 +716,7 @@ export function applyAction(
     }
 
     // ----------------------------------------------------------
-    // 騎士と商人(Cities & Knights) の建設アクション
+    // 武将と商い(Cities & Knights) の建設アクション
     // ----------------------------------------------------------
     case 'BUILD_KNIGHT': {
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('BUILD_KNIGHT: must be in TRADE_BUILD');
@@ -764,7 +764,7 @@ export function applyAction(
       return moveKnight(state, pid, action.fromVertexId, action.toVertexId);
     }
     case 'CHASE_ROBBER': {
-      // 騎士で強盗を追い払う。ダイス後(TRADE_BUILD・diceRolledThisTurn=true)のみ。
+      // 武将で野盗を追い払う。ダイス後(TRADE_BUILD・diceRolledThisTurn=true)のみ。
       // chaseRobber が ROBBER フェーズへ遷移し、続く MOVE_ROBBER で移動・強奪、
       // diceRolledThisTurn=true により自動的に TRADE_BUILD へ戻る（robberSource不要）。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD') throw new Error('CHASE_ROBBER: must be in TRADE_BUILD');
@@ -777,7 +777,7 @@ export function applyAction(
     // BANK_TRADE
     // ----------------------------------------------------------
     case 'BANK_TRADE': {
-      // 銀行/港交易はダイス後の交易・建設フェーズのみ。これが無いと PRE_ROLL での先行交易や、
+      // 銀行/湊交易はダイス後の交易・建設フェーズのみ。これが無いと PRE_ROLL での先行交易や、
       // DISCARD 中に 4:1 で手札を 8 枚未満へ圧縮して捨て札を回避する不正が可能になる。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
         throw new Error('BANK_TRADE: must be in MAIN TRADE_BUILD phase');
@@ -841,7 +841,7 @@ export function applyAction(
     // END_TURN
     // ----------------------------------------------------------
     case 'END_TURN': {
-      // ターン終了は MAIN の TRADE_BUILD（ダイスを振り、強盗/捨て札を解決済み）でのみ。
+      // ターン終了は MAIN の TRADE_BUILD（ダイスを振り、野盗/捨て札を解決済み）でのみ。
       // これが無いと PRE_ROLL でダイスを飛ばしたり、SETUP/7処理中に勝手に手番を進められる。
       if (state.phase !== 'MAIN' || state.turnPhase !== 'TRADE_BUILD')
         throw new Error('END_TURN: must be in MAIN TRADE_BUILD phase');
@@ -858,12 +858,12 @@ export function applyAction(
         return { ...state, winner: best, phase: 'GAME_OVER' };
       }
       const nextIndex = (state.currentPlayerIndex + 1) % state.playerOrder.length;
-      // 騎士と商人: 商船隊(merchant_fleet)の「このターン2:1」を手番終了でクリア。
+      // 武将と商い: 商船隊(merchant_fleet)の「このターン2:1」を手番終了でクリア。
       const endingPlayer = state.players[pid]!;
       const playersAfter = isCk(state) && endingPlayer.merchantFleetType != null
         ? { ...state.players, [pid]: { ...endingPlayer, merchantFleetType: null } }
         : state.players;
-      // 騎士と商人: 「起動したターン」フラグを手番終了でクリア（翌手番から行動可能に）。
+      // 武将と商い: 「出陣したターン」フラグを手番終了でクリア（翌手番から行動可能に）。
       let verticesAfter = state.vertices;
       if (isCk(state)) {
         let touched = false;
@@ -887,7 +887,7 @@ export function applyAction(
         devCardPlayedThisTurn: false,
         shipMovedThisTurn: false,
         shipsBuiltThisTurn: [],
-        // 騎士と商人専用フラグは CK でのみリセット（非CK状態を汚さない）。
+        // 武将と商い専用フラグは CK でのみリセット（非CK状態を汚さない）。
         ...(isCk(state) ? { knightMovedThisTurn: false, knightChasedThisTurn: false } : {}),
         pendingTrade: null,
       };
@@ -917,11 +917,11 @@ export function applyAction(
 // ============================================================
 
 /**
- * SETUP フェーズの道設置後に次の手番・フェーズへ進める。
+ * SETUP フェーズの街道設置後に次の手番・フェーズへ進める。
  *
  * SETUP_FORWARD: 0,1,2,3 順（4人の場合）
  * SETUP_BACKWARD: 3,2,1,0 逆順
- * 後半最後のプレイヤーが道を置いたら MAIN へ移行。
+ * 後半最後のプレイヤーが街道を置いたら MAIN へ移行。
  */
 function advanceSetup(state: GameState): GameState {
   const total = state.playerOrder.length;

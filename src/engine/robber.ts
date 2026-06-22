@@ -1,5 +1,5 @@
 // ============================================================
-// src/engine/robber.ts — L-07: 強盗ロジック
+// src/engine/robber.ts — L-07: 野盗ロジック
 // ============================================================
 
 import type { GameState, PlayerId, TileId, ResourceType, CommodityType } from '../types';
@@ -15,7 +15,7 @@ export function handTotal(state: GameState, playerId: PlayerId): number {
   return RESOURCE_TYPES.reduce((sum, r) => sum + player.hand[r], 0);
 }
 
-/** 7の捨て札判定に使う手札枚数。騎士と商人では資源＋商品の合計。 */
+/** 7の捨て札判定に使う手札枚数。武将と商いでは資源＋物産の合計。 */
 export function discardHandSize(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
   if (!player) return 0;
@@ -26,10 +26,10 @@ export function discardHandSize(state: GameState, playerId: PlayerId): number {
   return total;
 }
 
-/** 7で捨てが始まる手札枚数。騎士と商人では城壁/メトロポリス1つにつき+2。 */
+/** 7で捨てが始まる手札枚数。武将と商いでは石垣/天守1つにつき+2。 */
 export function discardThreshold(state: GameState, playerId: PlayerId): number {
   if (state.expansion !== 'cities_knights') return ROBBER_HAND_DISCARD_MIN;
-  // 公式: 手札上限+2 は「城壁」のみ（メトロポリスは別。城壁は最大3＝上限13）。
+  // 公式: 手札上限+2 は「石垣」のみ（天守は別。石垣は最大3＝上限13）。
   const walls = Object.values(state.vertices).filter(v =>
     v.building?.playerId === playerId && v.building.wall).length;
   return ROBBER_HAND_DISCARD_MIN + CK_WALL_DISCARD_BONUS * walls;
@@ -40,7 +40,7 @@ export function discardThreshold(state: GameState, playerId: PlayerId): number {
 // ============================================================
 
 /**
- * 強盗/海賊で奪取対象となる札枚数（騎士と商人では資源＋商品）。
+ * 野盗/海賊で奪取対象となる札枚数（武将と商いでは資源＋物産）。
  * マスク済みstate(相手視点)でも正しく数えるため handCount/commodityCount を優先する。
  */
 export function robbableCardCount(state: GameState, playerId: PlayerId): number {
@@ -70,7 +70,7 @@ export function findPendingDiscarder(state: GameState): PlayerId | undefined {
 }
 
 /**
- * 指定プレイヤーが資源（＋騎士と商人では商品）を捨てる。資源はバンクに返す。
+ * 指定プレイヤーが資源（＋武将と商いでは物産）を捨てる。資源はバンクに返す。
  * 各枚数は捨てる差分（呼び出し側がバリデーション済み前提）。
  */
 export function discardResources(
@@ -92,7 +92,7 @@ export function discardResources(
   let newCommodities = player.commodities;
   if (commodities && player.commodities) {
     newCommodities = { ...player.commodities };
-    for (const c of COMMODITY_TYPES) newCommodities[c] -= commodities[c] ?? 0; // 商品は供給へ戻る（バンク管理なし）
+    for (const c of COMMODITY_TYPES) newCommodities[c] -= commodities[c] ?? 0; // 物産は供給へ戻る（バンク管理なし）
   }
 
   return {
@@ -106,24 +106,24 @@ export function discardResources(
 }
 
 // ============================================================
-// 強盗移動
+// 野盗移動
 // ============================================================
 
 /**
- * 強盗コマを指定タイルへ移動する。
+ * 野盗コマを指定タイルへ移動する。
  * 元のタイルの hasRobber を false に、新タイルを true にする。
  */
 export function moveRobber(state: GameState, tileId: TileId): GameState {
   const newTiles = { ...state.tiles };
 
-  // 元の強盗タイルをクリア
+  // 元の野盗タイルをクリア
   for (const [tid, tile] of Object.entries(newTiles)) {
     if (tile.hasRobber) {
       newTiles[tid] = { ...tile, hasRobber: false };
     }
   }
 
-  // 新タイルに強盗を配置
+  // 新タイルに野盗を配置
   const target = newTiles[tileId];
   if (target) {
     newTiles[tileId] = { ...target, hasRobber: true };
@@ -133,7 +133,7 @@ export function moveRobber(state: GameState, tileId: TileId): GameState {
 }
 
 // ============================================================
-// 海賊（航海者・盗賊の海版）
+// 海賊（航海者・野盗の海版）
 // ============================================================
 
 /** 海賊コマを指定の海タイルへ移動する（piratePosition を更新）。 */
@@ -163,7 +163,7 @@ export function getPirateRobbablePlayerIds(
 // ============================================================
 
 /**
- * 強盗移動先タイルの隣接頂点に建物を持つ「他プレイヤー」の一覧を返す。
+ * 野盗移動先タイルの隣接頂点に建物を持つ「他プレイヤー」の一覧を返す。
  * 重複なし。手札0枚のプレイヤーも含む（UI側で選択可否を判断）。
  */
 export function getRobbablePlayerIds(
@@ -200,7 +200,7 @@ export function stealResource(
   if (!target) return state;
   const ck = state.expansion === 'cities_knights';
 
-  // 手持ちの全カードを配列に展開（騎士と商人では資源＋商品から1枚を無作為に奪う）。
+  // 手持ちの全カードを配列に展開（武将と商いでは資源＋物産から1枚を無作為に奪う）。
   const pool: Array<{ kind: 'res'; key: ResourceType } | { kind: 'com'; key: CommodityType }> = [];
   for (const r of RESOURCE_TYPES) for (let i = 0; i < target.hand[r]; i++) pool.push({ kind: 'res', key: r });
   if (ck && target.commodities) {
@@ -222,7 +222,7 @@ export function stealResource(
       },
     };
   }
-  // 商品を1枚奪う。
+  // 物産を1枚奪う。
   const c = stolen.key;
   const tCom = target.commodities ?? makeCommodities();
   const aCom = active.commodities ?? makeCommodities();

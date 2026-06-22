@@ -33,7 +33,7 @@ export interface PlayerSpec {
  * @param orderMode 手番順の決め方（'random' は毎回シャッフル / 'fixed' は orderSpec 採用）。
  * @param orderSpec orderMode==='fixed' のときの手番順。参加者と不整合なら元順にフォールバック。
  * @param rng       乱数生成器。省略時 Math.random（テスト/サーバで注入可能）。
- * @param scenarioId 盤面シナリオ。既定 'classic'（基本カタン・従来と同一）。
+ * @param scenarioId 盤面シナリオ。既定 'classic'（基本ルール・従来と同一）。
  */
 export function createInitialGameState(
   specs: readonly PlayerSpec[],
@@ -67,7 +67,7 @@ export function createInitialGameState(
       longestRoadLength: 0,
       hasLongestRoad: false,
       hasLargestArmy: false,
-      // 騎士と商人: 商品手札・都市改善レベル・守護者VP・進歩カード（拡張時のみ）。
+      // 武将と商い: 物産手札・城下の改善レベル・守護者VP・進歩カード（拡張時のみ）。
       ...(ck ? { commodities: makeCommodities(), improvements: { trade: 0, politics: 0, science: 0 }, defenderVP: 0, progressCards: [] } : {}),
     };
     // exactOptionalPropertyTypes 対策: aiDifficulty は値があるときだけ付与。
@@ -89,7 +89,7 @@ export function createInitialGameState(
     players,
     playerOrder,
     bank: { ...BANK_INITIAL },
-    // 騎士と商人は発展カードを使わない（進歩カードに置換。本実装では未導入のため空デッキ）。
+    // 武将と商いは軍略カードを使わない（進歩カードに置換。本実装では未導入のため空デッキ）。
     devDeck:        ck ? [] : buildDevDeck(rng),
     devDiscardPile: [],
     phase: 'SETUP_FORWARD',

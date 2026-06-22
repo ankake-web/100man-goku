@@ -14,14 +14,14 @@ const merchantImg = ASSETS.piece.merchant;
 const shipRed = shipImg('red');
 const knightBasicImg = ASSETS.knight.basic;
 
-// 騎士と商人: 強さ(1/2/3)→騎士コマ画像。色はプレイヤー色の土台ディスクで示す。
+// 武将と商い: 強さ(1/2/3)→武将コマ画像。色はプレイヤー色の土台ディスクで示す。
 const KNIGHT_IMG: Record<number, string> = { 1: ASSETS.knight.basic, 2: ASSETS.knight.strong, 3: ASSETS.knight.mighty };
 
 // プレイヤーID→色キー。建物画像（屋根/上部をプレイヤー色に着色済み）の選択に使う。
 const BUILDING_COLOR_KEY: Record<string, string> = {
   player1: 'red', player2: 'blue', player3: 'purple', player4: 'orange',
 };
-// プレイヤーID→HEX色（騎士コマ等）。
+// プレイヤーID→HEX色（武将コマ等）。
 const PLAYER_HEX_COLOR: Record<string, string> = {
   player1: '#e03030', player2: '#3060e0', player3: '#a855f7', player4: '#f0a020',
 };
@@ -50,18 +50,18 @@ export interface BoardRenderOptions {
   previewShipEdgeId?: string;
   // 航海者: 海賊コマのいる海タイルID（🏴‍☠️ マーカーを描く）。
   piratePosition?: string;
-  // 強盗/海賊を「移動先タイルへ先に動かして」から相手選択させる時のプレビュー位置。
+  // 野盗/海賊を「移動先タイルへ先に動かして」から相手選択させる時のプレビュー位置。
   // 指定時は実位置(hasRobber/piratePosition)を無視し、このタイルにコマを描く。
   previewRobberTileId?: string;
   previewPirateTileId?: string;
-  // 騎士と商人: 商人コマのいる陸タイルID＋所有者の色（盤面に商人フィギュアを描く）。
+  // 武将と商い: 御用商人コマのいる陸タイルID＋所有者の色（盤面に御用商人フィギュアを描く）。
   merchantTileId?: string;
   merchantColor?: string;
-  // 騎士と商人: 蛮族敗北で格下げ対象の都市頂点（赤い危険ハイライトで「タップで格下げ」を示す）。
+  // 武将と商い: 一揆勢敗北で格下げ対象の城頂点（赤い危険ハイライトで「タップで格下げ」を示す）。
   downgradeVertexIds?: Set<string>;
-  // 騎士と商人・発明家: 1枚目に選んだタイル（2枚目を待つ＝確定済みとして強調）。
+  // 武将と商い・発明家: 1枚目に選んだタイル（2枚目を待つ＝確定済みとして強調）。
   selectedTileId?: string;
-  // 騎士と商人: タッチ確認中に選択した頂点（騎士の起動/昇格対象）を青で明示。
+  // 武将と商い: タッチ確認中に選択した頂点（武将の出陣/加増対象）を青で明示。
   selectedVertexId?: string;
   // ピンチズーム/パンの永続ビューポート（viewBox座標系）。再描画後も維持される。
   viewport?: BoardViewport;
@@ -73,11 +73,11 @@ export interface BoardViewport {
   ty: number;
 }
 
-// 強盗コマをタイル中心から下へずらす量。大きめに下げて、数字チップの数字が
+// 野盗コマをタイル中心から下へずらす量。大きめに下げて、数字チップの数字が
 // コマの上に覗くようにする（数字の視認性確保）。
 const ROBBER_DY = 31;
 
-// タッチ端末（スマホ等）か。港・数字チップを少し大きくして見やすくする。
+// タッチ端末（スマホ等）か。湊・数字チップを少し大きくして見やすくする。
 function isTouchDevice(): boolean {
   return typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
@@ -118,9 +118,11 @@ const DOTS: Record<number, string> = {
 };
 
 // ============================================================
-// 港ラベル
+// 湊ラベル
 // ============================================================
 
+// TODO(art-pass): 湊マーカーの意匠
+// コンパクトな盤面アイコン（絵文字＋比率）。比率(3:1/2:1)はゲーム情報なので残す。
 const HARBOR_LABEL: Record<HarborType, string> = {
   generic: '⚓3:1',
   wood:    '🌲2:1',
@@ -202,7 +204,7 @@ function renderTile(
   else if (isValidRobber) poly.classList.add('valid-robber');
   g.appendChild(poly);
 
-  // 金タイル: 麦(field)と色が紛らわしいので、光沢ゴールド＋発光（CSS）に加えて
+  // 金タイル: 米(field)と色が紛らわしいので、光沢ゴールド＋発光（CSS）に加えて
   // 下部に「任意資源」ラベルで明示する。絵文字マーカーは環境差で崩れるため使わない。
   if (tile.type === 'gold') {
     const tag = svgEl('text');
@@ -212,7 +214,7 @@ function renderTile(
     g.appendChild(tag);
   }
 
-  // 数字トークン（砂漠以外）。タッチ端末では少し大きく見やすくする。
+  // 数字トークン（荒野以外）。タッチ端末では少し大きく見やすくする。
   if (tile.number != null) {
     const isRed = tile.number === 6 || tile.number === 8;
     const touch = isTouchDevice();
@@ -239,7 +241,7 @@ function renderTile(
     g.appendChild(dots);
   }
 
-  // 強盗コマ: フィギュア画像（asset）。数字チップと丸かぶりしないよう下にずらす。
+  // 野盗コマ: フィギュア画像（asset）。数字チップと丸かぶりしないよう下にずらす。
   // プレビュー指定時は実位置でなく移動先タイルにのみ描く（駒移動→相手選択の演出）。
   const showRobberHere = opts?.previewRobberTileId != null
     ? opts.previewRobberTileId === tile.id
@@ -256,7 +258,7 @@ function renderTile(
     setAttrs(shadow, { cx, cy: ry + w * 0.27, rx: w * 0.20, ry: w * 0.055, fill: 'rgba(0,0,0,0.32)', stroke: 'none' });
     rg.appendChild(shadow);
 
-    // 盗賊フィギュア画像（正方形・中央寄せ）。足元が ry より少し下に来るよう配置。
+    // 野盗フィギュア画像（正方形・中央寄せ）。足元が ry より少し下に来るよう配置。
     const img = svgEl('image');
     setAttrs(img, { x: cx - w / 2, y: ry - w * 0.62, width: w, height: w, preserveAspectRatio: 'xMidYMid meet' });
     img.setAttribute('href', robberImg);
@@ -266,8 +268,8 @@ function renderTile(
     g.appendChild(rg);
   }
 
-  // 海賊コマ（航海者）: 海タイルに海賊船フィギュア画像。盗賊と排他（海タイルに盗賊は乗らない）。
-  // 海タイルは数字がないので強盗ほど下げず、中央寄りに置く。
+  // 海賊コマ（航海者）: 海タイルに海賊船フィギュア画像。野盗と排他（海タイルに野盗は乗らない）。
+  // 海タイルは数字がないので野盗ほど下げず、中央寄りに置く。
   const showPirateHere = opts?.previewPirateTileId != null
     ? opts.previewPirateTileId === tile.id
     : opts?.piratePosition === tile.id;
@@ -288,15 +290,15 @@ function renderTile(
     g.appendChild(pg);
   }
 
-  // 騎士と商人: 商人コマ（資源タイルに乗る・所有者色のリングで識別）。
-  // 数字チップ／強盗と被らないよう、タイル上部寄り（中心より上）に置く。
+  // 武将と商い: 御用商人コマ（資源タイルに乗る・所有者色のリングで識別）。
+  // 数字チップ／野盗と被らないよう、タイル上部寄り（中心より上）に置く。
   if (opts?.merchantTileId === tile.id && merchantImg) {
     const touch = isTouchDevice();
     const my = cy - size * 0.34;
     const w = size * (touch ? 0.78 : 0.66);
     const mg = svgEl('g');
     mg.classList.add('merchant-piece');
-    // 所有者色の足元リング（誰の商人か一目で分かるように）。
+    // 所有者色の足元リング（誰の御用商人か一目で分かるように）。
     const ring = svgEl('ellipse');
     setAttrs(ring, { cx, cy: my + w * 0.30, rx: w * 0.30, ry: w * 0.10,
       fill: 'rgba(0,0,0,0.28)', stroke: opts.merchantColor ?? '#caa14a', 'stroke-width': 2.5 });
@@ -313,7 +315,7 @@ function renderTile(
 }
 
 // ============================================================
-// 港描画
+// 湊描画
 // ============================================================
 
 function renderHarbor(
@@ -337,14 +339,14 @@ function renderHarbor(
 
   const touch = isTouchDevice();
 
-  // 港辺ライン（太く、色付き）
+  // 湊辺ライン（太く、色付き）
   const line = svgEl('line');
   line.classList.add('harbor-line');
   setAttrs(line, { x1: ax, y1: ay, x2: bx, y2: by,
     stroke: HARBOR_COLOR[harbor.type], 'stroke-width': touch ? 6 : 5 });
   g.appendChild(line);
 
-  // 頂点マーカー（港がどの交点に対応しているかを表示）
+  // 頂点マーカー（湊がどの交点に対応しているかを表示）
   for (const [cx, cy] of [[ax, ay], [bx, by]] as [number, number][]) {
     const dot = svgEl('circle');
     dot.classList.add('harbor-dot');
@@ -383,7 +385,7 @@ function renderEdges(
   opts?: BoardRenderOptions,
 ): SVGGElement {
   const g = svgEl('g');
-  // 道のプレビュー中は、選択した道だけが目立つよう他候補を暗くする目印クラス。
+  // 街道のプレビュー中は、選択した街道だけが目立つよう他候補を暗くする目印クラス。
   if (opts?.previewEdgeId || opts?.previewShipEdgeId) g.classList.add('edges-previewing');
   const roadColor: Record<string, string> = {
     player1: '#e03030', player2: '#3060e0',
@@ -425,7 +427,7 @@ function renderEdges(
       });
       g.appendChild(line);
     } else if (edge.ship) {
-      // 船: 破線＋ボート。道と視覚的に区別する。
+      // 船: 破線＋ボート。街道と視覚的に区別する。
       const line = svgEl('line');
       line.classList.add('ship-line-built');
       line.setAttribute('data-ship-built-id', edge.id);
@@ -446,7 +448,7 @@ function renderEdges(
       line.setAttribute('data-edge-id', edge.id);
       setAttrs(line, { x1, y1, x2, y2 });
       g.appendChild(line);
-      // 道の仮置きプレビュー（白ケーシング＋手番色の芯）。
+      // 街道の仮置きプレビュー（白ケーシング＋手番色の芯）。
       if (opts?.previewEdgeId === edge.id) {
         const curPid = state.playerOrder[state.currentPlayerIndex];
         const casing = svgEl('line');
@@ -520,12 +522,12 @@ function renderVertices(
     const isValid = opts?.validVertexIds?.has(vertex.id) ?? false;
 
     if (vertex.building) {
-      // 開拓地＝家、都市＝城のフィギュア画像。屋根/上部がプレイヤー色に着色済み。
+      // 砦＝家、城＝城のフィギュア画像。屋根/上部がプレイヤー色に着色済み。
       const ckey = BUILDING_COLOR_KEY[vertex.building.playerId] ?? 'red';
       const isCity = vertex.building.type === 'city';
-      // 騎士と商人: メトロポリス(勝利点4)はプレイヤー色の大きな城コマ（王冠付き）で表示。
+      // 武将と商い: 天守(勝利点4)はプレイヤー色の大きな城コマ（王冠付き）で表示。
       const isMetro = isCity && !!vertex.building.metropolis;
-      const w = (isMetro ? 42 : isCity ? 32 : 24) * bs;   // メトロポリスは一回り大きく
+      const w = (isMetro ? 42 : isCity ? 32 : 24) * bs;   // 天守は一回り大きく
       const by = vy + 5.2 * bs;                    // 足元の基準（旧コマの影位置に合わせる）
       // 接地影
       const shadow = svgEl('ellipse');
@@ -534,7 +536,7 @@ function renderVertices(
       vg.appendChild(shadow);
       const href = isMetro ? METROPOLIS_IMG[ckey]! : isCity ? CITY_IMG[ckey]! : HOUSE_IMG[ckey]!;
       const ix = vx - w / 2, iy = by - w * 0.9;
-      // 騎士と商人: 城壁付きの都市は「コマの形に沿った黒いフチ」で囲って壁ありを示す。
+      // 武将と商い: 石垣付きの城は「コマの形に沿った黒いフチ」で囲って壁ありを示す。
       // 同じ城画像を真っ黒(brightness 0)にして一回り大きく後ろへ敷く＝シルエットの黒縁。
       // ※ CSS filter の drop-shadow は viewBox 縮小で消えるため、画像サイズ基準のこの方式にする。
       const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
@@ -554,13 +556,13 @@ function renderVertices(
       img.setAttribute('href', href);
       img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', href);
       img.classList.add('building-img');
-      // 蛮族敗北の格下げ対象は赤い危険ハイライト、それ以外の有効ターゲット（都市化等）は緑。
+      // 一揆勢敗北の格下げ対象は赤い危険ハイライト、それ以外の有効ターゲット（築城等）は緑。
       if (opts?.downgradeVertexIds?.has(vertex.id)) img.classList.add('building-downgrade');
       else if (isValid) img.classList.add('building-valid');
       vg.appendChild(img);
     } else if (vertex.knight) {
-      // 騎士と商人: 騎士コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
-      // 起動=くっきり、非起動=薄め。
+      // 武将と商い: 武将コマ画像（強さ1/2/3）＋プレイヤー色の土台ディスクで所有者を表示。
+      // 出陣=くっきり、非出陣=薄め。
       const k = vertex.knight;
       const col = PLAYER_HEX_COLOR[k.playerId] ?? '#aaa';
       const kg = svgEl('g'); kg.classList.add('knight-piece');
@@ -571,7 +573,7 @@ function renderVertices(
       setAttrs(base, { cx: vx, cy: footY, rx: r * 1.1, ry: r * 0.5, fill: col,
         stroke: '#10100c', 'stroke-width': 1.6 * bs, opacity: k.active ? 1 : 0.6 });
       kg.appendChild(base);
-      // 起動リング（足元）/ 移動対象リング。
+      // 出陣リング（足元）/ 移動対象リング。
       if (k.active) {
         const ring = svgEl('ellipse');
         setAttrs(ring, { cx: vx, cy: footY, rx: r * 1.32, ry: r * 0.62, fill: 'none', stroke: '#ffe066', 'stroke-width': 1.6 * bs });
@@ -582,13 +584,13 @@ function renderVertices(
         setAttrs(vr, { cx: vx, cy: footY, rx: r * 1.6, ry: r * 0.82, fill: 'none', stroke: '#00ff88', 'stroke-width': 2 * bs });
         kg.appendChild(vr);
       }
-      // タッチ確認中に選んだ騎士は青リングで「これを起動/昇格」と明示。
+      // タッチ確認中に選んだ武将は青リングで「これを出陣/加増」と明示。
       if (opts?.selectedVertexId === vertex.id) {
         const sr = svgEl('ellipse');
         setAttrs(sr, { cx: vx, cy: footY, rx: r * 1.95, ry: r * 1.0, fill: 'none', stroke: '#4ea3ff', 'stroke-width': 3 * bs });
         kg.appendChild(sr);
       }
-      // 騎士コマ画像。
+      // 武将コマ画像。
       const kw = 27 * bs;
       const img = svgEl('image');
       setAttrs(img, { x: vx - kw / 2, y: footY + 1 * bs - kw, width: kw, height: kw,
@@ -625,7 +627,7 @@ function renderVertices(
     }
 
     // タッチ用の透明な大きめ当たり判定（候補のみ）。CSSでタッチ端末のみ有効化。
-    // 開拓地候補・都市候補（建物あり）の両方に付与する。
+    // 砦候補・城候補（建物あり）の両方に付与する。
     if (isValid) {
       const hit = svgEl('circle');
       hit.classList.add('vertex-hit');
@@ -643,7 +645,7 @@ function renderVertices(
 // ============================================================
 
 /**
- * SVG 要素にカタンボードを描画する。
+ * SVG 要素に100万石ボードを描画する。
  * 呼び出すたびに SVG を完全再描画する。
  */
 export function renderBoard(
@@ -676,7 +678,7 @@ export function renderBoard(
   const stopBot = svgEl('stop'); setAttrs(stopBot, { offset: '1', 'stop-color': '#0f4049' });
   grad.appendChild(stopTop); grad.appendChild(stopBot);
   defs.appendChild(grad);
-  // 金タイル用の光沢ゴールド（麦の落ち着いた黄土色と差別化）。
+  // 金タイル用の光沢ゴールド（米の落ち着いた黄土色と差別化）。
   const gold = svgEl('linearGradient');
   setAttrs(gold, { id: 'gold-grad', x1: '0', y1: '0', x2: '0.3', y2: '1' });
   const g1 = svgEl('stop'); setAttrs(g1, { offset: '0', 'stop-color': '#fff6c2' });
@@ -695,7 +697,7 @@ export function renderBoard(
   });
   svgEl_.appendChild(sea);
 
-  // タッチ端末では盤面コンテンツ（タイル/数字/建物/港/盗賊）だけを viewBox 中心まわりに
+  // タッチ端末では盤面コンテンツ（タイル/数字/建物/湊/野盗）だけを viewBox 中心まわりに
   // 少しだけ拡大して見やすくする。海背景(sea)は対象外なので水色の余白・外枠は不変。
   // ピンチズーム/パンの永続ビューポート（海背景の上、盤面コンテンツを包む）。
   // ここに transform を載せるため、getScreenCTM 経由のタップ座標逆算（events.ts）が
@@ -721,7 +723,7 @@ export function renderBoard(
   }
 
   // --- タイル（最下層） ---
-  // 騎士と商人: 商人コマの位置・所有者色を opts に注入（renderTile で描画）。
+  // 武将と商い: 御用商人コマの位置・所有者色を opts に注入（renderTile で描画）。
   const merchant = state.merchant;
   const tileOpts: BoardRenderOptions | undefined = merchant
     ? { ...(opts ?? {}), merchantTileId: merchant.tileId, merchantColor: PLAYER_HEX_COLOR[merchant.playerId] ?? '#caa14a' }
@@ -733,10 +735,10 @@ export function renderBoard(
   }
   content.appendChild(tileGroup);
 
-  // --- 辺（道）。港ラベルより先に描いて、港表示を道より前面にする ---
+  // --- 辺（街道）。湊ラベルより先に描いて、湊表示を街道より前面にする ---
   content.appendChild(renderEdges(state, ox, oy, opts));
 
-  // --- 港（道より後＝前面に描画して、2:1/3:1 や資源アイコンを読めるようにする） ---
+  // --- 湊（街道より後＝前面に描画して、2:1/3:1 や資源アイコンを読めるようにする） ---
   const harborGroup = svgEl('g');
   harborGroup.setAttribute('class', 'harbors');
   for (const harbor of state.harbors) {

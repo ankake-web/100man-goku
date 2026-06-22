@@ -44,7 +44,7 @@ function vertexProductionScore(state: GameState, vertexId: string): number {
   }, 0);
 }
 
-// 頂点に隣接するタイルの産出資源（砂漠は除外）。
+// 頂点に隣接するタイルの産出資源（荒野は除外）。
 function adjacentResources(state: GameState, vertexId: string): ResourceType[] {
   const out: ResourceType[] = [];
   for (const tid of state.vertices[vertexId]?.adjacentTileIds ?? []) {
@@ -55,7 +55,7 @@ function adjacentResources(state: GameState, vertexId: string): ResourceType[] {
   return out;
 }
 
-// 頂点に隣接するタイルの数字（砂漠/未設定は除外）。
+// 頂点に隣接するタイルの数字（荒野/未設定は除外）。
 function adjacentNumbers(state: GameState, vertexId: string): number[] {
   const out: number[] = [];
   for (const tid of state.vertices[vertexId]?.adjacentTileIds ?? []) {
@@ -69,17 +69,17 @@ function adjacentNumbers(state: GameState, vertexId: string): number[] {
 const SETUP_WEIGHTS = {
   pip: 1.0,          // 隣接3ヘックスの pip(出目確率) 合計の基礎重み
   diversity: 1.5,    // 異なる資源1種ごとの加点（資源の多様性）
-  oreWheat: 2.0,     // ore と wheat(grain) の両方に触れる（都市化に重要）
+  oreWheat: 2.0,     // ore と wheat(grain) の両方に触れる（築城に重要）
   woodBrick: 1.5,    // wood と brick の両方に触れる（序盤拡張に重要）
-  harbor: 1.0,       // 港に接する小加点
+  harbor: 1.0,       // 湊に接する小加点
   numberSpread: 1.0, // 隣接数字が全て異なるときの加点（同じ数字への偏りを避ける）
   newResource: 2.0,  // (2軒目) 1軒目に無い資源1種ごとの加点
   newNumber: 0.5,    // (2軒目) 1軒目と異なる数字1個ごとの加点
 } as const;
 
 /**
- * 初期配置（開拓地）の頂点評価。高いほど良い。純粋関数。
- * 基礎 = 隣接 pip 合計。補正 = 資源多様性 / ore+wheat / wood+brick / 港 / 数字分散。
+ * 初期配置（砦）の頂点評価。高いほど良い。純粋関数。
+ * 基礎 = 隣接 pip 合計。補正 = 資源多様性 / ore+wheat / wood+brick / 湊 / 数字分散。
  * ownFirstSettlement を渡すと（2軒目想定）1軒目に無い資源・別数字を補完するほど加点する。
  */
 export function evaluateVertexForSetup(
@@ -121,12 +121,12 @@ function pickByScore<T>(items: T[], scoreFn: (t: T) => number, rng: () => number
 // 手番方策（A-3）の評価ヘルパー
 // ============================================================
 
-// 資源の戦略的重み。都市化で生産が倍になる ore/wheat(grain) を重視する。
+// 資源の戦略的重み。築城で生産が倍になる ore/wheat(grain) を重視する。
 const RESOURCE_WEIGHT: Record<ResourceType, number> = {
   ore: 1.3, grain: 1.3, wool: 1.0, wood: 1.0, brick: 1.0,
 };
 
-// 頂点の重み付き生産価値 = Σ pip(隣接タイル) × 資源重み。都市化先・開拓地先の良し悪し。
+// 頂点の重み付き生産価値 = Σ pip(隣接タイル) × 資源重み。築城先・砦先の良し悪し。
 // 金タイル(gold)はどの資源にもなれる万能産出なので、ore/grain と同等の高めの重みで評価する。
 const GOLD_WEIGHT = 1.3;
 export function weightedProduction(state: GameState, vertexId: string): number {
@@ -152,7 +152,7 @@ function playerResourceCoverage(state: GameState, pid: PlayerId): Set<ResourceTy
   return cov;
 }
 
-// MAIN フェーズの開拓地先評価 = 重み付き生産 + 未保有資源の補完 + 港小加点。
+// MAIN フェーズの砦先評価 = 重み付き生産 + 未保有資源の補完 + 湊小加点。
 const EXPANSION_NEW_RESOURCE = 2.0;
 const EXPANSION_HARBOR = 1.0;
 // 航海者: 新しい島へ最初に入植すると +2VP（島ボーナス）＋金タイルへの足場。
@@ -167,20 +167,20 @@ export function evaluateExpansionVertex(state: GameState, pid: PlayerId, vertexI
   return score;
 }
 
-// 建設可能な都市化先のうち最良（重み付き生産最大、ore/wheat重視）。無ければ null。
+// 建設可能な築城先のうち最良（重み付き生産最大、ore/wheat重視）。無ければ null。
 function bestCityVertex(state: GameState, pid: PlayerId, rng: () => number): string | null {
   const verts = Object.keys(state.vertices).filter(v => canBuildCity(state, pid, v));
   return verts.length > 0 ? pickByScore(verts, v => weightedProduction(state, v), rng) : null;
 }
 
-// 建設可能な開拓地先のうち最良（生産＋資源補完）。無ければ null。
+// 建設可能な砦先のうち最良（生産＋資源補完）。無ければ null。
 function bestSettlementVertex(state: GameState, pid: PlayerId, rng: () => number): string | null {
   const verts = Object.keys(state.vertices).filter(v => canBuildSettlement(state, pid, v));
   return verts.length > 0 ? pickByScore(verts, v => evaluateExpansionVertex(state, pid, v), rng) : null;
 }
 
-// 道の価値 = その辺が開く（空き）頂点の最良 evaluateExpansionVertex。
-// 良い拡張先へ向かう道を優先する（行き止まりの道を避ける）。
+// 街道の価値 = その辺が開く（空き）頂点の最良 evaluateExpansionVertex。
+// 良い拡張先へ向かう街道を優先する（行き止まりの街道を避ける）。
 function roadEdgeValue(state: GameState, pid: PlayerId, edgeId: string): number {
   const e = state.edges[edgeId];
   if (!e) return 0;
@@ -192,7 +192,7 @@ function roadEdgeValue(state: GameState, pid: PlayerId, edgeId: string): number 
   return best;
 }
 
-// 建設可能な道のうち最良の拡張先へ向かう辺。無ければ null。
+// 建設可能な街道のうち最良の拡張先へ向かう辺。無ければ null。
 function bestRoadEdge(state: GameState, pid: PlayerId, rng: () => number): string | null {
   const edges = Object.keys(state.edges).filter(eid => canBuildRoad(state, pid, eid));
   return edges.length > 0 ? pickByScore(edges, eid => roadEdgeValue(state, pid, eid), rng) : null;
@@ -208,7 +208,7 @@ function hasSeaTiles(state: GameState): boolean {
   return Object.values(state.tiles).some(t => t.type === 'sea');
 }
 
-// 接続要件を除き、距離ルール上その空き陸頂点に開拓地を置けるか（船で到達後の建設先候補）。
+// 接続要件を除き、距離ルール上その空き陸頂点に砦を置けるか（船で到達後の建設先候補）。
 function isOpenLandSpot(state: GameState, vid: string): boolean {
   const v = state.vertices[vid];
   if (!v || v.building) return false;
@@ -221,7 +221,7 @@ const SHIP_STEP_PENALTY = 2.0;
 const SHIP_MIN_TARGET = 4.0;
 
 /**
- * 海を渡って良い新規開拓地へ向かう「次に置く1隻」を返す（基本AIの船活用）。
+ * 海を渡って良い新規砦へ向かう「次に置く1隻」を返す（基本AIの船活用）。
  *
  * 自分のネットワーク（建物の頂点・既存の船の端点）を始点に、海辺(sea-edge)を
  * Dijkstra で辿り（自分の既存船=コスト0／空きの海辺=コスト1＝新規に1隻）、
@@ -231,7 +231,7 @@ const SHIP_MIN_TARGET = 4.0;
  *
  * 1ターンに複数回呼ばれると、既設の船はコスト0で辿られるため同じ目的地へ船を継ぎ足し、
  * 資源が尽きると null（→ END_TURN へ）。新島の沿岸頂点に船が届けば、次以降の手番で
- * bestSettlementVertex が canBuildSettlement(船接続) によりそこへ開拓地を建てる。
+ * bestSettlementVertex が canBuildSettlement(船接続) によりそこへ砦を建てる。
  */
 function bestExpansionShip(state: GameState, pid: PlayerId): string | null {
   if (!hasSeaTiles(state)) return null;
@@ -268,7 +268,7 @@ function bestExpansionShip(state: GameState, pid: PlayerId): string | null {
       let stepCost: number;
       if (e.ship?.playerId === pid) stepCost = 0;            // 自分の既存船は無料で辿る
       else if (e.ship == null && e.road == null) stepCost = 1; // 空きの海辺＝新規1隻
-      else continue;                                          // 他人の船 or 道で塞がっている
+      else continue;                                          // 他人の船 or 街道で塞がっている
       const other = e.vertexIds[0] === cur ? e.vertexIds[1] : e.vertexIds[0];
       const nd = bestD + stepCost;
       if (nd < (dist[other] ?? Infinity)) {
@@ -299,7 +299,7 @@ function getDifficulty(state: GameState, pid: PlayerId): AiDifficulty {
   return state.players[pid]?.aiDifficulty ?? 'normal';
 }
 
-/** 強盗の現在地以外の最初の陸タイルIDを返す（フォールバック用）。海タイルは除外（陸のみ）。 */
+/** 野盗の現在地以外の最初の陸タイルIDを返す（フォールバック用）。海タイルは除外（陸のみ）。 */
 function fallbackTileId(state: GameState, excludeId: string | undefined): string {
   const land = Object.keys(state.tiles).filter(tid => state.tiles[tid]?.type !== 'sea');
   return land.find(tid => tid !== excludeId) ?? land[0] ?? Object.keys(state.tiles)[0]!;
@@ -311,7 +311,7 @@ function fallbackTileId(state: GameState, excludeId: string | undefined): string
 
 /**
  * CPUが人間プレイヤーに1:1交易を提案できる機会を探す。
- * CPUが建設目標（都市 > 開拓地 > 発展カード）に対して 1 枚だけ不足しており、
+ * CPUが建設目標（城 > 砦 > 軍略カード）に対して 1 枚だけ不足しており、
  * 自分の余剰資源を1枚渡せる場合に提案内容を返す。条件を満たさない場合は null。
  *
  * 重要: CPUは**自分の手札のみ**を参照する。人間（相手）の手札内容は一切見ない。
@@ -397,12 +397,12 @@ export function evaluateTradeOffer(
   if (!helps) return false;
 
   // ---- 損得検査（搾取防止）----
-  // これが無いと「羊1↔鉄6」のような極端に不利な提案でも、目標の不足を埋めさえすれば
+  // これが無いと「馬1↔鉄6」のような極端に不利な提案でも、目標の不足を埋めさえすれば
   // 受けてしまい、人間が安資源1枚で CPU の手札を大量に抜ける。
   const totalGain = RESOURCE_TYPES.reduce((s, r) => s + (gain[r] ?? 0), 0);
   const totalCost = RESOURCE_TYPES.reduce((s, r) => s + (cost[r] ?? 0), 0);
 
-  // 銀行レートガード: 自分の銀行/港レートで同等以上の交換ができるなら相手に利だけ渡す提案。
+  // 銀行レートガード: 自分の銀行/湊レートで同等以上の交換ができるなら相手に利だけ渡す提案。
   // 複数資源を渡す場合は最も有利な（小さい）レートで保守的に判定する。
   const minRate = RESOURCE_TYPES.reduce(
     (m, r) => (cost[r] ?? 0) > 0 ? Math.min(m, getEffectiveTradeRate(state, responderId, r)) : m,
@@ -468,12 +468,12 @@ export function chooseAction(state: GameState, pid: PlayerId, opts?: AiOpts): Ac
     return chooseGold(state, pid);
   }
 
-  // 騎士と商人: 蛮族敗北での都市格下げ（手番に関わらず対象プレイヤーが解決する）。
+  // 武将と商い: 一揆勢敗北での城格下げ（手番に関わらず対象プレイヤーが解決する）。
   if (state.turnPhase === 'CITY_DOWNGRADE') {
     return chooseCityDowngrade(state, pid);
   }
 
-  // 騎士と商人: 進歩カード上限超過（5枚目を引いた）→ 1枚捨てる（対象プレイヤーが解決する）。
+  // 武将と商い: 進歩カード上限超過（5枚目を引いた）→ 1枚捨てる（対象プレイヤーが解決する）。
   if (state.turnPhase === 'PROGRESS_DISCARD') {
     return chooseProgressDiscard(state, pid);
   }
@@ -515,7 +515,7 @@ function chooseSetupAction(state: GameState, pid: PlayerId, rng: () => number): 
           return b?.type === 'settlement' && b.playerId === pid;
         })
       : undefined;
-    // elite は基本ゲームで生産重視の配置を使う（CKは商品地形も要るため標準評価）。
+    // elite は基本ゲームで生産重視の配置を使う（CKは物産地形も要るため標準評価）。
     const evalFn = (difficulty === 'elite' && !isCk(state))
       ? (vid: string): number => evaluateVertexForSetupElite(state, vid, firstSettlement)
       : (vid: string): number => evaluateVertexForSetup(state, vid, firstSettlement);
@@ -532,7 +532,7 @@ function chooseSetupAction(state: GameState, pid: PlayerId, rng: () => number): 
     if (difficulty === 'weak') {
       return { type: 'BUILD_ROAD', edgeId: valid[Math.floor(rng() * valid.length)]! };
     }
-    // 直前に置いた開拓地から、良い拡張先（新資源・高pip）へ向かう辺を選ぶ。
+    // 直前に置いた砦から、良い拡張先（新資源・高pip）へ向かう辺を選ぶ。
     return { type: 'BUILD_ROAD', edgeId: pickByScore(valid, eid => roadEdgeValue(state, pid, eid), rng) };
   }
 
@@ -547,7 +547,7 @@ function choosePreRollAction(state: GameState, pid: PlayerId): Action {
   const player = state.players[pid]!;
   const difficulty = getDifficulty(state, pid);
 
-  // 騎士と商人: 錬金術師(alchemist)は振る前に使う。使える状況なら振る前に使用。
+  // 武将と商い: 錬金術師(alchemist)は振る前に使う。使える状況なら振る前に使用。
   if (difficulty !== 'weak' && isCk(state)) {
     const alch = (player.progressCards ?? []).find(c => c.type === 'alchemist' && canPlayProgress(state, pid, c.id));
     if (alch) return { type: 'PLAY_PROGRESS', cardId: alch.id };
@@ -575,11 +575,11 @@ function chooseDiscard(state: GameState, pid: PlayerId, rng: () => number = Math
   // 既にこの7で捨て済みなら何もしない（エンジンの二重捨てガードと整合）。
   if ((state.discardedThisRound ?? []).includes(pid)) return null;
 
-  const required = discardCount(state, pid); // 騎士と商人は資源＋商品で判定
+  const required = discardCount(state, pid); // 武将と商いは資源＋物産で判定
   if (required === 0) return null;
 
   if (isCk(state)) {
-    // まず余剰資源を捨て、不足分は商品を多い順に捨てる。
+    // まず余剰資源を捨て、不足分は物産を多い順に捨てる。
     const resTotal = RESOURCE_TYPES.reduce((s, r) => s + player.hand[r], 0);
     const resCount = Math.min(required, resTotal);
     const resDiscards = chooseDiscards(state, pid, resCount, rng);
@@ -668,7 +668,7 @@ function chooseGold(state: GameState, pid: PlayerId): Action | null {
   return { type: 'CHOOSE_GOLD', playerId: pid, resources: chooseGoldResources(state, pid, owed) };
 }
 
-// 蛮族敗北での都市格下げ（対象 CPU）。最も価値の低い都市（隣接タイルのpip合計が最小）を選ぶ。
+// 一揆勢敗北での城格下げ（対象 CPU）。最も価値の低い城（隣接タイルのpip合計が最小）を選ぶ。
 function chooseCityDowngrade(state: GameState, pid: PlayerId): Action | null {
   if (!(state.pendingCityDowngrade ?? []).includes(pid)) return null;
   const cities = plainCityVertexIds(state, pid);
@@ -710,7 +710,7 @@ function opponentsOnTile(state: GameState, tileId: string, pid: PlayerId): Playe
   )];
 }
 
-// 自分がそのタイルに建物を持つか（盗賊で自分の生産を止めないため）。
+// 自分がそのタイルに建物を持つか（野盗で自分の生産を止めないため）。
 function selfOnTile(state: GameState, tileId: string, pid: PlayerId): boolean {
   return (state.tileToVertices[tileId] ?? []).some(v => state.vertices[v]?.building?.playerId === pid);
 }
@@ -720,7 +720,7 @@ function tilePip(state: GameState, tileId: string): number {
   return n ? (NUMBER_PROB[n] ?? 0) : 0;
 }
 
-// 盗賊配置スコア: 相手がいない/自分の生産/砂漠/現在地 は対象外(-Infinity)。
+// 野盗配置スコア: 相手がいない/自分の生産/荒野/現在地 は対象外(-Infinity)。
 // それ以外は pip ×「最も勝っている相手の脅威度(VP)」。VP0でも pip で比較できるよう +1。
 function robberHexScore(state: GameState, tileId: string, pid: PlayerId): number {
   const tile = state.tiles[tileId];
@@ -733,13 +733,13 @@ function robberHexScore(state: GameState, tileId: string, pid: PlayerId): number
 }
 
 /**
- * 盗賊を置くヘックスを選ぶ純粋関数。
+ * 野盗を置くヘックスを選ぶ純粋関数。
  * 「最も勝っている相手の生産を最も削る（pip × 相手VP）」ヘックスを選び、自分の生産は避ける。
- * 相手のいる有効ヘックスが無い場合は自分を避けた非砂漠、それも無ければ任意へフォールバック。
+ * 相手のいる有効ヘックスが無い場合は自分を避けた非荒野、それも無ければ任意へフォールバック。
  */
 export function chooseRobberHex(state: GameState, pid: PlayerId, rng: () => number = Math.random): string {
   const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
-  // 強盗は陸タイルのみ（海は海賊の領分）。砂漠・現在地・海を除外。
+  // 野盗は陸タイルのみ（海は海賊の領分）。荒野・現在地・海を除外。
   const candidates = Object.keys(state.tiles).filter(
     tid => tid !== current && state.tiles[tid]?.type !== 'desert' && state.tiles[tid]?.type !== 'sea',
   );
@@ -754,7 +754,7 @@ export function chooseRobberHex(state: GameState, pid: PlayerId, rng: () => numb
 }
 
 /**
- * 盗賊を置いたヘックスに隣接する相手から略奪先を選ぶ純粋関数。
+ * 野盗を置いたヘックスに隣接する相手から略奪先を選ぶ純粋関数。
  * 手札が多い／勝利に近い(VP高)相手を優先。手札0の相手は除外（奪えないため）。該当なしは null。
  */
 export function chooseStealTarget(
@@ -769,7 +769,7 @@ function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number):
   const difficulty = getDifficulty(state, pid);
 
   if (difficulty === 'weak') {
-    // 弱: 現在地以外の非砂漠・非海の陸タイルからランダム。
+    // 弱: 現在地以外の非荒野・非海の陸タイルからランダム。
     const current = Object.values(state.tiles).find(t => t.hasRobber)?.id;
     const candidates = Object.keys(state.tiles).filter(
       tid => tid !== current && state.tiles[tid]?.type !== 'desert' && state.tiles[tid]?.type !== 'sea',
@@ -790,7 +790,7 @@ function chooseRobberAction(state: GameState, pid: PlayerId, rng: () => number):
 // ============================================================
 
 function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
-  // 街道建設カード使用中: 無料道を拡張先評価(bestRoadEdge)で置く（置けなければ効果完了）。
+  // 普請カード使用中: 無料街道を拡張先評価(bestRoadEdge)で置く（置けなければ効果完了）。
   // 「盤面順で最初の合法辺」では自陣の内側など無価値な辺に置かれ、カードがほぼ無駄になる。
   if (state.roadBuildingRoadsRemaining > 0) {
     const roadEdge = bestRoadEdge(state, pid, rng);
@@ -798,7 +798,7 @@ function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade
     return { type: 'FINISH_ROAD_BUILDING' };
   }
 
-  // 騎士と商人: 拡張固有の手（都市改善・騎士）を最優先で検討。無ければ通常建設へ。
+  // 武将と商い: 拡張固有の手（城下の改善・武将）を最優先で検討。無ければ通常建設へ。
   if (isCk(state)) {
     const ckAction = chooseCkBuildAction(state, pid, rng);
     if (ckAction) return ckAction;
@@ -811,29 +811,29 @@ function chooseTradeBuildAction(state: GameState, pid: PlayerId, skipPlayerTrade
   return chooseTradeBuildNormal(state, pid, skipPlayerTrade, rng);
 }
 
-// ---- 騎士と商人・'strong' 専用: 余剰資源で騎士を整備する（守護VP/都市防衛） ----
-// 都市が無いうちは拡張優先で何もしない。麦/鉄に厚みがある時だけ起動・建設・昇格する
+// ---- 武将と商い・'strong' 専用: 余剰資源で武将を整備する（守護VP/城防衛） ----
+// 城が無いうちは拡張優先で何もしない。米/鉄に厚みがある時だけ出陣・建設・加増する
 // （cities/settlements 等の VP 建設を全て検討した後に呼ばれるため、拡張資源を奪わない）。
 function strongKnightDevelopment(state: GameState, pid: PlayerId): Action | null {
   const p = state.players[pid]!;
   const myCities = Object.values(state.vertices).filter(v => v.building?.playerId === pid && v.building.type === 'city').length;
   if (myCities === 0) return null;
   const knightCount = Object.values(state.vertices).filter(v => v.knight?.playerId === pid).length;
-  // 1) 非起動騎士を起動（麦に厚みがある時。守備力を実効化して蛮族防衛に備える）。
+  // 1) 非起動武将を出陣（米に厚みがある時。守備力を実効化して一揆勢防衛に備える）。
   const inactive = Object.keys(state.vertices).find(vid => canActivateKnight(state, pid, vid));
   if (inactive && p.hand.grain >= 3) return { type: 'ACTIVATE_KNIGHT', vertexId: inactive };
-  // 2) 騎士を増やす（都市数+1まで。木材・羊毛に余裕がある時）。
+  // 2) 武将を増やす（城数+1まで。木材・馬に余裕がある時）。
   if (knightCount <= myCities && p.hand.wood >= 1 && p.hand.wool >= 1) {
     const build = Object.keys(state.vertices).find(v => canBuildKnight(state, pid, v));
     if (build) return { type: 'BUILD_KNIGHT', vertexId: build };
   }
-  // 3) 既存騎士を昇格（政治レベル到達＋鉄/麦に厚みがある時）。強い騎士で守護VPを独占する。
+  // 3) 既存武将を加増（政レベル到達＋鉄/米に厚みがある時）。強い武将で守護VPを独占する。
   const up = Object.keys(state.vertices).find(vid => canUpgradeKnight(state, pid, vid));
   if (up && p.hand.ore >= 2 && p.hand.grain >= 2) return { type: 'UPGRADE_KNIGHT', vertexId: up };
   return null;
 }
 
-// ---- 騎士と商人: 拡張固有の建設判断（都市改善＋騎士による防衛） ----
+// ---- 武将と商い: 拡張固有の建設判断（城下の改善＋武将による防衛） ----
 function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number): Action | null {
   const p = state.players[pid]!;
   const imp = p.improvements ?? { trade: 0, politics: 0, science: 0 };
@@ -843,17 +843,17 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
   const card = (p.progressCards ?? []).find(c => canPlayProgress(state, pid, c.id));
   if (card) return { type: 'PLAY_PROGRESS', cardId: card.id };
 
-  // 1) 都市改善: 買えるなら買う（勝利点エンジン）。メトロポリス到達(Lv3→4・未保持)を最優先、
+  // 1) 城下の改善: 買えるなら買う（勝利点エンジン）。天守到達(Lv3→4・未保持)を最優先、
   //    次にレベルの低いツリー（安い）から進める。
   const buyable = tracks.filter(t => canBuildImprovement(state, pid, t));
   if (buyable.length > 0) {
-    // メトロポリス絡みを最優先: 未保持を Lv3→4 で先取り、または他者保持を Lv4→5 で奪取。
+    // 天守絡みを最優先: 未保持を Lv3→4 で先取り、または他者保持を Lv4→5 で奪取。
     const metro = buyable.find(t => {
       const h = state.metropolis?.[t];
       return (imp[t] === 3 && !h) || (imp[t] === 4 && !!h && h.playerId !== pid);
     });
     // 通常: 安い低レベル側から均等に伸ばす。'strong': 高レベル側を一点集中で伸ばし
-    //   メトロポリス(+2VP)へ一直線に到達する（13点ゲームで非常に効く）。
+    //   天守(+2VP)へ一直線に到達する（13点ゲームで非常に効く）。
     const difficulty = getDifficulty(state, pid);
     const rushMetro = difficulty === 'strong' || difficulty === 'elite';
     const pick = metro ?? (rushMetro
@@ -868,31 +868,31 @@ function chooseCkBuildAction(state: GameState, pid: PlayerId, rng: () => number)
     .reduce((s, v) => s + v.knight!.strength, 0);
   const barb = state.barbarianPosition ?? 0;
 
-  // 1.5) 騎士で強盗を追い払う: 強盗が自分の生産を止めていて、騎士1体を非アクティブ化しても
-  //      防衛余力がある（or 蛮族が遠い）なら追い払う。続く ROBBER フェーズは chooseRobberAction が解決。
+  // 1.5) 武将で野盗を追い払う: 野盗が自分の生産を止めていて、武将1体を非アクティブ化しても
+  //      防衛余力がある（or 一揆勢が遠い）なら追い払う。続く ROBBER フェーズは chooseRobberAction が解決。
   const chasable = robberAdjacentChasableVertexIds(state, pid);
   if (chasable.length > 0) {
     const robberTid = Object.keys(state.tiles).find(t => state.tiles[t]!.hasRobber);
     const robberHurtsMe = robberTid != null
       && (state.tileToVertices[robberTid] ?? []).some(v => state.vertices[v]?.building?.playerId === pid);
     const chaserStr = state.vertices[chasable[0]!]?.knight?.strength ?? 1;
-    const defenseSlack = myKnightStr - chaserStr >= myCities; // その騎士が抜けても都市数を守れる
+    const defenseSlack = myKnightStr - chaserStr >= myCities; // その武将が抜けても城数を守れる
     if (robberHurtsMe && (defenseSlack || barb <= 2)) {
       return { type: 'CHASE_ROBBER', vertexId: chasable[0]! };
     }
   }
 
-  // 2) 防衛: 蛮族が近い or 都市数に対し騎士力が足りないなら騎士を用意。
+  // 2) 防衛: 一揆勢が近い or 城数に対し武将力が足りないなら武将を用意。
   if (myCities > 0 && (barb >= 3 || myKnightStr < myCities)) {
-    // 既存の非起動騎士を起動（麦1で防衛力UP）。
+    // 既存の非起動武将を出陣（米1で防衛力UP）。
     const toActivate = Object.keys(state.vertices).find(vid => canActivateKnight(state, pid, vid));
     if (toActivate) return { type: 'ACTIVATE_KNIGHT', vertexId: toActivate };
-    // 騎士を建てる（防衛力が都市数に満たないうちは増やす）。
+    // 武将を召し抱える（防衛力が城数に満たないうちは増やす）。
     if (myKnightStr <= myCities) {
       const vid = Object.keys(state.vertices).find(v => canBuildKnight(state, pid, v));
       if (vid) return { type: 'BUILD_KNIGHT', vertexId: vid };
     }
-    // 政治Lv3があり余裕があれば昇格。
+    // 政Lv3があり余裕があれば加増。
     const up = Object.keys(state.vertices).find(vid => canUpgradeKnight(state, pid, vid));
     if (up && RESOURCE_TYPES.reduce((s, r) => s + p.hand[r], 0) >= 6) return { type: 'UPGRADE_KNIGHT', vertexId: up };
   }
@@ -918,7 +918,7 @@ function chooseTradeBuildWeak(state: GameState, pid: PlayerId, rng: () => number
   }
 
   if (player.remainingRoads > 0) {
-    // 候補を1辺に絞る（全辺追加すると道が圧倒的多数になりVP建設確率が激減するため）
+    // 候補を1辺に絞る（全辺追加すると街道が圧倒的多数になりVP建設確率が激減するため）
     const roadEdge = Object.keys(state.edges).find(eid => canBuildRoad(state, pid, eid));
     if (roadEdge) possible.push({ type: 'BUILD_ROAD', edgeId: roadEdge });
   }
@@ -958,8 +958,8 @@ function bankTradeToward(state: GameState, pid: PlayerId, cost: ResourceHand): A
 
 // 勝利まであと1点以上なら、勝利に直結する建設を最優先で実行する。
 // 建設できなければ、不足資源をバンク交易で1手ずつ補い、次ステップでの建設→勝利を狙う。
-// 資源を無視し、接続済み（自分の道/船）で距離ルールOKの空き陸頂点があるか。
-// 「実際に置ける開拓地」がある時だけバンク交易で資源を狙う（置けない先への無限交易を防ぐ）。
+// 資源を無視し、接続済み（自分の街道/船）で距離ルールOKの空き陸頂点があるか。
+// 「実際に置ける砦」がある時だけバンク交易で資源を狙う（置けない先への無限交易を防ぐ）。
 function hasReachableSettlementSpot(state: GameState, pid: PlayerId): boolean {
   return Object.values(state.vertices).some(v => {
     if (v.building || !isLandVertex(v, state.tiles) || !isDistanceRuleOk(v, state.vertices)) return false;
@@ -978,11 +978,11 @@ function victoryPush(state: GameState, pid: PlayerId, rng: () => number = Math.r
   if (city) return { type: 'BUILD_CITY', vertexId: city };
   const settl = bestSettlementVertex(state, pid, rng);
   if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
-  // 航海者: 本島で詰みなら新島へ船を継ぐ。島ボーナス(+2)＋新島の開拓地(+1)で勝ち切る経路。
+  // 航海者: 本島で詰みなら新島へ船を継ぐ。島ボーナス(+2)＋新島の砦(+1)で勝ち切る経路。
   // これが無いと target-1(12/13) から抜けられず、群島で CPU 対戦が永久ループしうる（監査指摘）。
   const ship = bestExpansionShip(state, pid);
   if (ship) return { type: 'BUILD_SHIP', edgeId: ship };
-  // バンク交易は「実際に置ける建設」に限る。置けない開拓地へ延々と交易して詰まないように。
+  // バンク交易は「実際に置ける建設」に限る。置けない砦へ延々と交易して詰まないように。
   const hasUpgradable = Object.values(state.vertices).some(
     v => v.building?.type === 'settlement' && v.building.playerId === pid,
   );
@@ -993,10 +993,10 @@ function victoryPush(state: GameState, pid: PlayerId, rng: () => number = Math.r
     const bt = bankTradeToward(state, pid, cost);
     if (bt) return bt;
   }
-  return null; // 詰まったら通常方策（発展カード/道/船拡張/交易）へ委ねる
+  return null; // 詰まったら通常方策（軍略カード/街道/船拡張/交易）へ委ねる
 }
 
-// ---- 進歩カード（豊作/独占/街道建設）の使用判断 ----
+// ---- 進歩カード（豊作/専売/普請）の使用判断 ----
 // 1ターン1枚制限・購入ターン制限を守る。建設で手詰まりのとき局面を進めるために使う。
 
 function playableDev(state: GameState, pid: PlayerId, type: DevCardType): boolean {
@@ -1005,7 +1005,7 @@ function playableDev(state: GameState, pid: PlayerId, type: DevCardType): boolea
   return !!p?.devCards.some(c => c.type === type && c.purchasedOnTurn < state.globalTurnNumber);
 }
 
-// pid が次に狙う建設目標のコスト一覧（都市→開拓地→発展カードの優先順）。
+// pid が次に狙う建設目標のコスト一覧（城→砦→軍略カードの優先順）。
 function goalCosts(state: GameState, pid: PlayerId): ResourceHand[] {
   const p = state.players[pid]!;
   const goals: ResourceHand[] = [];
@@ -1024,7 +1024,7 @@ function chooseProgressCardAction(state: GameState, pid: PlayerId): Action | nul
   if (state.devCardPlayedThisTurn) return null;
   const player = state.players[pid]!;
 
-  // 街道建設: 道駒が残り、無料で置ける辺があるなら使う（無料2本・最長交易路狙い）。
+  // 普請: 街道駒が残り、無料で置ける辺があるなら使う（無料2本・最長街道狙い）。
   // 判定は「無料モードを模した state」で行う（通常の canBuildRoad は資源コストを要求し、
   // 手詰まり時に false になってしまうため）。
   if (playableDev(state, pid, 'road_building') && player.remainingRoads > 0) {
@@ -1034,7 +1034,7 @@ function chooseProgressCardAction(state: GameState, pid: PlayerId): Action | nul
     }
   }
 
-  // 豊作: あと2枚以内で目標(都市/開拓地/発展)に届くなら不足分を取得する。
+  // 豊作: あと2枚以内で目標(城/砦/軍略)に届くなら不足分を取得する。
   if (playableDev(state, pid, 'year_of_plenty')) {
     for (const cost of goalCosts(state, pid)) {
       const need: ResourceType[] = [];
@@ -1049,7 +1049,7 @@ function chooseProgressCardAction(state: GameState, pid: PlayerId): Action | nul
     }
   }
 
-  // 独占: 目標に最も不足している資源を集める（相手手札は覗かない）。
+  // 専売: 目標に最も不足している資源を集める（相手手札は覗かない）。
   if (playableDev(state, pid, 'monopoly')) {
     for (const cost of goalCosts(state, pid)) {
       let bestR: ResourceType | null = null;
@@ -1068,10 +1068,10 @@ function chooseProgressCardAction(state: GameState, pid: PlayerId): Action | nul
 // ----------------------------------------------------------------
 // 手番方策（明文化したヒューリスティック・探索/ミニマックスはしない）
 //   1. このターンに勝てる（建設/カードで10点）なら勝ち手を実行（victoryPush）。
-//   2. 最良の都市化（重み付き生産・特に ore/wheat を倍化）。
-//   3. 道で繋がった最良の空き頂点へ開拓地（生産＋資源補完を評価）。
-//   4. ore+wheat+sheep が揃うなら発展カード購入。
-//   5. 最良の拡張先へ向けて道（行き止まりの道は避ける）。
+//   2. 最良の築城（重み付き生産・特に ore/wheat を倍化）。
+//   3. 街道で繋がった最良の空き頂点へ砦（生産＋資源補完を評価）。
+//   4. ore+wheat+sheep が揃うなら軍略カード購入。
+//   5. 最良の拡張先へ向けて街道（行き止まりの街道は避ける）。
 //   6. 手詰まりなら進歩カードで局面を進める／人間へ交易提案／余剰をバンク交易で変換。
 //   タイブレークのみ seed RNG。状態変更はエンジン経由（ルールはエンジンが権威）。
 // ----------------------------------------------------------------
@@ -1082,30 +1082,30 @@ function chooseTradeBuildNormal(state: GameState, pid: PlayerId, skipPlayerTrade
   const win = victoryPush(state, pid, rng);
   if (win) return win;
 
-  // 2. 最良の都市化
+  // 2. 最良の築城
   const city = bestCityVertex(state, pid, rng);
   if (city) return { type: 'BUILD_CITY', vertexId: city };
 
-  // 3. 最良の開拓地（生産＋資源補完）
+  // 3. 最良の砦（生産＋資源補完）
   const settl = bestSettlementVertex(state, pid, rng);
   if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
 
-  // 3.5 航海者: 海を渡って良い新島の開拓地候補へ向け船を継ぐ（基本ゲームでは null で no-op）。
+  // 3.5 航海者: 海を渡って良い新島の砦候補へ向け船を継ぐ（基本ゲームでは null で no-op）。
   const ship = bestExpansionShip(state, pid);
   if (ship) return { type: 'BUILD_SHIP', edgeId: ship };
 
-  // 4. 発展カード購入（ore+wheat+sheep が揃うとき）
+  // 4. 軍略カード購入（ore+wheat+sheep が揃うとき）
   if (state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card)) {
     return { type: 'BUY_DEV_CARD' };
   }
 
-  // 5. 最良の拡張先へ向けて道
+  // 5. 最良の拡張先へ向けて街道
   if (player.remainingRoads > 0) {
     const road = bestRoadEdge(state, pid, rng);
     if (road) return { type: 'BUILD_ROAD', edgeId: road };
   }
 
-  // 6. 建設で手詰まりのとき、手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
+  // 6. 建設で手詰まりのとき、手持ちの進歩カードで局面を進める（豊作/専売/普請）。
   const progress = chooseProgressCardAction(state, pid);
   if (progress) return progress;
 
@@ -1134,15 +1134,15 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
   const win = victoryPush(state, pid, rng);
   if (win) return win;
 
-  // 1. 都市（VP効率最高・重み付き生産で ore/wheat を倍化）
+  // 1. 城（VP効率最高・重み付き生産で ore/wheat を倍化）
   const city = bestCityVertex(state, pid, rng);
   if (city) return { type: 'BUILD_CITY', vertexId: city };
 
-  // 2. 開拓地（生産＋資源補完）
+  // 2. 砦（生産＋資源補完）
   const settl = bestSettlementVertex(state, pid, rng);
   if (settl) return { type: 'BUILD_SETTLEMENT', vertexId: settl };
 
-  // 2.5 航海者: 海を渡って新島の良い開拓地候補へ向け船を継ぐ（基本ゲームでは no-op）。
+  // 2.5 航海者: 海を渡って新島の良い砦候補へ向け船を継ぐ（基本ゲームでは no-op）。
   const ship = bestExpansionShip(state, pid);
   if (ship) return { type: 'BUILD_SHIP', edgeId: ship };
 
@@ -1156,34 +1156,34 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
     }
   }
 
-  // 4. バンク交易で都市・開拓地が建設可能になる場合
+  // 4. バンク交易で城・砦が建設可能になる場合
   const bankTradeStrategic = tryBankTradeStrong(state, pid);
   if (bankTradeStrategic) return bankTradeStrategic;
 
-  // 5. 道（最良の拡張先へ向けて）
+  // 5. 街道（最良の拡張先へ向けて）
   if (player.remainingRoads > 0) {
     const road = bestRoadEdge(state, pid, rng);
     if (road) return { type: 'BUILD_ROAD', edgeId: road };
   }
 
-  // 6. 発展カード
+  // 6. 軍略カード
   if (state.devDeck.length > 0 && hasEnoughResources(player.hand, BUILD_COSTS.dev_card)) {
     return { type: 'BUY_DEV_CARD' };
   }
 
-  // 7. 手詰まりなら手持ちの進歩カードで局面を進める（豊作/独占/街道建設）。
+  // 7. 手詰まりなら手持ちの進歩カードで局面を進める（豊作/専売/普請）。
   const progress = chooseProgressCardAction(state, pid);
   if (progress) return progress;
 
-  // 7.5 騎士と商人・'strong' 専用: 余剰資源を守備力（騎士）へ変換する。
-  //   都市/開拓地/船/道/発展/進歩カードを全て検討した「後」なので拡張を阻害しない。
-  //   騎士は蛮族防衛を勝ち切って守護VPを稼ぎ、都市の格下げ（VP喪失）も防ぐ＝CKで強くなる。
+  // 7.5 武将と商い・'strong' 専用: 余剰資源を守備力（武将）へ変換する。
+  //   城/砦/船/街道/軍略/進歩カードを全て検討した「後」なので拡張を阻害しない。
+  //   武将は一揆勢防衛を勝ち切って守護VPを稼ぎ、城の格下げ（VP喪失）も防ぐ＝CKで強くなる。
   if (isCk(state)) {
     const knightDev = strongKnightDevelopment(state, pid);
     if (knightDev) return knightDev;
   }
 
-  // 8. 余剰を貯め込まない: 余った資源をバンク交易で発展カード等に変換（建設可能化）
+  // 8. 余剰を貯め込まない: 余った資源をバンク交易で軍略カード等に変換（建設可能化）
   const useSurplus = tryBankTrade(state, pid);
   if (useSurplus) return useSurplus;
 
@@ -1194,7 +1194,7 @@ function chooseTradeBuildStrong(state: GameState, pid: PlayerId, skipPlayerTrade
 // strong を土台に、strong が明示的に狙わない「ボーナス点(+2VP)」を確実に取りに行く。
 // 初期配置も生産重視（evaluateVertexForSetupElite, 基本ゲーム）。
 
-// 最長交易路(+2VP)を「道1本」で奪取/獲得できるなら、その道を返す。無ければ null。
+// 最長街道(+2VP)を「街道1本」で奪取/獲得できるなら、その街道を返す。無ければ null。
 function eliteLongestRoadGrab(state: GameState, pid: PlayerId): Action | null {
   if (state.longestRoadHolder === pid) return null;           // 既に保持
   const p = state.players[pid]!;
@@ -1216,14 +1216,14 @@ function eliteLongestRoadGrab(state: GameState, pid: PlayerId): Action | null {
 function chooseTradeBuildElite(state: GameState, pid: PlayerId, skipPlayerTrade = false, rng: () => number = Math.random): Action {
   const win = victoryPush(state, pid, rng);
   if (win) return win;
-  // 最長交易路(+2VP)を1本で取れるなら最優先で取りに行く（strong は明示的に狙わない）。
+  // 最長街道(+2VP)を1本で取れるなら最優先で取りに行く（strong は明示的に狙わない）。
   const grab = eliteLongestRoadGrab(state, pid);
   if (grab) return grab;
   return chooseTradeBuildStrong(state, pid, skipPlayerTrade, rng);
 }
 
-// elite の初期配置スコア（基本ゲーム用）: 生産(pip)を重く、都市エンジン(ore+grain)を厚く取る。
-// 序盤の資源量を底上げして拡張テンポを上げる。CKでは商品地形の比重が変わるため適用しない。
+// elite の初期配置スコア（基本ゲーム用）: 生産(pip)を重く、城エンジン(ore+grain)を厚く取る。
+// 序盤の資源量を底上げして拡張テンポを上げる。CKでは物産地形の比重が変わるため適用しない。
 function evaluateVertexForSetupElite(state: GameState, vertexId: string, ownFirstSettlement?: string): number {
   const base = evaluateVertexForSetup(state, vertexId, ownFirstSettlement);
   const prod = vertexProductionScore(state, vertexId);
@@ -1264,7 +1264,7 @@ function tryBankTrade(state: GameState, pid: PlayerId): Action | null {
   return null;
 }
 
-// 強AI用: 余剰リソース優先・都市・開拓地のみを目標とした交易
+// 強AI用: 余剰リソース優先・城・砦のみを目標とした交易
 function tryBankTradeStrong(state: GameState, pid: PlayerId): Action | null {
   const player = state.players[pid]!;
   const costs = [BUILD_COSTS.city, BUILD_COSTS.settlement];

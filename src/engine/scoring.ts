@@ -1,5 +1,5 @@
 // ============================================================
-// src/engine/scoring.ts — L-08: VP・最長道路・最大騎士団
+// src/engine/scoring.ts — L-08: VP・最長街道・最大武将団
 // ============================================================
 
 import type { GameState, PlayerId, EdgeId, VertexId } from '../types';
@@ -12,7 +12,7 @@ import {
 // ============================================================
 
 /**
- * 指定プレイヤーの現在の勝利点を計算して返す（勝利点カード込み）。
+ * 指定プレイヤーの現在の勝利点を計算して返す（由緒カード込み）。
  * エンジン内部の勝利判定・プレイヤー自身の表示に使用する。
  */
 export function calcVP(state: GameState, playerId: PlayerId): number {
@@ -28,13 +28,13 @@ export function calcVP(state: GameState, playerId: PlayerId): number {
   if (player.hasLargestArmy) vp += VP_TABLE.largestArmy;
   vp += player.devCards.filter(c => c.type === 'victory_point').length * VP_TABLE.victoryPoint;
   vp += islandBonusVP(state, playerId);
-  vp += player.defenderVP ?? 0; // 騎士と商人: 蛮族撃退の守護者VP
-  vp += ckProgressVP(state, playerId); // 進歩カード(印刷/立憲)＋商人コマ
+  vp += player.defenderVP ?? 0; // 武将と商い: 一揆勢撃退の守護者VP
+  vp += ckProgressVP(state, playerId); // 進歩カード(印刷/立憲)＋御用商人コマ
 
   return vp;
 }
 
-/** 騎士と商人の公開VP: 進歩カード恒久VP(印刷/立憲)＋商人(merchant)コマ保持で+1。 */
+/** 武将と商いの公開VP: 進歩カード恒久VP(印刷/立憲)＋御用商人(merchant)コマ保持で+1。 */
 function ckProgressVP(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
   let vp = player?.progressVP ?? 0;
@@ -42,7 +42,7 @@ function ckProgressVP(state: GameState, playerId: PlayerId): number {
   return vp;
 }
 
-/** 建物の勝利点。メトロポリス(騎士と商人)は4、都市2、開拓地1。 */
+/** 建物の勝利点。天守(武将と商い)は4、城2、砦1。 */
 function buildingVp(b: { type: 'settlement' | 'city'; metropolis?: boolean }): number {
   if (b.metropolis) return 4;
   return b.type === 'city' ? VP_TABLE.city : VP_TABLE.settlement;
@@ -59,7 +59,7 @@ function islandBonusVP(state: GameState, playerId: PlayerId): number {
 
 /**
  * 他プレイヤーから見える「公開勝利点」を計算して返す。
- * 勝利点カードは非公開なので合算しない。
+ * 由緒カードは非公開なので合算しない。
  */
 export function calcPublicVP(state: GameState, playerId: PlayerId): number {
   const player = state.players[playerId];
@@ -75,20 +75,20 @@ export function calcPublicVP(state: GameState, playerId: PlayerId): number {
   // 新島入植ボーナスは盤面で見える公開情報なので公開VPにも算入する。
   vp += islandBonusVP(state, playerId);
   vp += player.defenderVP ?? 0; // 守護者VPも公開情報
-  vp += ckProgressVP(state, playerId); // 進歩カード恒久VP・商人コマも公開
+  vp += ckProgressVP(state, playerId); // 進歩カード恒久VP・御用商人コマも公開
 
   return vp;
 }
 
 // ============================================================
-// 最長道路（Longest Road）
+// 最長街道（Longest Road）
 // ============================================================
 
 /**
- * 指定プレイヤーの最長連続「交易路」長を DFS で計算する（道＋船・航海者対応）。
+ * 指定プレイヤーの最長連続「街道」長を DFS で計算する（道＋船・航海者対応）。
  *
  * 切断ルール（rules.md §7-2）:
- *   - 相手プレイヤーの建物がある頂点は通過不可（交易路が切断される）。
+ *   - 相手プレイヤーの建物がある頂点は通過不可（街道が切断される）。
  *   - 自分の建物がある頂点は通過可能。
  * 道↔船の切替（航海者 §船）:
  *   - 道と船は種別が異なるため、連続させるには切替点に自分の建物が必要。
@@ -107,8 +107,8 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
   }
   if (myEdges.size === 0) return 0;
 
-  // 相手の建物がある頂点は通過不可（交易路が切断される）。自分の建物は通過可＆道↔船の切替点。
-  // 騎士と商人: 相手の騎士コマも頂点を塞ぎ交易路を分断する（建物と同様）。
+  // 相手の建物がある頂点は通過不可（街道が切断される）。自分の建物は通過可＆道↔船の切替点。
+  // 武将と商い: 相手の武将コマも頂点を塞ぎ街道を分断する（建物と同様）。
   const isBlocked = (vid: VertexId): boolean => {
     const v = state.vertices[vid];
     if (v?.building != null && v.building.playerId !== playerId) return true;
@@ -160,7 +160,7 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
 }
 
 /**
- * 最長道路ボーナス保持者を更新した GameState を返す。
+ * 最長街道ボーナス保持者を更新した GameState を返す。
  *
  * 遷移ルール（仕様書 §7-2）:
  *   A) 現保持者が最長を維持している場合（holderLen === maxLen）: 保持継続。
@@ -173,7 +173,7 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
  *   D) maxLen < LONGEST_ROAD_MIN → 場外（null）。
  */
 export function updateLongestRoad(state: GameState): GameState {
-  // 全プレイヤーの実際の最長道路長を計算
+  // 全プレイヤーの実際の最長街道長を計算
   const lengths: Record<string, number> = {};
   let newState = state;
 
@@ -227,11 +227,11 @@ export function updateLongestRoad(state: GameState): GameState {
 }
 
 // ============================================================
-// 最大騎士団（Largest Army）
+// 最大武将団（Largest Army）
 // ============================================================
 
 /**
- * 最大騎士団ボーナス保持者を更新した GameState を返す。
+ * 最大武将団ボーナス保持者を更新した GameState を返す。
  *
  * 遷移ルール（rules.md §7-3）:
  *   - 現保持者がいない場合: LARGEST_ARMY_MIN(3) 以上の最多者が取得。

@@ -215,6 +215,7 @@
 ---
 
 ## 変更してはいけないもの（DO NOT TOUCH）
+- **地形 `gold`（金タイル, 航海者）の表示「金」「金タイル」、`sea`（海）の表示「海」は対象外**（地形リネーム表に含まれない）。`金貨`(coin)→`金` への置換は2文字語「金貨」のみが対象で、単独の「金」(金タイル)は変えない。
 - 内部キー/enum/値：`'wood' 'brick' 'wool' 'grain' 'ore' 'forest' 'hill' 'pasture' 'field' 'mountain' 'desert' 'sea' 'gold' 'knight' 'city' 'settlement' 'road' 'ship' 'trade' 'politics' 'science' 'coin' 'cloth' 'paper'` 等すべての文字列リテラルの**キー側**。
 - アセットファイル名・import・`ASSETS` キー。
 - ロジック比較文字列 `'指定'`（main.ts、fixed/random）。
