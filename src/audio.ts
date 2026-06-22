@@ -79,11 +79,11 @@ interface BgmTrack {
   bass: OscillatorType;
   seq: [number, number, number][]; // 手続き生成フォールバック [freq_hz, dur_beats, vol_ratio]
 }
-// 並びは「港町の酒場」を先頭（=既定）にする。
+// 並びは「湊町の酒場」を先頭（=既定）にする。
 const BGM_TRACKS: BgmTrack[] = [
   {
-    // 港町の酒場（既定）— 中世・ケルト風。実音源候補: PeriTune「Portside Café」
-    id: 'tavern', name: '港町の酒場', file: '/bgm/portside_cafe.mp3', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
+    // 湊町の酒場（既定）— 中世・ケルト風。実音源候補: PeriTune「Portside Café」
+    id: 'tavern', name: '湊町の酒場', file: '/bgm/portside_cafe.mp3', beatSec: 0.36, melody: 'triangle', bass: 'triangle',
     seq: [
       [440.0,1,0.7],[523.3,1,0.6],[493.9,1,0.65],[440.0,1,0.6],[392.0,1,0.55],[440.0,2,0.6],
       [493.9,1,0.65],[587.3,1,0.6],[523.3,1,0.6],[493.9,1,0.55],[440.0,1,0.6],[493.9,2,0.6],
@@ -115,7 +115,7 @@ const BGM_TRACKS: BgmTrack[] = [
   },
 ];
 
-// 保存は曲ID（並び替えしても選択が崩れない）。未保存/不正値（旧数値含む）は既定=先頭(港町の酒場)。
+// 保存は曲ID（並び替えしても選択が崩れない）。未保存/不正値（旧数値含む）は既定=先頭(湊町の酒場)。
 const BGM_TRACK_KEY = 'catan_bgm_track';
 function loadBgmTrack(): number {
   try {
