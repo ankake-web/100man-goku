@@ -3,29 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="description" content="ブラウザで遊べるカタン風ボードゲーム。CPU対戦とオンライン対戦に対応。" />
+  <meta name="description" content="ブラウザで遊べる戦国ボードゲーム「100万石」。CPU対戦とオンライン対戦に対応。" />
   <meta name="theme-color" content="#0b242c" />
   <meta name="color-scheme" content="dark" />
   <!-- 絵文字SVGのインラインfavicon（base path に依存せず GitHub Pages でも有効）。 -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text x='8' y='52' font-size='52'>🎲</text></svg>" />
   <!-- OGP（SNS共有時の表示） -->
-  <meta property="og:title" content="🎲 カタン" />
-  <meta property="og:description" content="ブラウザで遊べるカタン風ボードゲーム。CPU対戦とオンライン対戦に対応。" />
+  <meta property="og:title" content="🎲 100万石" />
+  <meta property="og:description" content="ブラウザで遊べる戦国ボードゲーム「100万石」。CPU対戦とオンライン対戦に対応。" />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="ja_JP" />
-  <title>🎲 カタン</title>
+  <title>🎲 100万石</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <div id="home"></div>
-  <h1 id="game-title" style="display:none">🎲 カタン</h1>
+  <h1 id="game-title" style="display:none">🎲 100万石</h1>
   <div id="app" style="display:none">
     <div id="game-nav"></div>
     <!-- 盤面を四隅パネルの位置決めコンテキストにするためのラッパー -->
     <div id="board-area">
       <!-- viewBox を 800x700 から対称クロップ(余白削減)してタイルを相対的に拡大。
            中心(400,350)は不変。タイル/頂点/辺/港/盗賊の座標・判定は不変。 -->
-      <svg id="board" width="800" height="700" viewBox="24 21 752 658" role="img" aria-label="カタンの盤面"></svg>
+      <svg id="board" width="800" height="700" viewBox="24 21 752 658" role="img" aria-label="100万石の盤面"></svg>
     </div>
     <div id="ui"></div>
   </div>

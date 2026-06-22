@@ -96,12 +96,12 @@ function renderHome(
 
   const title = document.createElement('h1');
   title.className = 'home-title';
-  // 絵文字は通常描画のまま、文字「カタン」だけ金グラデにする（background-clip:text が
+  // 絵文字は通常描画のまま、文字「100万石」だけ金グラデにする（background-clip:text が
   // 絵文字を塗りつぶしてしまうのを避けるため span で分離）。
   title.append('🎲 ');
   const titleText = document.createElement('span');
   titleText.className = 'home-title-text';
-  titleText.textContent = 'カタン';
+  titleText.textContent = '100万石';
   title.appendChild(titleText);
   screen.appendChild(title);
 
