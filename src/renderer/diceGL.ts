@@ -227,8 +227,9 @@ class DiceGLController {
     this.scene.add(ground);
 
     this.dice = {
-      red: this.makeProdDie('#cf2f29', '#fff2ee', -1.3),     // 赤いダイス＋クリームの目
-      yellow: this.makeProdDie('#e8b21e', '#3a2a06', 0),     // 黄色いダイス＋濃い目
+      // 基本の生産ダイスは白基調・黒基調の2種（内部キーは red/yellow のまま）。
+      red: this.makeProdDie('#f1efe7', '#211d17', -1.3),     // 白基調ダイス＋墨色の目
+      yellow: this.makeProdDie('#24262b', '#efe6ce', 0),     // 黒基調ダイス＋和紙色の目
       event: this.makeEventDie(1.3),
     };
 

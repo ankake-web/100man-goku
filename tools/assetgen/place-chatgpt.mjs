@@ -115,6 +115,26 @@ function sortedImages(dir) {
     .map((x) => x.f);
 }
 
+// ChatGPT画像は白背景（透過なし）。縁につながった白だけ透明化し、中央の白
+// （旗/紙/白壁など）は残す＝フラッドフィル方式。data は RGBA。T=近白しきい値。
+function floodKeyWhite(data, W, H, T) {
+  const N = W * H, removed = new Uint8Array(N), stack = [];
+  const isW = (i) => { const o = i * 4; return data[o] >= T && data[o + 1] >= T && data[o + 2] >= T; };
+  const push = (i) => { if (!removed[i] && isW(i)) { removed[i] = 1; stack.push(i); } };
+  for (let x = 0; x < W; x++) { push(x); push((H - 1) * W + x); }
+  for (let y = 0; y < H; y++) { push(y * W); push(y * W + W - 1); }
+  while (stack.length) {
+    const i = stack.pop(), x = i % W, y = (i / W) | 0;
+    if (x > 0) push(i - 1); if (x < W - 1) push(i + 1); if (y > 0) push(i - W); if (y < H - 1) push(i + W);
+  }
+  for (let i = 0; i < N; i++) if (removed[i]) data[i * 4 + 3] = 0;
+}
+// 全体の近白を透明化（装飾枠＝中央も中空にしたいもの用。枠自体は金色なので安全）。
+function globalKeyWhite(data, W, H, T) {
+  const N = W * H;
+  for (let i = 0; i < N; i++) { const o = i * 4; if (data[o] >= T && data[o + 1] >= T && data[o + 2] >= T) data[o + 3] = 0; }
+}
+
 async function main() {
   const o = parseArgs(process.argv.slice(2));
 
@@ -130,6 +150,15 @@ async function main() {
   let sharp;
   try { sharp = (await import('sharp')).default; }
   catch { console.error('sharp が必要です。tools/assetgen で `npm install` 済みか確認。'); process.exit(1); }
+
+  // 白背景を除去した PNG バッファを返す。mode: 'flood'(縁の白のみ) | 'global'(全近白) | 'none'。
+  const WHITE_T = 236;
+  const cutBuffer = async (src, mode) => {
+    const { data, info } = await sharp(src).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    if (mode === 'flood') floodKeyWhite(data, info.width, info.height, WHITE_T);
+    else if (mode === 'global') globalKeyWhite(data, info.width, info.height, WHITE_T);
+    return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+  };
 
   const files = sortedImages(o.in);
   if (files.length !== 69) console.warn(`⚠ 画像枚数 ${files.length}（想定69）。マッピングは index 前提なので要確認。`);
@@ -155,21 +184,22 @@ async function main() {
 
     if (typeof a === 'object' && a.gray) {
       const ex = GRAY_EXPAND[a.gray];
+      const baseCut = await cutBuffer(src, 'flood'); // 白背景を抜いたグレーベース
       const outs = [];
       // 無印（グレーのまま）— 汎用コマがある場合のみ
       if (ex.generic) {
         const out = `${ex.generic}.png`;
-        await procPiece(sharp(src).ensureAlpha(), ex.size).png().toFile(path.join(o.stage, out));
+        await procPiece(sharp(baseCut), ex.size).png().toFile(path.join(o.stage, out));
         outs.push({ out, label: '無印(灰)' });
       }
-      // 4色 tint
+      // 4色 tint（濃いめ：彩度↑・明度↓）
       for (const c of ['red', 'blue', 'purple', 'orange']) {
         const key = `${a.gray}-${c}`;
         if (!META.has(key)) continue;
         const size = META.get(key).size ?? ex.size;
         const out = `${key}.png`;
-        await procPiece(sharp(src).ensureAlpha(), size)
-          .tint(PLAYER_TINT[c]).modulate({ saturation: 1.35 })
+        await procPiece(sharp(baseCut), size)
+          .tint(PLAYER_TINT[c]).modulate({ saturation: 1.7, brightness: 0.9 })
           .png().toFile(path.join(o.stage, out));
         outs.push({ out, label: COLOR_JA[c] });
       }
@@ -183,13 +213,16 @@ async function main() {
     if (!meta) { console.warn(`! #${idx} manifestに無いキー: ${a}`); continue; }
     const ext = meta.ext ?? 'png';
     const out = `${a}.${ext}`;
-    let img = sharp(src);
+    let img;
     if (meta.kind === 'bg') {
+      img = sharp(src); // 背景は不透明JPGのまま（白除去しない）
       const W = meta.width ?? 1024, H = meta.height ?? 576;
       if (o.resize) img = img.resize(W, H, { fit: 'cover' });
       img = img.flatten({ background: { r: 20, g: 24, b: 32 } }).jpeg({ quality: 90 });
     } else {
-      img = procPiece(img.ensureAlpha(), meta.size).png();
+      // 装飾枠は中央も中空にしたいので全近白キー、その他は縁の白のみ
+      const mode = a === 'frame-decorative' ? 'global' : 'flood';
+      img = procPiece(sharp(await cutBuffer(src, mode)), meta.size).png();
     }
     await img.toFile(path.join(o.stage, out));
     rows.push({ idx, srcName: files[i], outs: [{ out, label: '' }], note: '' });

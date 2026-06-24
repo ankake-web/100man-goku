@@ -132,6 +132,20 @@ const HARBOR_LABEL: Record<HarborType, string> = {
   ore:     '⛰2:1',
 };
 
+// 資源港は戦国アートの素材アイコンに差し替え（汎用3:1の港は専用画像が無いので⚓のまま）。
+const HARBOR_IMG: Record<HarborType, string | null> = {
+  generic: null,
+  wood:  ASSETS.resource.lumber,
+  brick: ASSETS.resource.brick,
+  wool:  ASSETS.resource.wool,
+  grain: ASSETS.resource.grain,
+  ore:   ASSETS.resource.ore,
+};
+// バッジに残す交換比率（ゲーム情報）。
+const HARBOR_RATIO: Record<HarborType, string> = {
+  generic: '3:1', wood: '2:1', brick: '2:1', wool: '2:1', grain: '2:1', ore: '2:1',
+};
+
 const HARBOR_COLOR: Record<HarborType, string> = {
   generic: '#ffe080',
   wood:    '#6dbf4a',
@@ -354,22 +368,42 @@ function renderHarbor(
     g.appendChild(dot);
   }
 
-  // 背景バッジ（タッチ端末では大きめに：中心(mx,my)基準なので拡大しても中央のまま）
-  const badgeW = touch ? 52 : 44;
-  const badgeH = touch ? 22 : 18;
-  const bg = svgEl('rect');
-  setAttrs(bg, { x: mx - badgeW / 2, y: my - badgeH / 2, width: badgeW, height: badgeH,
-    rx: 4, fill: 'rgba(0,0,0,0.82)', stroke: HARBOR_COLOR[harbor.type], 'stroke-width': 1.5 });
-  g.appendChild(bg);
-
-  // ラベルテキスト（大きめ）
-  const label = svgEl('text');
-  label.classList.add('harbor-label');
-  setAttrs(label, { x: mx, y: my,
-    fill: HARBOR_COLOR[harbor.type],
-    'text-anchor': 'middle', 'dominant-baseline': 'central' });
-  label.textContent = HARBOR_LABEL[harbor.type];
-  g.appendChild(label);
+  // 背景バッジ＋中身。資源港は素材アイコン＋比率、汎用(3:1)は従来の絵文字＋比率。
+  const imgUrl = HARBOR_IMG[harbor.type];
+  const badgeH = touch ? 24 : 20;
+  const mkBg = (w: number): void => {
+    const bg = svgEl('rect');
+    setAttrs(bg, { x: mx - w / 2, y: my - badgeH / 2, width: w, height: badgeH,
+      rx: 4, fill: 'rgba(0,0,0,0.82)', stroke: HARBOR_COLOR[harbor.type], 'stroke-width': 1.5 });
+    g.appendChild(bg);
+  };
+  if (imgUrl) {
+    const icon = touch ? 18 : 15;
+    const ratioW = touch ? 22 : 19;
+    const pad = 5, gap = 1;
+    const badgeW = pad * 2 + icon + gap + ratioW;
+    mkBg(badgeW);
+    const ix = mx - badgeW / 2 + pad;
+    const im = svgEl('image');
+    setAttrs(im, { x: ix, y: my - icon / 2, width: icon, height: icon, preserveAspectRatio: 'xMidYMid meet' });
+    im.setAttribute('href', imgUrl);
+    im.setAttributeNS('http://www.w3.org/1999/xlink', 'href', imgUrl); // 旧ブラウザ互換
+    g.appendChild(im);
+    const label = svgEl('text');
+    label.classList.add('harbor-label');
+    setAttrs(label, { x: ix + icon + gap + ratioW / 2, y: my,
+      fill: HARBOR_COLOR[harbor.type], 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+    label.textContent = HARBOR_RATIO[harbor.type];
+    g.appendChild(label);
+  } else {
+    mkBg(touch ? 52 : 44);
+    const label = svgEl('text');
+    label.classList.add('harbor-label');
+    setAttrs(label, { x: mx, y: my,
+      fill: HARBOR_COLOR[harbor.type], 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+    label.textContent = HARBOR_LABEL[harbor.type];
+    g.appendChild(label);
+  }
 
   return g;
 }
