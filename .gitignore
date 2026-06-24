@@ -17,6 +17,9 @@ tests/*.js
 # 盗賊などソース画像のスクラッチ置き場（実行時は src/assets/ を使用）
 /asset/
 
+# ChatGPT等で作った元画像の置き場（変換後の src/assets/ を使用。原本はリポジトリに入れない）
+/image/
+
 # ルート直下のスクラッチ用playwrightスクリプト（検証専用・共有しない）
 /screenshot.mjs
 /_verify*.mjs

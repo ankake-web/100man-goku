@@ -1,0 +1,18 @@
+{
+  "name": "100man-goku-assetgen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gemini(無料API)でゲームアイコンを生成→背景透過→寸法調整して src/assets 用に書き出すツール",
+  "scripts": {
+    "gen": "node generate.mjs",
+    "list": "node generate.mjs --list",
+    "dry": "node generate.mjs --dry-run",
+    "all": "node generate.mjs --all"
+  },
+  "dependencies": {
+    "@google/genai": "^1.16.0",
+    "@imgly/background-removal-node": "^1.4.5",
+    "sharp": "^0.34.2"
+  }
+}

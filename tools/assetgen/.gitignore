@@ -1,0 +1,7 @@
+node_modules/
+out/
+.env
+package-lock.json
+chatgpt-in/
+chatgpt-staged/
+montage/
