@@ -40,7 +40,7 @@ import { buildActionLog, MAX_LOG_ENTRIES } from './engine/log';
 import { calcVP, calcPublicVP, victoryTarget } from './engine/scoring';
 import { buildPlayerRecap } from './engine/recap';
 import { computeDiceProduction } from './engine/dice';
-import { ASSETS, setIconLabel } from './assets/manifest'; // 画像参照は中央マニフェスト経由
+import { ASSETS, metropolisImg, setIconLabel } from './assets/manifest'; // 画像参照は中央マニフェスト経由
 
 // 資源取得アニメ用の画像（手札カードと同じ。既に読込済み＝追加負荷なし）。
 const RES_FLY_IMG: Record<ResourceType, string> = {
@@ -188,10 +188,10 @@ function renderHome(
   speedLabel.textContent = 'CPU の速度';
   const speedGroup = document.createElement('div');
   speedGroup.className = 'home-radio-group';
-  // 速度は3段階（ゆっくり/普通/速い）。旧「最速」(instant)保存値は「速い」へフォールバック。
-  const speedLabelMap: Record<CpuSpeed, string> = { slow: 'ゆっくり', normal: '普通', fast: '速い', instant: '速い' };
+  // 速度は4段階（ゆっくり/普通/速い/最速）。最速(instant)は演出を大幅に省いてテンポ最優先。
+  const speedLabelMap: Record<CpuSpeed, string> = { slow: 'ゆっくり', normal: '普通', fast: '速い', instant: '最速' };
   const defaultSpeed = speedLabelMap[lastConfig?.cpuSpeed ?? 'normal'];
-  speedGroup.appendChild(createRadioGroup('cpuSpeed', ['ゆっくり', '普通', '速い'], defaultSpeed));
+  speedGroup.appendChild(createRadioGroup('cpuSpeed', ['ゆっくり', '普通', '速い', '最速'], defaultSpeed));
   speedField.appendChild(speedLabel);
   speedField.appendChild(speedGroup);
   cpuForm.appendChild(speedField);
@@ -362,7 +362,7 @@ function renderHome(
     const cpuDifficulty: AiDifficulty = diffMap[diffVal] ?? 'strong';
 
     const speedVal = (speedGroup.querySelector('input[name="cpuSpeed"]:checked') as HTMLInputElement | null)?.value ?? '普通';
-    const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast' };
+    const speedMap: Record<string, CpuSpeed> = { 'ゆっくり': 'slow', '普通': 'normal', '速い': 'fast', '最速': 'instant' };
     const cpuSpeed: CpuSpeed = speedMap[speedVal] ?? 'normal';
 
     // 盤面シナリオを読み取る（ドロップダウンの値＝ScenarioId）。
@@ -707,6 +707,9 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
       } else if (mode === 'selectEngineerCity') {
         // 武将と商い・技師: 石垣を建てられる自分の城を光らせる。
         opts.validVertexIds = new Set(engineerWallCities(state, pid));
+      } else if (mode === 'selectWallCity') {
+        // 武将と商い・石垣建設: 石垣を建てられる自分の城を光らせる（候補は技師と同じ）。
+        opts.validVertexIds = new Set(engineerWallCities(state, pid));
       } else if (mode === 'selectIntrigueKnight') {
         // 武将と商い・陰謀: 退去させられる敵武将（自分の街道/船に隣接）を光らせる。
         opts.validVertexIds = new Set(intrigueKnightTargets(state, pid));
@@ -803,7 +806,7 @@ function setAnimFxMode(m: AnimFxMode): void {
   try { localStorage.setItem(ANIM_FX_KEY, m); } catch { /* ignore */ }
   applyReduceMotionClass();
 }
-const ANIM_FX_LABELS: Record<AnimFxMode, string> = { on: 'ON（常に表示）', off: 'OFF（省略）' };
+const ANIM_FX_LABELS: Record<AnimFxMode, string> = { on: 'ON', off: 'OFF' };
 // CSS側の演出抑制（@media ではなく html.reduce-motion クラスで判定）を、アプリ内設定に同期する。
 // 既定ON＝クラスなし＝OSの reduced-motion に関係なく全演出を出す。OFF時のみクラスを付けて抑制する。
 // （CSSメディアクエリはOS設定を直読みするため、JSの上書きだけでは各端末の設定差を解消できない。）
@@ -820,6 +823,9 @@ let diceAnimating = false;
 // 一揆勢襲来の全画面演出が盤面を覆っている間は、資源/進歩カードの配布アニメを流さない
 // （演出が消えて盤面が見えてから飛ばす＝被りを防ぐ）。clearAt は演出の終了予定時刻(performance.now基準)。
 const BARB_OVERLAY_MS = 4200;
+// 進歩カードを「使用した瞬間」に中央へ大きく見せる時間（ms）。CPUの次手はこの間ゲートして
+// 「何のカードを使ったか」が見えてから次へ進ませる（演出スキップ防止）。out フェードは少し手前。
+const PROGRESS_CARD_FX_MS = 1700;
 let barbarianOverlayClearAt = 0;
 function pendingOverlayDelay(): number {
   const now = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -1043,6 +1049,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'selectMetropolis') return { text: '🏛 天守にする城をタップ', alert: true };
       if (buildMode === 'selectSmithKnight') return { text: smithFirstKnight ? '⚒ 加増する2体目の武将をタップ' : '⚒ 加増する武将をタップ（最大2体）', alert: true };
       if (buildMode === 'selectEngineerCity') return { text: '🧱 石垣を建てる城をタップ', alert: true };
+      if (buildMode === 'selectWallCity') return { text: '🧱 石垣を建てる城をタップ', alert: true };
       if (buildMode === 'selectIntrigueKnight') return { text: '🗡 退去させる敵武将をタップ', alert: true };
       if (buildMode === 'settlement') return { text: '🏠 砦を配置', alert: false };
       if (buildMode === 'city')       return { text: '🏙 城を配置', alert: false };
@@ -1130,9 +1137,9 @@ function updateGameNav(): void {
     lbl.textContent = 'CPU速度';
     const sel = document.createElement('select');
     sel.className = 'game-menu-select';
-    // 速度は3段階。旧「最速」(instant)保存値は「速い」を選択状態として表示する。
-    const curSpeed: CpuSpeed = lastConfig!.cpuSpeed === 'instant' ? 'fast' : lastConfig!.cpuSpeed;
-    (['slow', 'normal', 'fast'] as CpuSpeed[]).forEach(sp => {
+    // 速度は4段階（ゆっくり/普通/速い/最速）。ゲーム中でも変更でき、次のCPU行動から反映。
+    const curSpeed: CpuSpeed = lastConfig!.cpuSpeed;
+    (['slow', 'normal', 'fast', 'instant'] as CpuSpeed[]).forEach(sp => {
       const opt = document.createElement('option');
       opt.value = sp; opt.textContent = CPU_SPEED_LABELS[sp];
       if (curSpeed === sp) opt.selected = true;
@@ -1895,7 +1902,7 @@ function buildVictoryScoreboard(): HTMLDivElement {
     if (plainCities > 0)   bd.appendChild(scoreChipIcon(ASSETS.piece.city, `×${plainCities}`, false, '城（各2点）'));
     // 武将と商い: 天守（各4点：城の基本2点＋発展ボーナス2点）。基本ゲームには存在しない。
     // 城チップから除外している（plainCities）ため、ここで城基本2点も含めた合計4点を表示し、★VPと内訳を一致させる。
-    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.metropolisGate, `×${r.metropolises}（+${r.metropolises * 4}）`, true, '天守（各4点）'));
+    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(metropolisImg(p.color), `×${r.metropolises}（+${r.metropolises * 4}）`, true, '天守（各4点）'));
     if (r.hasLongestRoad)  bd.appendChild(scoreChipIcon(ASSETS.action.road, '最長+2', true, '最長街道'));
     // 武威は基本ゲームのみ（武将と商いは武将コマ制のため非表示）。
     if (!r.isCk && r.hasLargestArmy) bd.appendChild(scoreChipIcon(ASSETS.knight.basic, '最大+2', true, '武威'));
@@ -2445,8 +2452,11 @@ function showPlayedProgressCard(prevState: GameState, newState: GameState, actio
   cap.textContent = `📜 ${PROGRESS_CARD_NAME[cardType]}`;
   wrap.append(img, cap);
   host.appendChild(wrap);
-  setTimeout(() => { wrap.classList.add('out'); }, 1250);
-  setTimeout(() => wrap.remove(), 1700);
+  setTimeout(() => { wrap.classList.add('out'); }, PROGRESS_CARD_FX_MS - 450);
+  setTimeout(() => wrap.remove(), PROGRESS_CARD_FX_MS);
+  // CPUが進歩カードを使った時は、このカード表示が見えてから次手へ進ませる（演出スキップ防止）。
+  // PLAY_PROGRESS はダイス演出を挟まないため、ゲートしないと aiDelayMs(最速30ms)で即次手に進む。
+  holdResourceAnimating(PROGRESS_CARD_FX_MS);
 }
 
 // 自分のプレイヤーID（LAN=viewer、単一端末=human）。手番強調・得点演出の基準。
@@ -2804,8 +2814,13 @@ function showBarbarianAttackOverlay(result?: DiceEventInfo['attackResult']): voi
   document.body.appendChild(ov);
   // 結果（撃退/敗北・誰が格下げ）を読めるよう長めに表示（タップは透過するので操作は妨げない）。
   // この演出が消えるまで資源/進歩カードの配布アニメは待たせる（pendingOverlayDelay）。
-  barbarianOverlayClearAt = (typeof performance !== 'undefined' ? performance.now() : 0) + BARB_OVERLAY_MS;
-  setTimeout(() => { ov.remove(); barbarianOverlayClearAt = 0; }, BARB_OVERLAY_MS);
+  // 最速(instant)では襲来演出も短くしてテンポ優先（出すが長くは止めない）。普通/速いは従来どおり。
+  const overlayMs = fxSpeed() === 'instant' ? 1500 : BARB_OVERLAY_MS;
+  barbarianOverlayClearAt = (typeof performance !== 'undefined' ? performance.now() : 0) + overlayMs;
+  setTimeout(() => { ov.remove(); barbarianOverlayClearAt = 0; }, overlayMs);
+  // CPUの次手も、この全画面演出が消えるまで待たせる（演出スキップ防止）。ダイスの finishAll は
+  // 演出より早く来る(約4.6s)ため、ここでゲートしないとCPUが襲来挿絵の途中で次へ進んでしまう。
+  holdResourceAnimating(overlayMs);
 }
 
 /** イベント結果を演出へ接続: 船=一揆勢前進（残り少は警告フラッシュ）/ 色ゲート=その色が画面に広がる。

@@ -353,11 +353,25 @@ function renderHarbor(
 
   const touch = isTouchDevice();
 
-  // 湊辺ライン（太く、色付き）
+  // ラベル/バッジを「海側」へ少しオフセットして、湊辺に敷かれた街道(stroke-width 7)との被りを避ける。
+  // 湊辺が属する沿岸の陸ヘックス（両頂点が共有する陸タイル）の中心→辺中点 が外向き法線（海方向）。
+  let lx = mx, ly = my;
+  const sharedTileId = vA.adjacentTileIds.find(t => vB.adjacentTileIds.includes(t));
+  const sharedTile = sharedTileId != null ? state.tiles[sharedTileId] : undefined;
+  if (sharedTile) {
+    const c = axialToPixel(sharedTile.coord);
+    let dx = mx - (c.x + ox), dy = my - (c.y + oy);
+    const len = Math.hypot(dx, dy) || 1;
+    const off = touch ? 22 : 18;
+    lx = mx + (dx / len) * off;
+    ly = my + (dy / len) * off;
+  }
+
+  // 湊辺ライン（色付き・細め）。街道(stroke 7)と同じ辺に重なるので、敷いた街道が見えるよう細くする。
   const line = svgEl('line');
   line.classList.add('harbor-line');
   setAttrs(line, { x1: ax, y1: ay, x2: bx, y2: by,
-    stroke: HARBOR_COLOR[harbor.type], 'stroke-width': touch ? 6 : 5 });
+    stroke: HARBOR_COLOR[harbor.type], 'stroke-width': touch ? 3.5 : 3 });
   g.appendChild(line);
 
   // 頂点マーカー（湊がどの交点に対応しているかを表示）
@@ -368,12 +382,19 @@ function renderHarbor(
     g.appendChild(dot);
   }
 
+  // バッジ中心(lx,ly)と辺中点(mx,my)を細い線で結び、どの湊辺のレートかを示す（オフセットで離れても対応が分かる）。
+  const lead = svgEl('line');
+  setAttrs(lead, { x1: mx, y1: my, x2: lx, y2: ly,
+    stroke: HARBOR_COLOR[harbor.type], 'stroke-width': 1.5, opacity: 0.7 });
+  g.appendChild(lead);
+
   // 背景バッジ＋中身。資源港は素材アイコン＋比率、汎用(3:1)は従来の絵文字＋比率。
+  // 中心は海側へオフセットした(lx,ly)基準（街道との被り回避）。
   const imgUrl = HARBOR_IMG[harbor.type];
   const badgeH = touch ? 24 : 20;
   const mkBg = (w: number): void => {
     const bg = svgEl('rect');
-    setAttrs(bg, { x: mx - w / 2, y: my - badgeH / 2, width: w, height: badgeH,
+    setAttrs(bg, { x: lx - w / 2, y: ly - badgeH / 2, width: w, height: badgeH,
       rx: 4, fill: 'rgba(0,0,0,0.82)', stroke: HARBOR_COLOR[harbor.type], 'stroke-width': 1.5 });
     g.appendChild(bg);
   };
@@ -383,15 +404,15 @@ function renderHarbor(
     const pad = 5, gap = 1;
     const badgeW = pad * 2 + icon + gap + ratioW;
     mkBg(badgeW);
-    const ix = mx - badgeW / 2 + pad;
+    const ix = lx - badgeW / 2 + pad;
     const im = svgEl('image');
-    setAttrs(im, { x: ix, y: my - icon / 2, width: icon, height: icon, preserveAspectRatio: 'xMidYMid meet' });
+    setAttrs(im, { x: ix, y: ly - icon / 2, width: icon, height: icon, preserveAspectRatio: 'xMidYMid meet' });
     im.setAttribute('href', imgUrl);
     im.setAttributeNS('http://www.w3.org/1999/xlink', 'href', imgUrl); // 旧ブラウザ互換
     g.appendChild(im);
     const label = svgEl('text');
     label.classList.add('harbor-label');
-    setAttrs(label, { x: ix + icon + gap + ratioW / 2, y: my,
+    setAttrs(label, { x: ix + icon + gap + ratioW / 2, y: ly,
       fill: HARBOR_COLOR[harbor.type], 'text-anchor': 'middle', 'dominant-baseline': 'central' });
     label.textContent = HARBOR_RATIO[harbor.type];
     g.appendChild(label);
@@ -399,7 +420,7 @@ function renderHarbor(
     mkBg(touch ? 52 : 44);
     const label = svgEl('text');
     label.classList.add('harbor-label');
-    setAttrs(label, { x: mx, y: my,
+    setAttrs(label, { x: lx, y: ly,
       fill: HARBOR_COLOR[harbor.type], 'text-anchor': 'middle', 'dominant-baseline': 'central' });
     label.textContent = HARBOR_LABEL[harbor.type];
     g.appendChild(label);
@@ -573,7 +594,8 @@ function renderVertices(
       // 武将と商い: 石垣付きの城は「コマの形に沿った黒いフチ」で囲って壁ありを示す。
       // 同じ城画像を真っ黒(brightness 0)にして一回り大きく後ろへ敷く＝シルエットの黒縁。
       // ※ CSS filter の drop-shadow は viewBox 縮小で消えるため、画像サイズ基準のこの方式にする。
-      const hasWall = isCity && !isMetro && !!(vertex.building as { wall?: boolean }).wall;
+      // 天守(石垣付きの城から昇格)も城と同様に黒縁で石垣を可視化する。
+      const hasWall = isCity && !!(vertex.building as { wall?: boolean }).wall;
       if (hasWall) {
         const ow = w * 1.18;
         const ocx = vx, ocy = iy + w / 2; // 本体画像の中心に合わせる

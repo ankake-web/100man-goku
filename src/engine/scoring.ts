@@ -107,12 +107,12 @@ export function calcLongestRoad(state: GameState, playerId: PlayerId): number {
   }
   if (myEdges.size === 0) return 0;
 
-  // 相手の建物がある頂点は通過不可（街道が切断される）。自分の建物は通過可＆道↔船の切替点。
-  // 武将と商い: 相手の武将コマも頂点を塞ぎ街道を分断する（建物と同様）。
+  // 相手の建物（開拓地/城）がある頂点は通過不可（街道が切断される）。自分の建物は通過可＆道↔船の切替点。
+  // 武将と商い: 公式ルールでは街道を分断するのは相手の「建物」だけ。相手の武将コマは分断しない
+  //（武将のいる頂点も道はそのまま通過＝全分岐を探索して最大長を採用）。
   const isBlocked = (vid: VertexId): boolean => {
     const v = state.vertices[vid];
     if (v?.building != null && v.building.playerId !== playerId) return true;
-    if (v?.knight != null && v.knight.playerId !== playerId) return true;
     return false;
   };
   const isOwnBuilding = (vid: VertexId): boolean =>
