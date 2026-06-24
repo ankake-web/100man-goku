@@ -272,7 +272,7 @@ class DiceGLController {
   }
 
   private makeEventDie(x: number): Die {
-    const { group, body } = this.makeBody('#39434f', 0.5, 0.18);  // 硬い石/金属寄りの締まった質感
+    const { group, body } = this.makeBody('#a8392e', 0.5, 0.18);  // 朱色（白/黒の生産ダイスと被らない差し色）
     for (let i = 0; i < 6; i++) {
       const r = EVENT_FACE_RESULT[i]!;
       if (r === 'ship') {

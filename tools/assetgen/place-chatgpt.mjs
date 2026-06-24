@@ -117,9 +117,16 @@ function sortedImages(dir) {
 
 // ChatGPT画像は白背景（透過なし）。縁につながった白だけ透明化し、中央の白
 // （旗/紙/白壁など）は残す＝フラッドフィル方式。data は RGBA。T=近白しきい値。
+// 「明るい無彩色（白〜薄グレー）」を背景とみなす。純白でなく薄グレー地(例:分国法)も抜けるよう
+// 輝度しきい値T＋低彩度(spread<=18)で判定。色付きの被写体は spread が大きく保護される。
+function isBgWhite(data, i, T) {
+  const o = i * 4, r = data[o], g = data[o + 1], b = data[o + 2];
+  const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+  return mn >= T && (mx - mn) <= 18;
+}
 function floodKeyWhite(data, W, H, T) {
   const N = W * H, removed = new Uint8Array(N), stack = [];
-  const isW = (i) => { const o = i * 4; return data[o] >= T && data[o + 1] >= T && data[o + 2] >= T; };
+  const isW = (i) => isBgWhite(data, i, T);
   const push = (i) => { if (!removed[i] && isW(i)) { removed[i] = 1; stack.push(i); } };
   for (let x = 0; x < W; x++) { push(x); push((H - 1) * W + x); }
   for (let y = 0; y < H; y++) { push(y * W); push(y * W + W - 1); }
@@ -132,7 +139,7 @@ function floodKeyWhite(data, W, H, T) {
 // 全体の近白を透明化（装飾枠＝中央も中空にしたいもの用。枠自体は金色なので安全）。
 function globalKeyWhite(data, W, H, T) {
   const N = W * H;
-  for (let i = 0; i < N; i++) { const o = i * 4; if (data[o] >= T && data[o + 1] >= T && data[o + 2] >= T) data[o + 3] = 0; }
+  for (let i = 0; i < N; i++) if (isBgWhite(data, i, T)) data[i * 4 + 3] = 0;
 }
 
 async function main() {
@@ -152,7 +159,7 @@ async function main() {
   catch { console.error('sharp が必要です。tools/assetgen で `npm install` 済みか確認。'); process.exit(1); }
 
   // 白背景を除去した PNG バッファを返す。mode: 'flood'(縁の白のみ) | 'global'(全近白) | 'none'。
-  const WHITE_T = 236;
+  const WHITE_T = 226; // 薄グレー背景(分国法など)も抜けるよう少し低めに（低彩度判定が被写体を保護）
   const cutBuffer = async (src, mode) => {
     const { data, info } = await sharp(src).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     if (mode === 'flood') floodKeyWhite(data, info.width, info.height, WHITE_T);
