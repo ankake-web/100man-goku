@@ -85,6 +85,10 @@ const ASSIGN = {
   68: { gray: 'metropolis' }, // 天守（朱藍紫山吹）
   // 後から追加生成（⑥の欠番だった石工）
   69: 'card-sci-engineer',    // 石工（石垣を築く石工・木槌と鑿）
+  // UIアイコン3点（メニュー/見出し/汎用港）
+  70: 'ui-dice',        // 白黒サイコロ2個（🎲: 出目分布/名前再生成/タイトル）
+  71: 'ui-scroll',      // 開いた巻物（📖🖼🗺: ルール/図鑑/タイル見分け）
+  72: 'harbor-generic', // 帆掛け和船＋桟橋（盤面の汎用港3:1）
 };
 
 // グレーベース→展開する出力キー（無印を出すかどうかを含む）
@@ -150,7 +154,7 @@ async function main() {
     const files = fs.readdirSync(o.stage).filter((f) => IMG_RE.test(f));
     for (const f of files) fs.copyFileSync(path.join(o.stage, f), path.join(SRC_ASSETS, f));
     console.log(`✓ ${files.length} 枚を src/assets/ へ適用。`);
-    console.log('  石工(card-sci-engineer)も差し込み済み → 全82アセット完備。');
+    console.log('  UIアイコン3点(ui-dice/ui-scroll/harbor-generic)も差し込み済み → 全85アセット完備。');
     return;
   }
 
@@ -168,7 +172,7 @@ async function main() {
   };
 
   const files = sortedImages(o.in);
-  if (files.length !== 69) console.warn(`⚠ 画像枚数 ${files.length}（想定69）。マッピングは index 前提なので要確認。`);
+  if (files.length !== 72) console.warn(`⚠ 画像枚数 ${files.length}（想定72）。マッピングは index 前提なので要確認。`);
 
   fs.rmSync(o.stage, { recursive: true, force: true });
   fs.mkdirSync(o.stage, { recursive: true });

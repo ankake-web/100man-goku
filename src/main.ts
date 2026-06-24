@@ -40,7 +40,7 @@ import { buildActionLog, MAX_LOG_ENTRIES } from './engine/log';
 import { calcVP, calcPublicVP, victoryTarget } from './engine/scoring';
 import { buildPlayerRecap } from './engine/recap';
 import { computeDiceProduction } from './engine/dice';
-import { ASSETS } from './assets/manifest'; // 画像参照は中央マニフェスト経由
+import { ASSETS, setIconLabel } from './assets/manifest'; // 画像参照は中央マニフェスト経由
 
 // 資源取得アニメ用の画像（手札カードと同じ。既に読込済み＝追加負荷なし）。
 const RES_FLY_IMG: Record<ResourceType, string> = {
@@ -96,9 +96,18 @@ function renderHome(
 
   const title = document.createElement('h1');
   title.className = 'home-title';
-  // 絵文字は通常描画のまま、文字「百万石」だけ金グラデにする（background-clip:text が
-  // 絵文字を塗りつぶしてしまうのを避けるため span で分離）。
-  title.append('🎲 ');
+  // タイトル頭にサイコロのアイコン画像。文字「百万石」だけ金グラデにする（background-clip:text が
+  // 画像/絵文字を塗りつぶしてしまうのを避けるため span で分離）。
+  if (ASSETS.ui.dice) {
+    const titleIco = document.createElement('img');
+    titleIco.className = 'home-title-ico';
+    titleIco.src = ASSETS.ui.dice;
+    titleIco.alt = '';
+    titleIco.draggable = false;
+    title.appendChild(titleIco);
+  } else {
+    title.append('🎲 ');
+  }
   const titleText = document.createElement('span');
   titleText.className = 'home-title-text';
   titleText.textContent = '百万石';
@@ -318,7 +327,7 @@ function renderHome(
   // ---- コマ・カード図鑑（武将と商いの全画像を名前・説明つきで一覧） ----
   const galleryBtn = document.createElement('button');
   galleryBtn.className = 'gallery-open-btn';
-  galleryBtn.textContent = '🖼 コマ・カード図鑑を見る';
+  setIconLabel(galleryBtn, ASSETS.ui.scroll, 'コマ・カード図鑑を見る', '🖼');
   galleryBtn.addEventListener('click', () => showAssetGallery());
   screen.appendChild(galleryBtn);
 
@@ -415,7 +424,7 @@ function buildTileLegend(): HTMLDivElement {
   sec.className = 'rule-section';
   const h = document.createElement('div');
   h.className = 'rule-heading';
-  h.textContent = '🗺 タイルの見分け方';
+  setIconLabel(h, ASSETS.ui.scroll, 'タイルの見分け方', '🗺');
   sec.appendChild(h);
   const grid = document.createElement('div');
   grid.className = 'rule-legend';
@@ -453,7 +462,7 @@ function buildRulePanel(): HTMLDetailsElement {
   details.className = 'rule-panel';
   const summary = document.createElement('summary');
   summary.className = 'rule-summary';
-  summary.textContent = '📖 はじめての人へ（ルール説明）';
+  setIconLabel(summary, ASSETS.ui.scroll, 'はじめての人へ（ルール説明）', '📖');
   details.appendChild(summary);
 
   const body = document.createElement('div');
@@ -1256,7 +1265,7 @@ function updateGameNav(): void {
   // 出目分布グラフ
   const statsBtn = document.createElement('button');
   statsBtn.className = 'game-menu-btn';
-  statsBtn.textContent = '🎲 出目分布';
+  setIconLabel(statsBtn, ASSETS.ui.dice, '出目分布', '🎲');
   statsBtn.addEventListener('click', () => {
     gameMenuOpen = false;
     dd.style.display = 'none';
@@ -1997,7 +2006,7 @@ function showVictoryOverlay(winnerId: PlayerId, causeAction: string): void {
   // 勝利後でもこのゲームの出目分布を見られるように
   const statsBtn = document.createElement('button');
   statsBtn.className = 'btn-nav';
-  statsBtn.textContent = '🎲 出目分布';
+  setIconLabel(statsBtn, ASSETS.ui.dice, '出目分布', '🎲');
   statsBtn.addEventListener('click', () => showDiceStatsModal());
   btnRow.appendChild(statsBtn);
   modal.appendChild(btnRow);
@@ -2059,7 +2068,7 @@ function showDiceStatsModal(): void {
 
   const header = document.createElement('div');
   header.className = 'dicestats-header';
-  header.textContent = '🎲 出目分布（このゲーム）';
+  setIconLabel(header, ASSETS.ui.dice, '出目分布（このゲーム）', '🎲');
   modal.appendChild(header);
 
   const summary = document.createElement('div');

@@ -18,7 +18,7 @@ import type { CkTrack, CommodityType, CommodityHand, TradeKind, ProgressCard, Pr
 import type { BuildMode } from './events';
 
 // 画像参照は中央マニフェスト経由（単一の真実）。
-import { ASSETS, assetImg, houseImg, cityImg, type ColorKey } from '../assets/manifest';
+import { ASSETS, assetImg, setIconLabel, houseImg, cityImg, type ColorKey } from '../assets/manifest';
 
 const knightImg = ASSETS.knight.basic;
 // 武将と商い: 物産アイコン画像（手札チップ等）。テキスト埋め込み箇所は絵文字のまま。
@@ -1549,7 +1549,7 @@ export function showAssetGallery(): void {
   const overlay = el('div', 'gallery-overlay');
   const modal = el('div', 'gallery-modal');
   const header = el('div', 'gallery-header');
-  header.textContent = '🖼 コマ・カード図鑑（城下の発展と武将）';
+  setIconLabel(header, ASSETS.ui.scroll, 'コマ・カード図鑑（城下の発展と武将）', '🖼');
   modal.appendChild(header);
   const body = el('div', 'gallery-body');
 

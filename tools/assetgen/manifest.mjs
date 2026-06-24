@@ -148,6 +148,14 @@ export const ITEMS = [
   { key: 'frame-decorative', group: 'frame', size: 512, bgremove: false,
     subject: 'an ornate Japanese gold border frame, karakusa arabesque, with a completely empty hollow center' },
 
+  // --- §11 UIアイコン（メニュー/見出し/汎用港・256・透過PNG）---
+  // 出目分布ボタン・名前再生成・タイトル等の 🎲 用
+  { key: 'ui-dice', group: 'ui', size: 256, subject: 'two wooden dice side by side, one ivory-white and one black, pips shown, no numerals' },
+  // ルール/図鑑/タイル見分け等の 📖🖼🗺 用
+  { key: 'ui-scroll', group: 'ui', size: 256, subject: 'an open blank scroll (emaki) with wooden rollers, no writing' },
+  // 盤面の汎用港(3:1)用（帆掛け和船＋桟橋）
+  { key: 'harbor-generic', group: 'ui', size: 256, subject: 'a small Sengoku wooden sailing trade boat moored at a wooden dock' },
+
   // --- §9.1 背景3（1024x576・不透明JPG・16:9）---
   { key: 'bg-title', group: 'backgrounds', kind: 'bg', width: 1024, height: 576, aspect: '16:9', ext: 'jpg', transparent: false,
     subject: 'a wide Sengoku landscape, a castle town below mountains at dawn' },
@@ -161,7 +169,7 @@ export const ITEMS = [
 // 資源・物産・建物・トラック・カード裏・操作アイコン・装飾枠・武将アクション(太鼓/兜)・
 // 構造物の駒(砦/城/船/天守/門/石垣/街道/勲章)は“物”。武将/商人/野盗/海賊/一揆船はキャラOK。
 // 進歩カード(cards-*)は人物を含む画も多いのでキャラ許容（個別に noPeople 指定可）。
-const OBJECT_GROUPS = new Set(['resources', 'products', 'buildings', 'tracks', 'card-backs', 'actions', 'frame', 'knight-actions']);
+const OBJECT_GROUPS = new Set(['resources', 'products', 'buildings', 'tracks', 'card-backs', 'actions', 'frame', 'knight-actions', 'ui']);
 function isObjectSubject(it) {
   if (OBJECT_GROUPS.has(it.group)) return true;
   if (it.group === 'pieces' || it.group === 'ck') {

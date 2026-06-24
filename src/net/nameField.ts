@@ -9,6 +9,7 @@
 // 純粋なロジック（候補生成）は names.ts に分離している。
 
 import { generateRandomPlayerName } from './names';
+import { ASSETS, setIconLabel } from '../assets/manifest';
 
 const STORAGE_KEY = 'catan_player_name';
 
@@ -37,7 +38,7 @@ export function attachNameField(input: HTMLInputElement): HTMLButtonElement {
   const dice = document.createElement('button');
   dice.type = 'button';
   dice.className = 'name-dice-btn';
-  dice.textContent = '🎲';
+  setIconLabel(dice, ASSETS.ui.dice, '', '🎲', 'ui-ico-solo'); // サイコロ画像（無ければ🎲）
   dice.title = 'ランダムな名前にする';
   dice.setAttribute('aria-label', 'ランダムな名前にする');
   dice.addEventListener('click', () => {

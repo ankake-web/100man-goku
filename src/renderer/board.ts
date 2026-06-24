@@ -132,9 +132,9 @@ const HARBOR_LABEL: Record<HarborType, string> = {
   ore:     '⛰2:1',
 };
 
-// 資源港は戦国アートの素材アイコンに差し替え（汎用3:1の港は専用画像が無いので⚓のまま）。
+// 資源港は素材アイコン、汎用3:1の港は帆掛け和船(湊)アイコンに差し替え。
 const HARBOR_IMG: Record<HarborType, string | null> = {
-  generic: null,
+  generic: ASSETS.harbor.generic,
   wood:  ASSETS.resource.lumber,
   brick: ASSETS.resource.brick,
   wool:  ASSETS.resource.wool,

@@ -115,6 +115,11 @@ import bgVictory from './bg-victory.jpg';
 import bgBarbarian from './bg-barbarian.jpg';
 import frameDecorative from './frame-decorative.png';
 
+// ---- UIアイコン（メニュー/見出し用の絵文字差し替え・盤面の汎用港） ----
+import uiDice from './ui-dice.png';     // 🎲 出目分布/名前再生成/タイトル
+import uiScroll from './ui-scroll.png'; // 📖🖼🗺 ルール/図鑑/タイル見分け
+import harborGeneric from './harbor-generic.png'; // 盤面の汎用港(3:1)
+
 export type ColorKey = 'red' | 'blue' | 'purple' | 'orange';
 
 const HOUSE: Record<ColorKey, string> = { red: houseRed, blue: houseBlue, purple: housePurple, orange: houseOrange };
@@ -171,6 +176,10 @@ export const ASSETS = {
   } as Record<string, string>,
   bg: { title: bgTitle, victory: bgVictory, barbarian: bgBarbarian },
   frame: frameDecorative,
+  // UIアイコン（メニュー/見出しの絵文字を画像化）
+  ui: { dice: uiDice, scroll: uiScroll },
+  // 盤面の汎用港(3:1)アイコン
+  harbor: { generic: harborGeneric },
 } as const;
 
 /** プレイヤー色の駒画像（盤面用）。色キーが不明なら赤にフォールバック。 */
@@ -212,4 +221,38 @@ export function assetImg(url: string | null | undefined, cls: string, alt = '', 
   img.src = url || ph;
   img.addEventListener('error', () => { if (img.src !== ph) img.src = ph; }, { once: true });
   return img;
+}
+
+/**
+ * メニュー/見出しの絵文字を「アイコン画像＋ラベル文字」に差し替える薄いヘルパ。
+ * 既存の `el.textContent = '🎲 ラベル'` をそのまま置き換えられる。
+ *   setIconLabel(el, ASSETS.ui.dice, '出目分布', '🎲')
+ * url が無い/読み込み失敗時は fallbackEmoji にフォールバックし、画像欠損でも崩れない。
+ * iconClass で画像サイズを切替（既定 'ui-ico'＝ラベル前のインライン、'ui-ico-solo'＝アイコン単独）。
+ */
+export function setIconLabel(
+  el: HTMLElement,
+  url: string | null | undefined,
+  text: string,
+  fallbackEmoji = '',
+  iconClass = 'ui-ico',
+): void {
+  el.textContent = '';
+  if (url) {
+    const img = document.createElement('img');
+    img.className = iconClass;
+    img.src = url;
+    img.alt = '';
+    img.draggable = false;
+    img.addEventListener('error', () => {
+      img.remove();
+      if (fallbackEmoji && !el.textContent?.startsWith(fallbackEmoji)) {
+        el.prepend(document.createTextNode(fallbackEmoji + (text ? ' ' : '')));
+      }
+    }, { once: true });
+    el.appendChild(img);
+  } else if (fallbackEmoji) {
+    el.appendChild(document.createTextNode(fallbackEmoji + (text ? ' ' : '')));
+  }
+  if (text) el.appendChild(document.createTextNode(text));
 }
