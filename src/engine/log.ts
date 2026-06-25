@@ -118,11 +118,11 @@ export function buildActionLog(
     case 'BUILD_IMPROVEMENT': {
       const lv = next.players[actor]?.improvements?.[action.track] ?? 0;
       push(actor, 'BUILD', `📈 ${nm(actor)} が${CK_TRACK_NAME[action.track]}を Lv${lv} に改善`);
-      // 天守到達（Lv4で建設・公開情報）。
+      // 天守閣到達（Lv4で建設・公開情報）。
       const newMetro = next.metropolis?.[action.track];
       const oldMetro = prev.metropolis?.[action.track];
       if (newMetro && newMetro.playerId === actor && (!oldMetro || oldMetro.playerId !== actor)) {
-        push(actor, 'BONUS_CHANGE', `🏛 ${nm(actor)} が${CK_TRACK_NAME[action.track]}の天守を獲得（+2勝利点）`);
+        push(actor, 'BONUS_CHANGE', `🏛 ${nm(actor)} が${CK_TRACK_NAME[action.track]}の天守閣を獲得（+2勝利点）`);
       }
       break;
     }

@@ -25,12 +25,12 @@ const knightImg = ASSETS.knight.basic;
 const COMMODITY_IMG: Record<CommodityType, string> = ASSETS.commodity;
 // 武将と商い: 城下の改善トラックのアイコン画像。
 const IMP_IMG: Record<CkTrack, string> = ASSETS.trackIcon;
-// 各トラックの段階で得られる恩恵（Lv3=特殊建築の効果 / Lv4=天守 / Lv5=最大）。
+// 各トラックの段階で得られる恩恵（Lv3=特殊建築の効果 / Lv4=天守閣 / Lv5=最大）。
 // 「Lv3で何が起きるか」を建設ボタンに表示するために使う（エンジンの実装と一致）。
 const CK_TRACK_BENEFIT: Record<CkTrack, Record<number, string>> = {
-  trade:    { 3: '貴重品を銀行と2:1で交易', 4: '天守（+2点）', 5: '他の天守を奪取可' },
-  politics: { 3: '武将を精兵(Lv3)に加増可', 4: '天守（+2点）', 5: '他の天守を奪取可' },
-  science:  { 3: '無産出のターンに資源1枚', 4: '天守（+2点）', 5: '他の天守を奪取可' },
+  trade:    { 3: '貴重品を銀行と2:1で交易', 4: '天守閣（+2点）', 5: '他の天守閣を奪取可' },
+  politics: { 3: '武将を精兵(Lv3)に加増可', 4: '天守閣（+2点）', 5: '他の天守閣を奪取可' },
+  science:  { 3: '無産出のターンに資源1枚', 4: '天守閣（+2点）', 5: '他の天守閣を奪取可' },
 };
 // 貴重品アイコンの <img>。
 function commIconImg(c: CommodityType, cls: string): HTMLImageElement {
@@ -1588,7 +1588,7 @@ export function showAssetGallery(): void {
   item(g, ASSETS.knight.basic, '武将（足軽）', '強さ1。召し抱え→米で出陣して防衛・行動');
   item(g, ASSETS.knight.strong, '武将（侍）', '強さ2。鉄+馬で加増');
   item(g, ASSETS.knight.mighty, '武将（精兵）', '強さ3。要塞(武Lv3)で加増可');
-  item(g, ASSETS.piece.metropolisGate, '天守', '改善Lv4で城から昇格。4点・略奪されない');
+  item(g, ASSETS.piece.metropolisGate, '天守閣', '改善Lv4で城から昇格。4点・略奪されない');
   item(g, ASSETS.piece.cityWall, '石垣', '石材2。7の手札上限+2（最大3）');
   item(g, ASSETS.piece.merchant, '御用商人コマ', '隣接地形を2:1で交易・保持中+1点');
   item(g, ASSETS.piece.defenderBadge, '守護者VP', '一揆勢撃退の最大貢献者が+1点');
@@ -1609,11 +1609,11 @@ export function showAssetGallery(): void {
 
   g = section('🏛 城下の発展（建築）');
   item(g, ASSETS.building.trade[3], '交易所（商Lv3）', '貴重品を銀行と2:1で交易');
-  item(g, ASSETS.building.trade[4], '銀行（商Lv4）', '天守（商）');
+  item(g, ASSETS.building.trade[4], '銀行（商Lv4）', '天守閣（商）');
   item(g, ASSETS.building.politics[3], '要塞（武Lv3）', '精兵への加増を解禁');
-  item(g, ASSETS.building.politics[4], '大聖堂（武Lv4）', '天守（武）');
+  item(g, ASSETS.building.politics[4], '大聖堂（武Lv4）', '天守閣（武）');
   item(g, ASSETS.building.science[3], '水道橋（文Lv3）', '無産出のターンに資源1枚');
-  item(g, ASSETS.building.science[4], '劇場（文Lv4）', '天守（文）');
+  item(g, ASSETS.building.science[4], '劇場（文Lv4）', '天守閣（文）');
 
   for (const [deck, label] of [['politics', '政策'], ['science', '兵学'], ['trade', '商策']] as [CkTrack, string][]) {
     const cg = cardSection(`📜 進歩カード（${label}デッキ）`);
@@ -1646,7 +1646,7 @@ function appendCkBuildSection(
 
   // 城下の改善（3ツリー）
   const impLabel = el('div', 'ck-sub-label');
-  impLabel.append(inlineIc(ASSETS.piece.metropolisGate, 'inline-ic'), document.createTextNode(' 城下の発展（貴重品で強化・Lv4で天守+4点）'));
+  impLabel.append(inlineIc(ASSETS.piece.metropolisGate, 'inline-ic'), document.createTextNode(' 城下の発展（貴重品で強化・Lv4で天守閣+4点）'));
   sec.appendChild(impLabel);
   const imp = player.improvements ?? { trade: 0, politics: 0, science: 0 };
   const impRow = el('div', 'ck-imp-row');
@@ -1770,7 +1770,7 @@ function buildActionButtons(
     selectDiplomatRoad: '📜 盤面で光った相手の端の街道をタップして撤去',
     selectDeserterKnight: '🏃 盤面で光った相手の武将をタップして消す（同じ強さの武将を得る）',
     selectMedicineSettlement: '💊 盤面で光った自分の砦をタップして築城（米1＋鉄2）',
-    selectMetropolis: '🏛 盤面で光った自分の城をタップして天守化（+2点）',
+    selectMetropolis: '🏛 盤面で光った自分の城をタップして天守閣化（+2点）',
   };
   if (selectHint[buildMode]) {
     const hint = el('div', 'board-select-hint');

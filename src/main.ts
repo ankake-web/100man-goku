@@ -522,7 +522,7 @@ function buildRulePanel(): HTMLDetailsElement {
   body.appendChild(ruleSection('⚔ 城下と武将（上級者向け・13点で勝ち）', [
     '基本ルールに「貴重品・城下の発展・武将・一揆勢の襲来」が加わる拡張。',
     '貴重品：城が建つ地形のうち 森林＝紙・牧＝着物・鉱山＝小判 を1個ずつ追加で産む（資源とは別の手札）。',
-    '城下の発展（商・武・文の3系統）：貴重品を払ってレベルアップ。Lv3で特典、Lv4で城が「天守」になり +4点。',
+    '城下の発展（商・武・文の3系統）：貴重品を払ってレベルアップ。Lv3で特典、Lv4で城が「天守閣」になり +4点。',
     '武将：兵士のコマ。召し抱えて米で出陣し、移動・敵武将の押し出し・野盗の追い払いに使える。',
     '一揆勢の襲来：船のイベントで一揆勢が近づき、満タンで攻めてくる。出陣した武将の合計が盤上の城数以上なら防衛成功。足りないと城が1つ砦に格下げ。',
     '進歩カード：商・武・文のイベントで引く特殊カード（手札は最大4枚）。発展レベルが高い色ほど引きやすい。',
@@ -697,7 +697,7 @@ function computeHighlights(state: GameState, mode: BuildMode): BoardRenderOption
         // 武将と商い・医術: 築城できる自分の砦を光らせる。
         opts.validVertexIds = new Set(medicineSettlements(state, pid));
       } else if (mode === 'selectMetropolis') {
-        // 武将と商い・天守: 化ける自分の城を光らせて盤面で選ばせる。
+        // 武将と商い・天守閣: 化ける自分の城を光らせて盤面で選ばせる。
         opts.validVertexIds = new Set(metropolisCityChoices(state, pid));
       } else if (mode === 'selectSmithKnight') {
         // 武将と商い・鍛冶屋: 加増できる自分の武将を光らせる。1体目選択後はそれ以外を2体目候補に。
@@ -752,7 +752,7 @@ function setInventorFirst(tid: string | null): void { inventorFirstTile = tid; r
 // 武将と商い・鍛冶屋(selectSmithKnight)で1体目に選んだ武将頂点ID（未選択は null）。2体目をタップで加増。
 let smithFirstKnight: string | null = null;
 function setSmithFirst(vid: string | null): void { smithFirstKnight = vid; redraw(); }
-// 天守手動選択中に「今+1する城下の改善ツリー」を控える（候補2つ以上で盤面タップさせる時）。
+// 天守閣手動選択中に「今+1する城下の改善ツリー」を控える（候補2つ以上で盤面タップさせる時）。
 let pendingMetropolisTrack: CkTrack | null = null;
 let uiPhase: UIPhase = { type: 'idle' };
 // 野盗/海賊を「先に移動」してから相手選択させる時、移動先をプレビュー描画したタイル。
@@ -1046,7 +1046,7 @@ function computeSheetStatus(): { text: string; alert: boolean } {
       if (buildMode === 'selectDiplomatRoad') return { text: '📜 撤去する街道をタップ（自分の街道は建て直し可）', alert: true };
       if (buildMode === 'selectDeserterKnight') return { text: '🏃 消す相手の武将をタップ', alert: true };
       if (buildMode === 'selectMedicineSettlement') return { text: '💊 城にする砦をタップ', alert: true };
-      if (buildMode === 'selectMetropolis') return { text: '🏛 天守にする城をタップ', alert: true };
+      if (buildMode === 'selectMetropolis') return { text: '🏛 天守閣にする城をタップ', alert: true };
       if (buildMode === 'selectSmithKnight') return { text: smithFirstKnight ? '⚒ 加増する2体目の武将をタップ' : '⚒ 加増する武将をタップ（最大2体）', alert: true };
       if (buildMode === 'selectEngineerCity') return { text: '🧱 石垣を建てる城をタップ', alert: true };
       if (buildMode === 'selectWallCity') return { text: '🧱 石垣を建てる城をタップ', alert: true };
@@ -1897,12 +1897,12 @@ function buildVictoryScoreboard(): HTMLDivElement {
     const r = row.recap;
     const bd = document.createElement('div');
     bd.className = 'score-bd';
-    const plainCities = Math.max(0, r.cities - r.metropolises); // 天守は別チップで出すので二重計上しない
+    const plainCities = Math.max(0, r.cities - r.metropolises); // 天守閣は別チップで出すので二重計上しない
     if (r.settlements > 0) bd.appendChild(scoreChipIcon(ASSETS.piece.settlement, `×${r.settlements}`, false, '砦（各1点）'));
     if (plainCities > 0)   bd.appendChild(scoreChipIcon(ASSETS.piece.city, `×${plainCities}`, false, '城（各2点）'));
-    // 武将と商い: 天守（各4点：城の基本2点＋発展ボーナス2点）。基本ゲームには存在しない。
+    // 武将と商い: 天守閣（各4点：城の基本2点＋発展ボーナス2点）。基本ゲームには存在しない。
     // 城チップから除外している（plainCities）ため、ここで城基本2点も含めた合計4点を表示し、★VPと内訳を一致させる。
-    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(metropolisImg(p.color), `×${r.metropolises}（+${r.metropolises * 4}）`, true, '天守（各4点）'));
+    if (r.metropolises > 0) bd.appendChild(scoreChipIcon(metropolisImg(p.color), `×${r.metropolises}（+${r.metropolises * 4}）`, true, '天守閣（各4点）'));
     if (r.hasLongestRoad)  bd.appendChild(scoreChipIcon(ASSETS.action.road, '最長+2', true, '最長街道'));
     // 武威は基本ゲームのみ（武将と商いは武将コマ制のため非表示）。
     if (!r.isCk && r.hasLargestArmy) bd.appendChild(scoreChipIcon(ASSETS.knight.basic, '最大+2', true, '武威'));
@@ -3179,7 +3179,7 @@ function dispatch(action: Action): void {
       return;
     }
   }
-  // 武将と商い: 城下の改善で天守を新規獲得し、化ける城の候補が2つ以上ある時は
+  // 武将と商い: 城下の改善で天守閣を新規獲得し、化ける城の候補が2つ以上ある時は
   // 自動でなく盤面で城を選ばせる（候補1つ以下ならエンジンが自動配置）。
   if (action.type === 'BUILD_IMPROVEMENT' && !diceAnimating && action.metropolisVertexId == null) {
     const ipid = currentPid(state);
@@ -3190,7 +3190,7 @@ function dispatch(action: Action): void {
       pendingMetropolisTrack = action.track;
       document.querySelector('.help-overlay')?.remove();
       setBuildMode('selectMetropolis');
-      showBoardNotice('🏛 天守にする自分の城をタップ（+2点）');
+      showBoardNotice('🏛 天守閣にする自分の城をタップ（+2点）');
       return;
     }
   }
@@ -3251,7 +3251,7 @@ function dispatch(action: Action): void {
       action.type === 'BUILD_CITY_WALL' ||
       // 御用商人カードのタイル配置（placeMerchant）完了後もモードを残さない。
       action.type === 'PLAY_PROGRESS' ||
-      // 天守手動選択（selectMetropolis）完了後もモードを残さない。
+      // 天守閣手動選択（selectMetropolis）完了後もモードを残さない。
       action.type === 'BUILD_IMPROVEMENT'
     ) {
       buildMode = 'idle';
@@ -3341,7 +3341,7 @@ function setBuildMode(mode: BuildMode): void {
   buildMode = mode;
   // 建設モードに入ったら横持ちシートは畳み、盤面へ自動スクロール（操作対象を必ず見せる）。
   // 解除('idle')やトグルOFFでは動かさない。setBuildMode の呼び出し元は人間のUIボタンと
-  // dispatch の進歩カード/天守割込みのみ（CPUは通らない）なので人間操作時だけ働く。
+  // dispatch の進歩カード/天守閣割込みのみ（CPUは通らない）なので人間操作時だけ働く。
   if (mode !== 'idle') { landscapeSheetUserOpen = false; scrollToBoard(); }
   // モード変更で仮置きプレビューは破棄（別の建設物を選び直したとみなす）。
   if (uiPhase.type === 'placePreview') uiPhase = { type: 'idle' };

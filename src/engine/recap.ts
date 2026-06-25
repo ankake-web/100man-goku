@@ -18,8 +18,8 @@ import { calcLongestRoad, calcPublicVP } from './scoring';
 
 export interface PlayerRecap {
   settlements: number;
-  cities: number;        // 城の総数（天守含む）
-  metropolises: number;  // 武将と商い: 天守数（各+2点）
+  cities: number;        // 城の総数（天守閣含む）
+  metropolises: number;  // 武将と商い: 天守閣数（各+2点）
   defenderVP: number;    // 武将と商い: 一揆勢撃退の国の守護者VP
   hasMerchant: boolean;  // 武将と商い: 御用商人コマを保持中か（+1点・公開）
   progressVP: number;    // 武将と商い: 進歩カードの永久勝利点（印刷/立憲、各+1点・公開）
@@ -76,10 +76,10 @@ export function buildPlayerRecap(state: GameState, pid: PlayerId): PlayerRecap {
  */
 function styleComment(r: RecapStats): string {
   const win = r.isWinner;
-  // 武将と商いは「天守/守護(一揆勢防衛)/城下発展」軸で講評する（武威は無いため使わない）。
+  // 武将と商いは「天守閣/守護(一揆勢防衛)/城下発展」軸で講評する（武威は無いため使わない）。
   if (r.isCk) {
-    if (r.metropolises >= 2) return win ? '天守を複数築いた発展型の勝利' : '天守を狙った発展型';
-    if (r.metropolises >= 1) return win ? '城を発展させ天守で競り勝った発展型の勝利' : '天守を築いた発展型';
+    if (r.metropolises >= 2) return win ? '天守閣を複数築いた発展型の勝利' : '天守閣を狙った発展型';
+    if (r.metropolises >= 1) return win ? '城を発展させ天守閣で競り勝った発展型の勝利' : '天守閣を築いた発展型';
     if (r.defenderVP >= 2) return win ? '一揆勢を退け続けた守護型の勝利' : '武将で防衛を支えた守護型';
     if (r.cities >= 3) return win ? '築城を進め生産で押し切った開発型の勝利' : '築城を急いだ生産重視型';
     if (r.hasLongestRoad || r.roads >= 9) return win ? '街道を伸ばし切った開拓者の勝利' : '街道を広く伸ばした開拓者型';
