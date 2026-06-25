@@ -79,8 +79,8 @@ describe('resolveUniqueName', () => {
   });
 
   it('re-picks another pool name when a pool name collides', () => {
-    const out = resolveUniqueName('ミナ', ['ミナ'], createRng(2));
-    expect(out).not.toBe('ミナ');
+    const out = resolveUniqueName('ノブナガ', ['ノブナガ'], createRng(2));
+    expect(out).not.toBe('ノブナガ');
     expect(NAME_POOL.includes(out)).toBe(true);
   });
 
