@@ -8,7 +8,7 @@ import type { AxialCoord, ResourceType, TileType, DevCardType, ResourceHand, Com
 
 export const RESOURCE_TYPES: ResourceType[] = ['wood', 'brick', 'wool', 'grain', 'ore'];
 
-// ---- 武将と商い(Cities & Knights): 物産(コモディティ) ----
+// ---- 武将と商い(Cities & Knights): 貴重品(コモディティ) ----
 export const COMMODITY_TYPES: CommodityType[] = ['coin', 'cloth', 'paper'];
 
 /** 全コモディティキーを含む CommodityHand を生成。省略キーは 0。 */
@@ -16,10 +16,10 @@ export function makeCommodities(partial: Partial<CommodityHand> = {}): Commodity
   return { coin: 0, cloth: 0, paper: 0, ...partial };
 }
 
-/** 武将と商い: 物産銀行の初期在庫（資源バンクと対称に各19）。実質枯渇しないが供給の有限性を表す。 */
+/** 武将と商い: 貴重品銀行の初期在庫（資源バンクと対称に各19）。実質枯渇しないが供給の有限性を表す。 */
 export const COMMODITY_BANK_INITIAL: CommodityHand = { coin: 19, cloth: 19, paper: 19 };
 
-// 城が追加産出する物産の対応（森林→紙 / 牧→絹 / 鉱山→金）。他地形は物産なし。
+// 城が追加産出する貴重品の対応（森林→紙 / 牧→着物 / 鉱山→金）。他地形は貴重品なし。
 export const TILE_COMMODITY_MAP: Record<TileType, CommodityType | null> = {
   forest:   'paper',
   pasture:  'cloth',
@@ -84,7 +84,7 @@ export const CK_TRACK_COMMODITY: Record<CkTrack, CommodityType> = {
   trade: 'cloth', politics: 'coin', science: 'paper',
 };
 export const CK_TRACK_NAME: Record<CkTrack, string> = {
-  trade: '商', politics: '政', science: '学',
+  trade: '商', politics: '武', science: '文',
 };
 // 進歩カードのカテゴリ表示専用（3デッキ）。城下の発展トラック名(商/政/学)とは別ラベル。
 export const CK_PROGRESS_CATEGORY_NAME: Record<CkTrack, string> = {
@@ -95,7 +95,7 @@ export const CK_METROPOLIS_LEVEL = 4;    // この到達で天守化
 export const CK_BARBARIAN_MAX = 7;       // 一揆勢の船がこの距離で襲来
 export const CK_WALL_DISCARD_BONUS = 2;  // 石垣1つにつき7の捨て札上限+2
 export const CK_MAX_WALLS = 3;
-/** 城下の改善 level→level+1 のコスト（その物産を level+1 個）。 */
+/** 城下の改善 level→level+1 のコスト（その貴重品を level+1 個）。 */
 export function improvementCost(currentLevel: number): number {
   return currentLevel + 1;
 }
@@ -134,15 +134,15 @@ export const PROGRESS_CARD_DESC: Record<ProgressCardType, string> = {
   irrigation: '建物に隣接する田1つにつき米2',
   mining: '建物に隣接する鉱山1つにつき鉄2',
   alchemist: '次のダイスの目を自分で決めてから振る',
-  crane: '城下の改善トラック（商/政/学）を1段、必要な物産より1個少なく上げる',
+  crane: '城下の改善トラック（商/武/文）を1段、必要な貴重品より1個少なく上げる',
   inventor: '数字トークン2枚を入れ替え（2/6/8/12以外）',
   medicine: '砦を城に格上げ（通常より安い 米1＋鉄2 で）',
   printer: '即座に+1勝利点',
   road_building_progress: '街道を2本まで無料で建設',
   resource_monopoly: '各相手から最良の資源を2枚ずつ',
-  trade_monopoly: '各相手から最良の物産を1枚ずつ',
+  trade_monopoly: '各相手から最良の貴重品を1枚ずつ',
   master_merchant: 'VP最多の相手から無作為に2枚',
-  commercial_harbor: '各相手と 自分の資源1⇄相手の物産1 を交換',
+  commercial_harbor: '各相手と 自分の資源1⇄相手の貴重品1 を交換',
   merchant: '資源地形に御用商人を置く（+1VP・その資源2:1）',
   merchant_fleet: 'このターン、指定1種を2:1で交易',
   warlord: '自分の武将を全て無料で出陣',

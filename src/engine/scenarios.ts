@@ -311,7 +311,7 @@ const seafarersGreaterCatan: Scenario = {
 const citiesKnights: Scenario = {
   id: 'cities_knights',
   name: '城と武将',
-  description: '物産・城下の改善・武将・一揆勢の襲来。最も奥深い拡張ルール（13点）。',
+  description: '貴重品・城下の改善・武将・一揆勢の襲来。最も奥深い拡張ルール（13点）。',
   category: 'cities_knights',
   coords: () => getAllTileCoords(),
   build: (geo, rng) => createRandomBoard(geo, rng),
