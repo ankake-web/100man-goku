@@ -142,7 +142,7 @@ function buildFromLandMap(landMap: LandMap): (geo: BoardGeometry, rng: () => num
 
 const seafarersNewShores: Scenario = {
   id: 'seafarers_newshores',
-  name: '航海者：新たな海岸を求めて',
+  name: '水軍：新天地を求めて',
   description: '本島から海峡を渡り、対岸の新島へ入植。最初の入植で+2点（13点で勝利）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,
@@ -183,7 +183,7 @@ const ARCHIPELAGO_LAND: LandMap = {
 
 const seafarersArchipelago: Scenario = {
   id: 'seafarers_archipelago',
-  name: '航海者：群島',
+  name: '水軍：島々の争乱',
   description: '海で隔てた3つの島。本島＋新島2つを巡る、島ボーナスと金の争奪戦（13点）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,
@@ -272,7 +272,7 @@ const GREATER_CATAN_LAND: LandMap = {
 
 const seafarersThroughDesert: Scenario = {
   id: 'seafarers_throughdesert',
-  name: '航海者：荒野を越えて',
+  name: '水軍：遥かなる金の島',
   description: '広い大洋の先に遠い「金の島」。長い航路を繋いで渡れた者が勝つ（13点）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,
@@ -281,7 +281,7 @@ const seafarersThroughDesert: Scenario = {
 };
 const seafarersGoldenIsles: Scenario = {
   id: 'seafarers_goldenisles',
-  name: '航海者：黄金諸島',
+  name: '水軍：黄金諸島',
   description: '金タイルが3つ。好きな資源を産む金を巡るゴールドラッシュ（13点）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,
@@ -290,7 +290,7 @@ const seafarersGoldenIsles: Scenario = {
 };
 const seafarersChainIsles: Scenario = {
   id: 'seafarers_chainisles',
-  name: '航海者：連なる島々',
+  name: '水軍：島伝いの航路',
   description: '小さな島が点在。島ボーナスを稼ぐアイランドホッピング（13点）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,
@@ -299,7 +299,7 @@ const seafarersChainIsles: Scenario = {
 };
 const seafarersGreaterCatan: Scenario = {
   id: 'seafarers_greatercatan',
-  name: '航海者：大連邦',
+  name: '水軍：大いなる国',
   description: '海を少なくした大きな一枚大陸。船は控えめの拡大版（12点）。',
   category: 'seafarers',
   coords: SEAFARERS_COORDS,

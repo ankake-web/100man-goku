@@ -11,7 +11,7 @@ import { createRng } from '../engine/setup';
 
 const CATEGORY_LABEL: Record<'basic' | 'seafarers' | 'cities_knights', string> = {
   basic: '基本',
-  seafarers: '航海者（船で島へ）',
+  seafarers: '水軍（船で島へ）',
   cities_knights: '城と武将（拡張）',
 };
 const CATEGORY_ORDER = ['basic', 'seafarers', 'cities_knights'] as const;
@@ -121,7 +121,7 @@ export function buildScenarioSelect(opts: ScenarioSelectOptions): HTMLElement {
       main.className = 'scenario-card-main';
       const nm = document.createElement('div');
       nm.className = 'scenario-card-name';
-      nm.textContent = s.name.replace('航海者：', '');
+      nm.textContent = s.name.replace('水軍：', '');
       const vp = document.createElement('div');
       vp.className = 'scenario-card-vp';
       vp.textContent = `🏆 ${s.victoryTarget}点`;

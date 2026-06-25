@@ -46,7 +46,7 @@ describe('scenarios: classic は従来どおり（非破壊）', () => {
   });
 });
 
-describe('scenarios: 航海者「新たな海岸を求めて」', () => {
+describe('scenarios: 水軍「新天地を求めて」', () => {
   const s = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_newshores');
 
   it('大きめ footprint（29ヘックス）で陸21・海8・砂漠1・金1', () => {
@@ -94,7 +94,7 @@ describe('scenarios: 航海者「新たな海岸を求めて」', () => {
   });
 });
 
-describe('scenarios: 航海者「群島」', () => {
+describe('scenarios: 水軍「島々の争乱」', () => {
   const s = createInitialGameState(SPECS, 'fixed', ['player1', 'player2'], createRng(1), 'seafarers_archipelago');
 
   it('29ヘックスで陸21・海8・砂漠1・金1', () => {

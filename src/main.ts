@@ -432,7 +432,7 @@ function buildTileLegend(): HTMLDivElement {
   const entries: [string, ResourceType | null, string][] = [
     ['forest', 'wood', '木材'], ['hill', 'brick', '石材'], ['pasture', 'wool', '馬'],
     ['field', 'grain', '米'], ['mountain', 'ore', '鉄'], ['desert', null, '荒野（資源なし）'],
-    ['gold', null, '金＝好きな資源'], ['sea', null, '海（航海者）'],
+    ['gold', null, '金＝好きな資源'], ['sea', null, '海（水軍）'],
   ];
   for (const [type, res, label] of entries) {
     const cell = document.createElement('div');
@@ -468,7 +468,7 @@ function buildRulePanel(): HTMLDetailsElement {
   const body = document.createElement('div');
   body.className = 'rule-body';
   body.appendChild(ruleSection('🎯 目的', [
-    `先に ${VP_TABLE.target} 点（航海者の盤面は 13 点）を取ったプレイヤーが勝ち。`,
+    `先に ${VP_TABLE.target} 点（水軍の盤面は 13 点）を取ったプレイヤーが勝ち。`,
     '砦・城・最長街道・武威・由緒カードで点を集める。',
   ]));
   body.appendChild(buildTileLegend());
@@ -511,13 +511,13 @@ function buildRulePanel(): HTMLDetailsElement {
     '武威：2点（武将3回以上で最多の人）',
     '由緒カード：1点',
   ]));
-  body.appendChild(ruleSection('⛵ 航海者（航海者・群島の盤面）', [
+  body.appendChild(ruleSection('⛵ 水軍（船で島へ渡る盤面）', [
     '盤面が海で島に分かれている。新しい島へは「船」で渡る。',
     '船：木材＋馬。海に面した辺に置く。街道と船は自分の建物でつながる。「⛵船を移動」で行き止まりの船を1ターン1回動かせる。',
     '金タイル：数字が出ると、木材・石材・馬・米・鉄から好きな資源を選べる（砦1・城2）。米（黄土色）と違い、明るい金色が目印。',
     '新しい島に最初に砦を建てると +2点（島ボーナス）。',
     '7のとき、陸タイルをタップ＝野盗、海タイルをタップ＝海賊（隣の船から1枚奪い、その海での船建設を封じる）。',
-    '海岸の湊（3:1 / 2:1）も使える。航海者の盤面は 13点で勝ち。',
+    '海岸の湊（3:1 / 2:1）も使える。水軍の盤面は 13点で勝ち。',
   ]));
   body.appendChild(ruleSection('⚔ 城下と武将（上級者向け・13点で勝ち）', [
     '基本ルールに「物産・城下の発展・武将・一揆勢の襲来」が加わる拡張。',
