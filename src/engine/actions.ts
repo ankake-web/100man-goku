@@ -142,8 +142,9 @@ function isOpenShipEnd(
   if (v.building != null) return false; // 建物がある端は開放端ではない
   return !v.adjacentEdgeIds.some(eid => {
     if (eid === fromEdgeId) return false;
-    const e = state.edges[eid];
-    return e?.road?.playerId === playerId || e?.ship?.playerId === playerId;
+    // 建物の無い頂点では道は船の連続性に寄与しない（道↔船は自分の建物経由でのみ連結）。
+    // よって開放端を塞ぐのは「自分の船」のみ。
+    return state.edges[eid]?.ship?.playerId === playerId;
   });
 }
 
@@ -168,6 +169,12 @@ export function canMoveShip(
   if (from.ship?.playerId !== playerId) return false;
   if (to.road != null || to.ship != null) return false;
   if (!isSeaEdge(to, state.vertices, state.tiles)) return false;
+
+  // 海賊のいる海ヘクスに面した辺へ/から船は移動できない（建設の封鎖 canBuildShip と対称）。
+  if (state.piratePosition != null) {
+    if (edgeTileIds(from, state.vertices).includes(state.piratePosition)) return false;
+    if (edgeTileIds(to, state.vertices).includes(state.piratePosition)) return false;
+  }
 
   // 行き止まり（開放端）の船だけ動かせる。
   if (!from.vertexIds.some(v => isOpenShipEnd(state, playerId, v, fromEdgeId))) return false;

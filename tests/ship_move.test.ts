@@ -5,7 +5,7 @@ import { createRng } from '../src/engine/setup';
 import { applyAction } from '../src/engine/game';
 import { canMoveShip, isShipMovable } from '../src/engine/actions';
 import { nearestMoveShipEdgeId } from '../src/renderer/events';
-import { isSeaEdge, isLandVertex, isLandEdge } from '../src/engine/board';
+import { isSeaEdge, isLandVertex, isLandEdge, edgeTileIds } from '../src/engine/board';
 import { makeHand } from '../src/constants';
 import type { GameState, EdgeId, VertexId } from '../src/types';
 
@@ -114,6 +114,29 @@ describe('航海者: 船の移動（航海・Phase 4）', () => {
     expect(nearestMoveShipEdgeId(s, 'player1', null, p1.x, p1.y)).toBe(e1); // 動かせる船
     const p2 = mid(e2);
     expect(nearestMoveShipEdgeId(s, 'player1', e1, p2.x, p2.y)).toBe(e2); // 移動先
+  });
+});
+
+// catan からの順方向同期: 船移動の海賊封鎖ガードと、開放端判定を「船のみ」に是正。
+describe('航海者: 船移動の海賊封鎖ガード（catan同期）', () => {
+  it('海賊のいる海ヘクスに面した辺へは船を移動できない（建設封鎖 canBuildShip と対称）', () => {
+    const { s, e1, e2 } = setupMovableShip();
+    expect(canMoveShip(s, 'player1', e1, e2)).toBe(true);
+    // 移動先 e2 に面するタイルへ海賊を置く → 封鎖され移動不可。
+    const toTile = edgeTileIds(s.edges[e2]!, s.vertices)[0]!;
+    const blocked: GameState = { ...s, piratePosition: toTile };
+    expect(canMoveShip(blocked, 'player1', e1, e2)).toBe(false); // ← 修正前はガード無しで true
+  });
+
+  it('開放端に自分の道があっても船は移動できる（道↔船は建物経由でのみ連結）', () => {
+    const { s, v, e1, e2 } = setupMovableShip();
+    const midV = s.edges[e1]!.vertexIds.find(x => x !== v)! as VertexId;
+    const roadEdge = s.vertices[midV]!.adjacentEdgeIds
+      .find(eid => eid !== e1 && s.edges[eid]!.ship == null && s.edges[eid]!.road == null);
+    if (!roadEdge) return; // 幾何ガード
+    const withRoad: GameState = { ...s, edges: { ...s.edges, [roadEdge]: { ...s.edges[roadEdge]!, road: { playerId: 'player1' } } } };
+    // e1 の遠端(midV)には道があるが船は無い＝依然として開放端。道を開放端に数える旧実装では false。
+    expect(canMoveShip(withRoad, 'player1', e1, e2)).toBe(true); // ← 修正前は道が開放端を塞ぎ false
   });
 });
 
